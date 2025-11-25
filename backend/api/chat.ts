@@ -32,7 +32,13 @@ export default async function handler(
   try {
     console.log('=== Chat API Called ===');
     console.log('Method:', req.method);
-    console.log('Body:', req.body);
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+    console.log('Headers:', JSON.stringify(req.headers, null, 2));
+    console.log('ENV Check:', {
+      hasGemini: !!process.env.GEMINI_API_KEY,
+      hasPinecone: !!process.env.PINECONE_API_KEY,
+      hasIndex: !!process.env.PINECONE_INDEX,
+    });
     
     const { context, message, sessionId }: ChatRequest = req.body;
     
@@ -104,10 +110,17 @@ export default async function handler(
     return res.status(200).json(response);
     
   } catch (error: any) {
-    console.error('Chat API error:', error);
+    console.error('=== Chat API Error ===');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Error stack:', error.stack);
+    console.error('Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    
     return res.status(500).json({ 
       error: 'Internal server error',
-      message: error.message 
+      message: error.message,
+      name: error.name,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
