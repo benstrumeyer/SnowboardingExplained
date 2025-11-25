@@ -1,0 +1,346 @@
+# MVP Development Tasks
+
+## Goal: Working chatbot you can talk to about snowboarding
+
+Priority: Get data → Build API → Simple chat UI → Test it works
+
+---
+
+## Phase 1: Data Pipeline (Days 1-2)
+
+### Task 1.1: Setup Data Pipeline Project
+- [ ] Create `data-pipeline/` folder
+- [ ] Initialize Node.js project (`npm init`)
+- [ ] Install dependencies:
+  - `youtube-transcript` - Get video transcripts
+  - `@google/generative-ai` - Generate embeddings
+  - `@pinecone-database/pinecone` - Vector database
+  - `dotenv` - Environment variables
+- [ ] Create `.env` file with API keys
+
+**Files to create:**
+- `data-pipeline/package.json`
+- `data-pipeline/.env`
+- `data-pipeline/tsconfig.json`
+
+---
+
+### Task 1.2: Scrape YouTube Channel
+- [ ] Create script to get all video IDs from channel
+- [ ] Download transcripts for each video
+- [ ] Save raw transcripts to `data/transcripts/`
+- [ ] Save video metadata (title, URL, thumbnail, duration)
+
+**Script:** `data-pipeline/scripts/1-scrape-transcripts.ts`
+
+**Output:**
+```
+data/
+├── transcripts/
+│   ├── video-001.json
+│   ├── video-002.json
+│   └── ...
+└── metadata.json
+```
+
+**Test:** Run script, verify ~200 video transcripts downloaded
+
+---
+
+### Task 1.3: Chunk Transcripts
+- [ ] Split transcripts into 30-second segments
+- [ ] Keep timestamp and video metadata with each chunk
+- [ ] Filter out intro/outro/sponsor segments (optional)
+- [ ] Save chunked data
+
+**Script:** `data-pipeline/scripts/2-chunk-transcripts.ts`
+
+**Output:**
+```
+data/
+└── chunks/
+    └── all-chunks.json
+```
+
+**Test:** Verify chunks have text, timestamp, videoId, videoTitle
+
+---
+
+### Task 1.4: Generate Embeddings
+- [ ] Use Gemini `text-embedding-004` model
+- [ ] Generate embedding for each chunk
+- [ ] Save embeddings with metadata
+
+**Script:** `data-pipeline/scripts/3-generate-embeddings.ts`
+
+**Output:**
+```
+data/
+└── embeddings/
+    └── embeddings.json
+```
+
+**Test:** Verify each chunk has 768-dimensional embedding
+
+---
+
+### Task 1.5: Upload to Pinecone
+- [ ] Create Pinecone index (dimension: 768)
+- [ ] Batch upload all embeddings
+- [ ] Verify upload successful
+
+**Script:** `data-pipeline/scripts/4-upload-pinecone.ts`
+
+**Test:** Query Pinecone, verify results returned
+
+---
+
+## Phase 2: Backend API (Days 3-4)
+
+### Task 2.1: Setup Vercel Project
+- [ ] Create `backend/` folder
+- [ ] Initialize with `npm init`
+- [ ] Install dependencies:
+  - `@google/generative-ai`
+  - `@pinecone-database/pinecone`
+  - `@vercel/kv`
+  - `@vercel/node`
+- [ ] Create `vercel.json` config
+- [ ] Setup environment variables in Vercel
+
+**Files:**
+- `backend/package.json`
+- `backend/vercel.json`
+- `backend/tsconfig.json`
+
+---
+
+### Task 2.2: Create Pinecone Service
+- [ ] Create `lib/pinecone.ts`
+- [ ] Implement `searchVideoSegments(query, topK)`
+- [ ] Test search returns relevant results
+
+**Test:** Search for "backside 180", verify relevant videos returned
+
+---
+
+### Task 2.3: Create Gemini Service
+- [ ] Create `lib/gemini.ts`
+- [ ] Implement `generateEmbedding(text)`
+- [ ] Implement `generateCoachingResponse(context, segments)`
+- [ ] Test response generation
+
+**Test:** Generate response, verify it uses coach's style
+
+---
+
+### Task 2.4: Create Cache Service
+- [ ] Create `lib/cache.ts`
+- [ ] Implement `getCachedResponse(context)`
+- [ ] Implement `cacheResponse(context, response)`
+- [ ] Setup Vercel KV
+
+**Test:** Cache and retrieve a response
+
+---
+
+### Task 2.5: Create Chat API Endpoint
+- [ ] Create `api/chat.ts`
+- [ ] Handle POST requests
+- [ ] Implement flow:
+  1. Check cache
+  2. Generate query embedding
+  3. Search Pinecone
+  4. Generate response with Gemini
+  5. Cache response
+  6. Return with video references
+
+**Test:** 
+```bash
+curl -X POST http://localhost:3000/api/chat \
+  -H "Content-Type: application/json" \
+  -d '{
+    "context": {
+      "trick": "backside 180",
+      "featureSize": "medium",
+      "issues": "not getting enough rotation"
+    },
+    "sessionId": "test-123"
+  }'
+```
+
+---
+
+### Task 2.6: Deploy to Vercel
+- [ ] Run `vercel deploy`
+- [ ] Test production endpoint
+- [ ] Verify caching works
+
+**Test:** Make same request twice, verify second is cached
+
+---
+
+## Phase 3: Simple Chat UI (Days 5-6)
+
+### Task 3.1: Create Basic React Native App
+- [ ] Run `npx create-expo-app mobile`
+- [ ] Install dependencies:
+  - `twrnc`
+  - `axios`
+  - `@react-native-async-storage/async-storage`
+- [ ] Setup TypeScript
+- [ ] Test app runs on device/simulator
+
+---
+
+### Task 3.2: Create Simple Question Flow
+- [ ] Create `QuestionFlowScreen.tsx`
+- [ ] Add text input for trick name
+- [ ] Add buttons for feature size (Small/Medium/Large)
+- [ ] Add text input for issues
+- [ ] Add "Get Coaching" button
+- [ ] Store answers in state
+
+**UI:** Just basic inputs, no fancy components yet
+
+---
+
+### Task 3.3: Create Chat Screen
+- [ ] Create `ChatScreen.tsx`
+- [ ] Display user's question
+- [ ] Show loading indicator
+- [ ] Display AI response
+- [ ] Show video thumbnails (if any)
+
+**UI:** Simple message bubbles, basic styling
+
+---
+
+### Task 3.4: Connect to API
+- [ ] Create `services/api.ts`
+- [ ] Implement `sendMessage(context)`
+- [ ] Handle loading states
+- [ ] Handle errors
+- [ ] Display response in chat
+
+**Test:** Complete question flow, verify response appears
+
+---
+
+### Task 3.5: Add Video Links
+- [ ] Make video thumbnails tappable
+- [ ] Open YouTube app/browser on tap
+- [ ] Show video title and timestamp
+
+**Test:** Tap video, verify YouTube opens at correct timestamp
+
+---
+
+## Phase 4: MVP Testing & Polish (Day 7)
+
+### Task 4.1: End-to-End Testing
+- [ ] Test full flow: Questions → API → Response
+- [ ] Test with different tricks
+- [ ] Verify video references are relevant
+- [ ] Check response quality
+- [ ] Test caching works
+
+---
+
+### Task 4.2: Basic Error Handling
+- [ ] Handle API errors gracefully
+- [ ] Show error messages to user
+- [ ] Add retry button
+- [ ] Handle no internet connection
+
+---
+
+### Task 4.3: Save Chat History
+- [ ] Save completed chats to AsyncStorage
+- [ ] Create simple home screen with chat list
+- [ ] Allow opening previous chats
+- [ ] Add "New Chat" button
+
+---
+
+### Task 4.4: Polish UI
+- [ ] Add loading animations
+- [ ] Improve styling with twrnc
+- [ ] Add coach avatar/icon
+- [ ] Make it look like ChatGPT mobile
+
+---
+
+## MVP Complete! 🎉
+
+**What you'll have:**
+- Working data pipeline (all videos scraped and indexed)
+- Vercel API that generates coaching responses
+- Simple mobile app to chat with coach
+- Video references with timestamps
+- Chat history saved locally
+
+**What's NOT in MVP:**
+- Fancy question flow components
+- Voice input
+- Offline mode
+- Advanced caching strategies
+- Analytics
+- User accounts
+
+---
+
+## Post-MVP Enhancements (Later)
+
+### Polish Question Flow
+- [ ] Build reusable components (BinaryChoice, SkillLevelSelector, etc.)
+- [ ] Add skip logic
+- [ ] Add animations
+- [ ] Add progress indicator
+
+### Advanced Features
+- [ ] Voice input/output
+- [ ] Offline mode with cached responses
+- [ ] Session tracking and progress
+- [ ] Share chats with friends
+- [ ] Bookmark favorite videos
+
+---
+
+## Time Estimate
+
+**Phase 1 (Data):** 2 days
+**Phase 2 (API):** 2 days  
+**Phase 3 (Mobile):** 2 days
+**Phase 4 (Testing):** 1 day
+
+**Total MVP:** ~7 days
+
+---
+
+## Success Criteria
+
+✅ Can ask about any trick and get relevant coaching  
+✅ Response uses coach's actual words from videos  
+✅ Video references are accurate and helpful  
+✅ Response time < 3 seconds  
+✅ Caching reduces API costs by 80%+  
+✅ App doesn't crash  
+✅ Can save and view chat history  
+
+---
+
+## Ready to Start?
+
+**First task:** Task 1.1 - Setup Data Pipeline Project
+
+Run:
+```bash
+cd SnowboardingExplained
+mkdir data-pipeline
+cd data-pipeline
+npm init -y
+npm install youtube-transcript @google/generative-ai @pinecone-database/pinecone dotenv
+```
+
+Let's go! 🚀

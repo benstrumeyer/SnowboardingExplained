@@ -30,9 +30,14 @@ export default async function handler(
   }
   
   try {
+    console.log('=== Chat API Called ===');
+    console.log('Method:', req.method);
+    console.log('Body:', req.body);
+    
     const { context, message, sessionId }: ChatRequest = req.body;
     
     if (!context || !sessionId) {
+      console.log('Missing required fields');
       return res.status(400).json({ error: 'Missing required fields' });
     }
     
