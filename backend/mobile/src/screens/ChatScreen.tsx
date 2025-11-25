@@ -104,7 +104,7 @@ export default function ChatScreen() {
     <KeyboardAvoidingView
       style={tw`flex-1 bg-gray-900`}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={90}
+      keyboardVerticalOffset={0}
     >
       {/* Header */}
       <View style={tw`bg-gray-800 pt-12 pb-4 px-4 border-b border-gray-700`}>
