@@ -3,17 +3,19 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "fetch-ids": "tsx scripts/0-fetch-video-ids.ts",
     "scrape": "tsx scripts/1-scrape-transcripts.ts",
     "chunk": "tsx scripts/2-chunk-transcripts.ts",
     "embed": "tsx scripts/3-generate-embeddings.ts",
     "upload": "tsx scripts/4-upload-pinecone.ts",
-    "all": "npm run scrape && npm run chunk && npm run embed && npm run upload"
+    "all": "npm run fetch-ids && npm run scrape && npm run chunk && npm run embed && npm run upload"
   },
   "dependencies": {
-    "youtube-transcript": "^1.2.1",
     "@google/generative-ai": "^0.1.3",
     "@pinecone-database/pinecone": "^2.0.0",
-    "dotenv": "^16.3.1"
+    "dotenv": "^16.3.1",
+    "googleapis": "^166.0.0",
+    "youtube-transcript": "^1.2.1"
   },
   "devDependencies": {
     "@types/node": "^20.10.5",

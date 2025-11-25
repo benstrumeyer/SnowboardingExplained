@@ -20,13 +20,30 @@ import path from 'path';
 // https://www.youtube.com/@SnowboardingExplained
 const CHANNEL_ID = 'UCf7C6GkDyYFqz8HfuN1C-_w';
 
-// For now, we'll manually provide video IDs
-// In production, you'd use YouTube Data API to get all videos
-// But that requires API key and quota, so let's start with a few videos for testing
-const TEST_VIDEO_IDS = [
-  'dQw4w9WgXcQ', // Replace with actual video IDs from the channel
-  // Add more video IDs here
+// Using popular snowboarding tutorial videos that HAVE captions
+// These are from various channels with good snowboarding content
+const MANUAL_VIDEO_IDS = [
+  'jNQXAC9IVRw', // "Me at the zoo" - test video with captions
+  '9bZkp7q19f0', // PSY - Gangnam Style (has captions, for testing)
+  'dQw4w9WgXcQ', // Rick Astley (has captions, for testing)
+  // We'll use these to test the pipeline works
+  // Then we can add real snowboarding videos with captions
 ];
+
+async function loadVideoIds(): Promise<string[]> {
+  // Try to load from file first
+  try {
+    const videoIdsPath = path.join('data', 'video-ids.json');
+    const content = await fs.readFile(videoIdsPath, 'utf-8');
+    const ids = JSON.parse(content);
+    if (ids.length > 0) return ids;
+  } catch (error) {
+    // File doesn't exist, use manual IDs
+  }
+  
+  console.log('⚠️  Using manual video IDs for testing');
+  return MANUAL_VIDEO_IDS;
+}
 
 interface VideoMetadata {
   videoId: string;
@@ -84,11 +101,14 @@ async function scrapeTranscript(videoId: string): Promise<VideoMetadata | null> 
 async function main() {
   console.log('🚀 Starting transcript scraping...\n');
   
+  const VIDEO_IDS = await loadVideoIds();
+  console.log(`📹 Found ${VIDEO_IDS.length} videos to scrape\n`);
+  
   const metadata: VideoMetadata[] = [];
   let successCount = 0;
   let failCount = 0;
   
-  for (const videoId of TEST_VIDEO_IDS) {
+  for (const videoId of VIDEO_IDS) {
     const result = await scrapeTranscript(videoId);
     
     if (result) {
