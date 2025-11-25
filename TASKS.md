@@ -180,59 +180,88 @@ curl -X POST http://localhost:3000/api/chat \
 
 ---
 
-## Phase 3: Simple Chat UI (Days 5-6)
+## Phase 3: Conversational Chat UI (Days 5-6)
 
 ### Task 3.1: Create Basic React Native App
-- [ ] Run `npx create-expo-app mobile`
-- [ ] Install dependencies:
+- [x] Run `npx create-expo-app mobile`
+- [x] Install dependencies:
   - `twrnc`
   - `axios`
   - `@react-native-async-storage/async-storage`
-- [ ] Setup TypeScript
-- [ ] Test app runs on device/simulator
+- [x] Setup TypeScript
+- [x] Test app runs on device/simulator
 
 ---
 
-### Task 3.2: Create Simple Question Flow
-- [ ] Create `QuestionFlowScreen.tsx`
-- [ ] Add text input for trick name
-- [ ] Add buttons for feature size (Small/Medium/Large)
-- [ ] Add text input for issues
-- [ ] Add "Get Coaching" button
-- [ ] Store answers in state
+### Task 3.2: Create Conversational Chat Screen
+- [ ] Create single `ChatScreen.tsx` with SMS-style interface
+- [ ] Implement chat message bubbles (user on right, coach on left)
+- [ ] Add text input at bottom
+- [ ] Show typing indicator when coach is "thinking"
+- [ ] Store conversation history in state
 
-**UI:** Just basic inputs, no fancy components yet
-
----
-
-### Task 3.3: Create Chat Screen
-- [ ] Create `ChatScreen.tsx`
-- [ ] Display user's question
-- [ ] Show loading indicator
-- [ ] Display AI response
-- [ ] Show video thumbnails (if any)
-
-**UI:** Simple message bubbles, basic styling
+**Key Change:** No separate question flow screen. Everything happens in chat.
 
 ---
 
-### Task 3.4: Connect to API
-- [ ] Create `services/api.ts`
-- [ ] Implement `sendMessage(context)`
-- [ ] Handle loading states
-- [ ] Handle errors
-- [ ] Display response in chat
+### Task 3.3: Implement Context Collection Logic
+- [ ] Create `useContextCollection` hook to track what info we have
+- [ ] Define required fields: `trick`, optional: `featureSize`, `issues`, etc.
+- [ ] Coach asks follow-up questions until context is complete
+- [ ] Use local logic (no API calls) for follow-up questions
 
-**Test:** Complete question flow, verify response appears
+**Example Flow:**
+```
+Coach: "Hey! What trick are you working on?"
+User: "backside 180"
+Coach: "Nice! What size feature? (small/medium/large)"
+User: "medium"
+Coach: "Got it. What's giving you trouble?"
+User: "not getting enough rotation"
+[NOW make single API call with full context]
+Coach: [Real AI response with video references]
+```
 
 ---
 
-### Task 3.5: Add Video Links
-- [ ] Make video thumbnails tappable
-- [ ] Open YouTube app/browser on tap
-- [ ] Show video title and timestamp
+### Task 3.4: Build Question Logic System
+- [ ] Create predefined follow-up questions for each missing field
+- [ ] Parse user responses to extract context (simple keyword matching)
+- [ ] Track which fields are filled vs missing
+- [ ] Only call API when we have minimum required context (trick name)
+
+**Files:**
+- `mobile/src/hooks/useContextCollection.ts`
+- `mobile/src/utils/parseUserResponse.ts`
+
+---
+
+### Task 3.5: Connect to API (Single Call)
+- [x] Create `services/api.ts`
+- [ ] Only call API when context is complete
+- [ ] Show loading indicator during API call
+- [ ] Display AI response with video references
+- [ ] Handle errors gracefully
+
+**Test:** Complete conversation, verify only ONE API call is made
+
+---
+
+### Task 3.6: Add Video References in Chat
+- [ ] Display video thumbnails inline in coach's response
+- [ ] Make thumbnails tappable
+- [ ] Open YouTube app/browser at correct timestamp
+- [ ] Show video title and timestamp below thumbnail
 
 **Test:** Tap video, verify YouTube opens at correct timestamp
+
+---
+
+### Task 3.7: Polish Conversational Flow
+- [ ] Add natural delays between coach messages (simulate typing)
+- [ ] Allow user to provide all info at once ("I want to learn backside 180 on medium features")
+- [ ] Parse multi-part responses intelligently
+- [ ] Add "Start Over" button to reset conversation
 
 ---
 
@@ -276,17 +305,20 @@ curl -X POST http://localhost:3000/api/chat \
 **What you'll have:**
 - Working data pipeline (all videos scraped and indexed)
 - Vercel API that generates coaching responses
-- Simple mobile app to chat with coach
+- Conversational SMS-style chat interface
+- Context collected through natural conversation
+- Single optimized API call per coaching session
 - Video references with timestamps
 - Chat history saved locally
 
 **What's NOT in MVP:**
-- Fancy question flow components
+- Fancy UI components or animations
 - Voice input
 - Offline mode
 - Advanced caching strategies
 - Analytics
 - User accounts
+- Multi-language support
 
 ---
 
