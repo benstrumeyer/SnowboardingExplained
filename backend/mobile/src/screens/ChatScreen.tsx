@@ -32,12 +32,12 @@ export default function ChatScreen() {
   const [hasCalledAPI, setHasCalledAPI] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom when messages or videos change
   useEffect(() => {
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
-  }, [messages, loading]);
+  }, [messages, loading, visibleVideos]);
 
   // Call API when context is complete
   useEffect(() => {
