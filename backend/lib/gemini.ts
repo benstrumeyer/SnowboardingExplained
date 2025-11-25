@@ -29,7 +29,7 @@ export async function generateCoachingResponse(
   userMessage?: string
 ): Promise<string> {
   const genAI = getGeminiClient();
-  const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
   
   const prompt = buildPrompt(userContext, relevantSegments, userMessage);
   
