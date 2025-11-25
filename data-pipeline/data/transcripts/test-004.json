@@ -1,0 +1,42 @@
+[
+  {
+    "text": "Edge control is everything in snowboarding.",
+    "offset": 0,
+    "duration": 3000
+  },
+  {
+    "text": "Without good edge control, you can't progress.",
+    "offset": 3000,
+    "duration": 3000
+  },
+  {
+    "text": "Start by practicing on flat ground.",
+    "offset": 6000,
+    "duration": 2500
+  },
+  {
+    "text": "Rock back and forth between your edges.",
+    "offset": 8500,
+    "duration": 3000
+  },
+  {
+    "text": "Feel how the board responds to your weight shifts.",
+    "offset": 11500,
+    "duration": 3500
+  },
+  {
+    "text": "Now try it while moving slowly.",
+    "offset": 15000,
+    "duration": 2500
+  },
+  {
+    "text": "Make small adjustments with your ankles and knees.",
+    "offset": 17500,
+    "duration": 3500
+  },
+  {
+    "text": "This muscle memory will help with everything else.",
+    "offset": 21000,
+    "duration": 3500
+  }
+]

@@ -1,1 +1,42 @@
-[]
+[
+  {
+    "videoId": "test-001",
+    "title": "How to Backside 180",
+    "url": "https://youtube.com/watch?v=test-001",
+    "thumbnail": "https://img.youtube.com/vi/test-001/maxresdefault.jpg",
+    "duration": 28,
+    "transcriptLength": 10
+  },
+  {
+    "videoId": "test-002",
+    "title": "Carving Fundamentals",
+    "url": "https://youtube.com/watch?v=test-002",
+    "thumbnail": "https://img.youtube.com/vi/test-002/maxresdefault.jpg",
+    "duration": 24.5,
+    "transcriptLength": 9
+  },
+  {
+    "videoId": "test-003",
+    "title": "Frontside 360 Tutorial",
+    "url": "https://youtube.com/watch?v=test-003",
+    "thumbnail": "https://img.youtube.com/vi/test-003/maxresdefault.jpg",
+    "duration": 25.5,
+    "transcriptLength": 9
+  },
+  {
+    "videoId": "test-004",
+    "title": "Edge Control Basics",
+    "url": "https://youtube.com/watch?v=test-004",
+    "thumbnail": "https://img.youtube.com/vi/test-004/maxresdefault.jpg",
+    "duration": 21,
+    "transcriptLength": 8
+  },
+  {
+    "videoId": "test-005",
+    "title": "Common Mistakes When Learning Tricks",
+    "url": "https://youtube.com/watch?v=test-005",
+    "thumbnail": "https://img.youtube.com/vi/test-005/maxresdefault.jpg",
+    "duration": 24.5,
+    "transcriptLength": 8
+  }
+]

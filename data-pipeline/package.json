@@ -3,12 +3,14 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "test-data": "tsx scripts/generate-test-data.ts",
     "fetch-ids": "tsx scripts/0-fetch-video-ids.ts",
     "scrape": "tsx scripts/1-scrape-transcripts.ts",
     "chunk": "tsx scripts/2-chunk-transcripts.ts",
     "embed": "tsx scripts/3-generate-embeddings.ts",
     "upload": "tsx scripts/4-upload-pinecone.ts",
-    "all": "npm run fetch-ids && npm run scrape && npm run chunk && npm run embed && npm run upload"
+    "all": "npm run fetch-ids && npm run scrape && npm run chunk && npm run embed && npm run upload",
+    "test-all": "npm run test-data && npm run chunk && npm run embed && npm run upload"
   },
   "dependencies": {
     "@google/generative-ai": "^0.1.3",
