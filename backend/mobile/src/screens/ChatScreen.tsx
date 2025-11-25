@@ -28,6 +28,7 @@ export default function ChatScreen() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [videos, setVideos] = useState<VideoReference[]>([]);
+  const [visibleVideos, setVisibleVideos] = useState<VideoReference[]>([]);
   const [hasCalledAPI, setHasCalledAPI] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -57,9 +58,20 @@ export default function ChatScreen() {
         'session-' + Date.now()
       );
 
-      // Add coach's response
-      addCoachResponse(response.response);
+      // Add coach's response (shortened)
+      const shortResponse = response.response.split('\n\n')[0]; // First paragraph only
+      addCoachResponse(shortResponse);
+      
+      // Stagger video display
       setVideos(response.videos);
+      setVisibleVideos([]);
+      
+      // Show videos one by one with delay
+      response.videos.forEach((video, index) => {
+        setTimeout(() => {
+          setVisibleVideos(prev => [...prev, video]);
+        }, 1000 + (index * 800)); // 1s delay, then 800ms between each
+      });
     } catch (error: any) {
       addCoachResponse(
         `Sorry, I'm having trouble right now. ${error.message || 'Please try again.'}`
@@ -80,6 +92,7 @@ export default function ChatScreen() {
   const handleReset = () => {
     reset();
     setVideos([]);
+    setVisibleVideos([]);
     setHasCalledAPI(false);
   };
 
@@ -94,14 +107,9 @@ export default function ChatScreen() {
       keyboardVerticalOffset={90}
     >
       {/* Header */}
-      <View style={tw`bg-gray-800 p-4 border-b border-gray-700`}>
+      <View style={tw`bg-gray-800 pt-12 pb-4 px-4 border-b border-gray-700`}>
         <View style={tw`flex-row items-center justify-between`}>
-          <View>
-            <Text style={tw`text-white text-xl font-bold`}>Snowboarding Coach</Text>
-            <Text style={tw`text-gray-400 text-sm`}>
-              {isComplete ? 'Getting your coaching...' : 'Tell me about your trick'}
-            </Text>
-          </View>
+          <Text style={tw`text-white text-xl font-bold`}>Snowboarding Explained</Text>
           {hasCalledAPI && (
             <TouchableOpacity
               style={tw`bg-gray-700 px-4 py-2 rounded-full`}
@@ -143,25 +151,26 @@ export default function ChatScreen() {
           </View>
         )}
 
-        {/* Video References */}
-        {videos.length > 0 && (
+        {/* Video References - Staggered */}
+        {visibleVideos.length > 0 && (
           <View style={tw`mt-4`}>
-            <Text style={tw`text-gray-400 mb-3 font-bold`}>📹 Related Videos:</Text>
-            {videos.map((video, idx) => (
+            {visibleVideos.map((video, idx) => (
               <TouchableOpacity
                 key={idx}
-                style={tw`bg-gray-800 p-4 rounded-lg mb-3 border border-gray-700`}
+                style={tw`bg-gray-800 p-3 rounded-lg mb-2 border border-gray-700 flex-row items-center`}
                 onPress={() => openVideo(video)}
               >
-                <Text style={tw`text-white font-bold text-base mb-1`}>
-                  {video.title}
-                </Text>
-                <Text style={tw`text-gray-400 text-sm mb-2`}>
-                  "{video.quote}..."
-                </Text>
-                <Text style={tw`text-blue-400 text-sm`}>
-                  ▶ Watch at {Math.floor(video.timestamp / 60)}:{String(Math.floor(video.timestamp % 60)).padStart(2, '0')}
-                </Text>
+                <View style={tw`bg-gray-700 w-16 h-16 rounded mr-3 items-center justify-center`}>
+                  <Text style={tw`text-3xl`}>📹</Text>
+                </View>
+                <View style={tw`flex-1`}>
+                  <Text style={tw`text-white font-bold text-sm mb-1`} numberOfLines={2}>
+                    {video.title}
+                  </Text>
+                  <Text style={tw`text-blue-400 text-xs`}>
+                    ▶ {Math.floor(video.timestamp / 60)}:{String(Math.floor(video.timestamp % 60)).padStart(2, '0')}
+                  </Text>
+                </View>
               </TouchableOpacity>
             ))}
           </View>
