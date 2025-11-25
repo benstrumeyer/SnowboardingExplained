@@ -19,33 +19,41 @@ export async function sendChatMessage(
   sessionId: string = 'default'
 ): Promise<ChatResponse> {
   try {
-    console.log('Sending request to:', `${config.apiUrl}/api/chat`);
-    console.log('Context:', context);
+    const url = `${config.apiUrl}/api/chat`;
+    console.log('=== API Request ===');
+    console.log('URL:', url);
+    console.log('Context:', JSON.stringify(context, null, 2));
+    console.log('Message:', message);
+    console.log('SessionId:', sessionId);
     
-    const response = await axios.post(
-      `${config.apiUrl}/api/chat`,
-      {
-        context,
-        message,
-        sessionId,
+    const response = await axios.post(url, {
+      context,
+      message,
+      sessionId,
+    }, {
+      timeout: 30000,
+      headers: {
+        'Content-Type': 'application/json',
       },
-      {
-        timeout: 30000, // 30 second timeout (AI can be slow)
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      }
-    );
+    });
     
-    console.log('Response received:', response.status);
+    console.log('=== API Response ===');
+    console.log('Status:', response.status);
+    console.log('Data:', JSON.stringify(response.data, null, 2));
+    
     return response.data;
   } catch (error: any) {
-    console.error('API Error:', error);
-    console.error('Error details:', error.response?.data);
-    
-    if (error.code === 'ECONNABORTED') {
-      throw new Error('Request timed out. The AI is taking too long to respond. Try again.');
-    }
+    console.error('=== API Error ===');
+    console.error('Error name:', error.name);
+    console.error('Error message:', error.message);
+    console.error('Response status:', error.response?.status);
+    console.error('Response data:', JSON.stringify(error.response?.data, null, 2));
+    console.error('Response headers:', JSON.stringify(error.response?.headers, null, 2));
+    console.error('Request config:', JSON.stringify({
+      url: error.config?.url,
+      method: error.config?.method,
+      data: error.config?.data,
+    }, null, 2));
     
     throw new Error(error.response?.data?.message || error.message || 'Failed to get coaching response');
   }

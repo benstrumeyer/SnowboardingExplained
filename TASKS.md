@@ -228,7 +228,7 @@ Coach: [Real AI response with video references]
 - [ ] Create predefined follow-up questions for each missing field
 - [ ] Parse user responses to extract context (simple keyword matching)
 - [ ] Track which fields are filled vs missing
-- [ ] Only call API when we have minimum required context (trick name)
+- [ ] Only call API when we have minimum required context (trick name). But don't call api immediately if they have more information
 
 **Files:**
 - `mobile/src/hooks/useContextCollection.ts`
@@ -239,7 +239,7 @@ Coach: [Real AI response with video references]
 ### Task 3.5: Connect to API (Single Call)
 - [x] Create `services/api.ts`
 - [ ] Only call API when context is complete
-- [ ] Show loading indicator during API call
+- [ ] Show ellipsis when api call. Make it look like the coach is thinking of what to say. 
 - [ ] Display AI response with video references
 - [ ] Handle errors gracefully
 
