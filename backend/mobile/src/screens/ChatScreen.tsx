@@ -108,17 +108,7 @@ export default function ChatScreen() {
     >
       {/* Header */}
       <View style={tw`bg-gray-800 pt-12 pb-4 px-4 border-b border-gray-700`}>
-        <View style={tw`flex-row items-center justify-between`}>
-          <Text style={tw`text-white text-xl font-bold`}>Snowboarding Explained</Text>
-          {hasCalledAPI && (
-            <TouchableOpacity
-              style={tw`bg-gray-700 px-4 py-2 rounded-full`}
-              onPress={handleReset}
-            >
-              <Text style={tw`text-white text-sm`}>New Chat</Text>
-            </TouchableOpacity>
-          )}
-        </View>
+        <Text style={tw`text-white text-xl font-bold`}>Snowboarding Explained</Text>
       </View>
 
       {/* Messages */}
