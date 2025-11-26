@@ -69,8 +69,8 @@ export default async function handler(
     // Generate embedding
     const queryEmbedding = await generateEmbedding(searchQuery);
     
-    // Search Pinecone
-    const relevantSegments = await searchVideoSegments(queryEmbedding, 5);
+    // Search Pinecone for top 10 chunks
+    const relevantSegments = await searchVideoSegments(queryEmbedding, 10);
     console.log(`Found ${relevantSegments.length} relevant segments`);
     
     if (relevantSegments.length === 0) {
@@ -81,21 +81,66 @@ export default async function handler(
       });
     }
     
-    // Generate coaching response
+    // Group by video - take the best chunk per video
+    const videoMap = new Map<string, typeof relevantSegments[0]>();
+    for (const segment of relevantSegments) {
+      if (!videoMap.has(segment.videoId)) {
+        videoMap.set(segment.videoId, segment);
+      }
+    }
+    
+    const topVideos = Array.from(videoMap.values()).slice(0, 3); // Top 3 videos
+    console.log(`Grouped into ${topVideos.length} videos`);
+    
+    // Generate one concise tip per video
+    const videoTips = await Promise.all(
+      topVideos.map(async (segment) => {
+        const tipPrompt = `Extract the single most important snowboarding tip from this transcript.
+Keep it concise (1-2 sentences) and actionable.
+
+Transcript: "${segment.text}"
+
+Tip:`;
+        
+        try {
+          const tipResult = await generateCoachingResponse(
+            { trick: context.trick },
+            [segment],
+            tipPrompt
+          );
+          
+          return {
+            videoId: segment.videoId,
+            title: segment.videoTitle,
+            tip: tipResult.split('\n')[0], // First line only
+            timestamp: segment.timestamp,
+          };
+        } catch {
+          return {
+            videoId: segment.videoId,
+            title: segment.videoTitle,
+            tip: segment.text.substring(0, 150) + '...',
+            timestamp: segment.timestamp,
+          };
+        }
+      })
+    );
+    
+    // Generate overall coaching response
     const coachingResponse = await generateCoachingResponse(
       context,
-      relevantSegments,
+      topVideos,
       message
     );
     
-    // Format video references
-    const videoReferences: VideoReference[] = relevantSegments.map(seg => ({
-      videoId: seg.videoId,
-      title: seg.videoTitle,
-      thumbnail: `https://img.youtube.com/vi/${seg.videoId}/maxresdefault.jpg`,
-      timestamp: seg.timestamp,
-      quote: seg.text.substring(0, 150),
-      url: `https://youtube.com/watch?v=${seg.videoId}&t=${Math.floor(seg.timestamp)}s`,
+    // Format video references with tips
+    const videoReferences: VideoReference[] = videoTips.map(tip => ({
+      videoId: tip.videoId,
+      title: tip.title,
+      thumbnail: `https://img.youtube.com/vi/${tip.videoId}/maxresdefault.jpg`,
+      timestamp: tip.timestamp,
+      quote: tip.tip,
+      url: `https://youtube.com/watch?v=${tip.videoId}&t=${Math.floor(tip.timestamp)}s`,
     }));
     
     const response: ChatResponse = {
