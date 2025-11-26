@@ -23,25 +23,42 @@ async function scrapeTranscript(videoId: string, browser: any) {
   
   try {
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: 'networkidle' });
+    await page.goto(url, { waitUntil: 'domcontentloaded' });
     
     // Wait for page to load
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(3000);
     
-    // Click the "Show transcript" button
-    // Try multiple selectors as YouTube's UI can vary
-    const transcriptSelectors = [
-      'button[aria-label*="transcript"]',
-      'button[aria-label*="Transcript"]',
+    // Scroll down to make description visible
+    await page.evaluate(() => {
+      window.scrollTo(0, 400);
+    });
+    await page.waitForTimeout(1000);
+    
+    // Click "Show more" in description if it exists
+    try {
+      const showMoreButton = await page.$('tp-yt-paper-button#expand');
+      if (showMoreButton) {
+        await showMoreButton.click();
+        await page.waitForTimeout(500);
+      }
+    } catch {}
+    
+    // Find and click "Show transcript" button in description area
+    let transcriptButton = null;
+    const selectors = [
       'button:has-text("Show transcript")',
+      'button[aria-label*="Show transcript"]',
       'ytd-video-description-transcript-section-renderer button',
+      '[class*="transcript"] button',
     ];
     
-    let transcriptButton = null;
-    for (const selector of transcriptSelectors) {
+    for (const selector of selectors) {
       try {
         transcriptButton = await page.$(selector);
-        if (transcriptButton) break;
+        if (transcriptButton) {
+          console.log(`  Found button with selector: ${selector}`);
+          break;
+        }
       } catch {}
     }
     
@@ -51,29 +68,40 @@ async function scrapeTranscript(videoId: string, browser: any) {
       return null;
     }
     
-    // Click the button
+    // Click the transcript button
     await transcriptButton.click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(2000);
     
-    // Extract transcript segments
+    // Wait for transcript panel to appear
+    await page.waitForSelector('ytd-transcript-segment-renderer', { timeout: 5000 });
+    
+    // Extract transcript segments from sidebar
     const segments = await page.$$eval(
       'ytd-transcript-segment-renderer',
       (elements: any[]) => {
         return elements.map(el => {
-          const timeEl = el.querySelector('.segment-timestamp');
-          const textEl = el.querySelector('.segment-text');
+          const timeEl = el.querySelector('[class*="cue-group"] [class*="cue"]');
+          const textEl = el.querySelector('yt-formatted-string[class*="segment-text"]');
           
           if (!timeEl || !textEl) return null;
           
-          // Parse timestamp (format: "0:00" or "1:23")
+          // Parse timestamp (format: "0:00" or "1:23:45")
           const timeText = timeEl.textContent.trim();
-          const [mins, secs] = timeText.split(':').map(Number);
-          const offset = (mins * 60) + secs;
+          const parts = timeText.split(':').map(Number);
+          let offset = 0;
+          
+          if (parts.length === 2) {
+            // MM:SS
+            offset = (parts[0] * 60) + parts[1];
+          } else if (parts.length === 3) {
+            // HH:MM:SS
+            offset = (parts[0] * 3600) + (parts[1] * 60) + parts[2];
+          }
           
           return {
             text: textEl.textContent.trim(),
             offset,
-            duration: 0, // We don't have duration from UI
+            duration: 0,
           };
         }).filter(Boolean);
       }
@@ -110,22 +138,25 @@ async function main() {
   // Create output directory
   await fs.mkdir('data/transcripts', { recursive: true });
   
-  // Scrape each video
-  for (let i = 0; i < Math.min(videoIds.length, 5); i++) { // Start with first 5
+  // Scrape ALL videos
+  for (let i = 0; i < videoIds.length; i++) {
     const videoId = videoIds[i];
-    console.log(`\n📥 [${i + 1}/${Math.min(videoIds.length, 5)}] Scraping: ${videoId}`);
+    console.log(`\n📥 [${i + 1}/${videoIds.length}] Scraping: ${videoId}`);
     console.log(`   URL: https://youtube.com/watch?v=${videoId}`);
     
     const transcript = await scrapeTranscript(videoId, browser);
     
     if (transcript) {
-      // Get video title from the page
+      // Get video title
       const page = await browser.newPage();
       await page.goto(`https://www.youtube.com/watch?v=${videoId}`);
       const title = await page.title();
       await page.close();
       
-      // Save transcript
+      // Create full text (all segments combined)
+      const fullText = transcript.map((seg: any) => seg.text).join(' ');
+      
+      // Save transcript with timestamps
       const outputPath = path.join('data', 'transcripts', `${videoId}.json`);
       await fs.writeFile(
         outputPath,
@@ -133,8 +164,13 @@ async function main() {
           videoId,
           title: title.replace(' - YouTube', ''),
           transcript,
+          fullText,
         }, null, 2)
       );
+      
+      // Also save just the full text for easy reading
+      const textPath = path.join('data', 'transcripts', `${videoId}.txt`);
+      await fs.writeFile(textPath, fullText);
       
       console.log(`  ✅ Success! Saved ${transcript.length} segments`);
       successCount++;
