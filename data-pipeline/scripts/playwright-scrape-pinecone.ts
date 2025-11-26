@@ -192,12 +192,49 @@ async function main() {
       continue;
     }
     
-    // Generate embeddings for actionable tips only
-    const vectors = [];
+    console.log(`  🤖 Summarizing ${actionableTips.length} tips into bullet points...`);
+    
+    // Summarize each tip into a concise bullet point
+    const summarizedTips = [];
+    const summaryModel = genAI.getGenerativeModel({ model: 'gemini-pro' });
     
     for (let j = 0; j < actionableTips.length; j++) {
       try {
-        const embedding = await embeddingModel.embedContent(actionableTips[j].text);
+        const prompt = `Summarize this snowboarding tip into ONE concise, actionable bullet point (1-2 sentences max).
+
+Transcript: "${actionableTips[j].text}"
+
+Bullet point:`;
+        
+        const summaryResult = await summaryModel.generateContent(prompt);
+        const summary = (await summaryResult.response).text().trim();
+        
+        summarizedTips.push({
+          ...actionableTips[j],
+          summary: summary.replace(/^[•\-\*]\s*/, ''), // Remove bullet point prefix if added
+          originalText: actionableTips[j].text,
+        });
+        
+        if ((j + 1) % 2 === 0) {
+          console.log(`    Summarized ${j + 1}/${actionableTips.length}...`);
+        }
+      } catch (error: any) {
+        console.log(`    ⚠️  Failed to summarize tip ${j}, using original`);
+        summarizedTips.push({
+          ...actionableTips[j],
+          summary: actionableTips[j].text.substring(0, 150),
+          originalText: actionableTips[j].text,
+        });
+      }
+    }
+    
+    // Generate embeddings for summarized tips
+    const vectors = [];
+    
+    for (let j = 0; j < summarizedTips.length; j++) {
+      try {
+        // Embed the summary (concise version)
+        const embedding = await embeddingModel.embedContent(summarizedTips[j].summary);
         
         vectors.push({
           id: `${videoId}-${j}`,
@@ -205,10 +242,11 @@ async function main() {
           metadata: {
             videoId,
             videoTitle: result.title,
-            text: actionableTips[j].text,
-            timestamp: actionableTips[j].startTime,
-            url: `https://youtube.com/watch?v=${videoId}&t=${Math.floor(actionableTips[j].startTime)}s`,
-            relevanceScore: actionableTips[j].relevanceScore || 0,
+            text: summarizedTips[j].summary, // Store the concise bullet point
+            fullText: summarizedTips[j].originalText, // Keep original for reference
+            timestamp: summarizedTips[j].startTime,
+            url: `https://youtube.com/watch?v=${videoId}&t=${Math.floor(summarizedTips[j].startTime)}s`,
+            relevanceScore: summarizedTips[j].relevanceScore || 0,
           },
         });
       } catch (error: any) {
