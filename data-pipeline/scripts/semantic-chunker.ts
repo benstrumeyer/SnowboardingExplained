@@ -120,10 +120,10 @@ async function extractTips(chunks: SemanticChunk[], videoTitle: string): Promise
     return [];
   }
   
-  // Use Gemini to identify the best 3 chunks with actionable tips
+  // Use Gemini to identify the best 5 chunks with actionable tips
   const prompt = `You are analyzing a snowboarding tutorial video titled "${videoTitle}".
 
-Below are transcript segments. Select EXACTLY 3 segments that contain the most valuable, actionable snowboarding advice.
+Below are transcript segments. Select the 5 BEST segments that contain the most valuable, actionable snowboarding advice.
 
 Choose segments with:
 - Specific techniques or tips
@@ -136,8 +136,8 @@ Ignore: intros, outros, jokes, storytelling, calls to action (subscribe/like).
 Segments:
 ${candidateChunks.map((chunk, i) => `[${i}] ${chunk.text.substring(0, 250)}...`).join('\n\n')}
 
-Respond with ONLY a JSON array of exactly 3 numbers (the best 3 indices).
-Format: [2, 5, 8]`;
+Respond with ONLY a JSON array of 5 numbers (the best 5 indices).
+Format: [2, 5, 8, 11, 14]`;
 
   try {
     const result = await model.generateContent(prompt);
@@ -153,14 +153,14 @@ Format: [2, 5, 8]`;
     const indices = JSON.parse(match[0]);
     const actionableChunks = indices
       .filter((i: number) => i < candidateChunks.length)
-      .slice(0, 3) // Ensure exactly 3
+      .slice(0, 5) // Take up to 5
       .map((i: number) => ({
         ...candidateChunks[i],
         isActionable: true,
       }));
     
-    // If we got less than 3, fill with top scored chunks
-    while (actionableChunks.length < 3 && actionableChunks.length < candidateChunks.length) {
+    // If we got less than 5, fill with top scored chunks
+    while (actionableChunks.length < 5 && actionableChunks.length < candidateChunks.length) {
       const nextChunk = candidateChunks.find(c => 
         !actionableChunks.some(ac => ac.text === c.text)
       );
@@ -174,13 +174,13 @@ Format: [2, 5, 8]`;
     return actionableChunks;
     
   } catch (error: any) {
-    console.log(`  ⚠️  Gemini error: ${error.message}, using top 3 by score`);
-    return candidateChunks.slice(0, 3);
+    console.log(`  ⚠️  Gemini error: ${error.message}, using top 5 by score`);
+    return candidateChunks.slice(0, 5);
   }
 }
 
 /**
- * Main function: Process transcript into exactly 3 semantic, actionable chunks per video
+ * Main function: Process transcript into 5 semantic, actionable chunks per video
  */
 export async function processTranscript(
   sentences: any[],
@@ -190,9 +190,9 @@ export async function processTranscript(
   const topicChunks = groupByTopic(sentences);
   console.log(`  📦 Grouped into ${topicChunks.length} topic chunks`);
   
-  // Step 2: Extract exactly 3 best actionable tips using AI
+  // Step 2: Extract 5 best actionable tips using AI
   const actionableTips = await extractTips(topicChunks, videoTitle);
-  console.log(`  ✨ Selected ${actionableTips.length} tips (target: 3 per video)`);
+  console.log(`  ✨ Selected ${actionableTips.length} tips (target: 5 per video)`);
   
   return actionableTips;
 }
