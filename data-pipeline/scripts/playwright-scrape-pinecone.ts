@@ -162,7 +162,10 @@ async function main() {
   const videoIds = await loadVideoIds();
   console.log(`📹 Found ${videoIds.length} videos\n`);
   
-  const browser = await chromium.launch({ headless: false });
+  const browser = await chromium.launch({ 
+    headless: false,
+    timeout: 60000, // 60 second timeout
+  });
   
   let successCount = 0;
   let failCount = 0;
@@ -172,7 +175,14 @@ async function main() {
     const videoId = videoIds[i];
     console.log(`\n📥 [${i + 1}/${videoIds.length}] ${videoId}`);
     
-    const result = await scrapeTranscript(videoId, browser);
+    let result;
+    try {
+      result = await scrapeTranscript(videoId, browser);
+    } catch (error: any) {
+      console.log(`  ❌ Scraping failed: ${error.message}`);
+      failCount++;
+      continue;
+    }
     
     if (!result) {
       failCount++;
@@ -196,7 +206,7 @@ async function main() {
     
     // Summarize each tip into a concise bullet point
     const summarizedTips = [];
-    const summaryModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const summaryModel = genAI.getGenerativeModel({ model: 'models/gemini-1.5-flash' });
     
     for (let j = 0; j < actionableTips.length; j++) {
       try {
@@ -219,7 +229,7 @@ Bullet point:`;
           console.log(`    Summarized ${j + 1}/${actionableTips.length}...`);
         }
       } catch (error: any) {
-        console.log(`    ⚠️  Failed to summarize tip ${j}, using original`);
+        console.log(`    ⚠️  Failed to summarize tip ${j}: ${error.message}`);
         summarizedTips.push({
           ...actionableTips[j],
           summary: actionableTips[j].text.substring(0, 150),

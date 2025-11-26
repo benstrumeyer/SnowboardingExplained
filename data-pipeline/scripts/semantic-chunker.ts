@@ -104,7 +104,7 @@ function scoreActionability(chunk: string): number {
  * Use Gemini to extract exactly 3 actionable tips from high-scoring chunks
  */
 async function extractTips(chunks: SemanticChunk[], videoTitle: string): Promise<SemanticChunk[]> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+  const model = genAI.getGenerativeModel({ model: 'models/gemini-1.5-flash' });
   
   // Filter to chunks with decent actionability scores
   const candidateChunks = chunks
@@ -174,7 +174,9 @@ Format: [2, 5, 8, 11, 14]`;
     return actionableChunks;
     
   } catch (error: any) {
-    console.log(`  ⚠️  Gemini error: ${error.message}, using top 5 by score`);
+    console.log(`  ⚠️  Gemini error: ${error.message}`);
+    console.log(`  Full error:`, JSON.stringify(error, null, 2));
+    console.log(`  Using top 5 by score as fallback`);
     return candidateChunks.slice(0, 5);
   }
 }
