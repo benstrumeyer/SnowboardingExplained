@@ -6,8 +6,10 @@
 async function main() {
   const channelUrl = 'https://www.youtube.com/@SnowboardingExplained/videos';
   
-  console.log('🎬 Fetching videos from channel page...\n');
+  console.log('🎬 Fetching ALL videos from channel...\n');
   console.log(`📍 URL: ${channelUrl}\n`);
+  console.log('⚠️  Note: This fetches videos from the initial page load.');
+  console.log('   YouTube may not show all videos without scrolling.\n');
   
   try {
     const response = await fetch(channelUrl);
@@ -24,7 +26,7 @@ async function main() {
     
     const uniqueIds = Array.from(videoIds);
     
-    console.log(`✅ Found ${uniqueIds.length} unique video IDs\n`);
+    console.log(`✅ Found ${uniqueIds.length} unique video IDs`);
     
     if (uniqueIds.length > 0) {
       console.log('📹 First 10 videos:');

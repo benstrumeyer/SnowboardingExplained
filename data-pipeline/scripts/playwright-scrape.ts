@@ -7,6 +7,49 @@ import { chromium } from 'playwright';
 import fs from 'fs/promises';
 import path from 'path';
 
+// Group transcript segments into complete sentences
+function groupIntoSentences(segments: any[]): any[] {
+  const sentences: any[] = [];
+  let currentSentence = '';
+  let sentenceStart = segments[0]?.timestamp || '0:00';
+  let sentenceStartOffset = segments[0]?.offset || 0;
+  
+  for (const segment of segments) {
+    currentSentence += segment.text + ' ';
+    
+    // Check if this segment ends with sentence-ending punctuation
+    const endsWithPunctuation = /[.!?]$/.test(segment.text.trim());
+    
+    if (endsWithPunctuation) {
+      sentences.push({
+        text: currentSentence.trim(),
+        time: sentenceStart,
+        offset: sentenceStartOffset,
+      });
+      
+      // Start new sentence
+      currentSentence = '';
+      // Next segment will be the start of the next sentence
+      const nextIndex = segments.indexOf(segment) + 1;
+      if (nextIndex < segments.length) {
+        sentenceStart = segments[nextIndex].timestamp;
+        sentenceStartOffset = segments[nextIndex].offset;
+      }
+    }
+  }
+  
+  // Add any remaining text as a final sentence
+  if (currentSentence.trim()) {
+    sentences.push({
+      text: currentSentence.trim(),
+      time: sentenceStart,
+      offset: sentenceStartOffset,
+    });
+  }
+  
+  return sentences;
+}
+
 // Load video IDs from the file we created
 async function loadVideoIds(): Promise<string[]> {
   try {
@@ -156,26 +199,25 @@ async function main() {
       const title = await page.title();
       await page.close();
       
-      // Create full text (all segments combined)
-      const fullText = transcript.map((seg: any) => seg.text).join(' ');
+      // Group segments into sentences
+      const sentences = groupIntoSentences(transcript);
       
-      // Save transcript with timestamps
+      // Create full text
+      const fullText = sentences.map((s: any) => s.text).join(' ');
+      
+      // Save in the requested format
       const outputPath = path.join('data', 'transcripts', `${videoId}.json`);
       await fs.writeFile(
         outputPath,
         JSON.stringify({
           videoId,
           title: title.replace(' - YouTube', ''),
-          transcript,
           fullText,
+          timestamps: sentences,
         }, null, 2)
       );
       
-      // Also save just the full text for easy reading
-      const textPath = path.join('data', 'transcripts', `${videoId}.txt`);
-      await fs.writeFile(textPath, fullText);
-      
-      console.log(`  ✅ Success! Saved ${transcript.length} segments`);
+      console.log(`  ✅ Success! Saved ${sentences.length} sentences`);
       successCount++;
     } else {
       failCount++;
