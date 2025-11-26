@@ -101,7 +101,7 @@ function scoreActionability(chunk: string): number {
 }
 
 /**
- * Use Gemini to extract actionable tips from high-scoring chunks
+ * Use Gemini to extract exactly 3 actionable tips from high-scoring chunks
  */
 async function extractTips(chunks: SemanticChunk[], videoTitle: string): Promise<SemanticChunk[]> {
   const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
@@ -114,24 +114,30 @@ async function extractTips(chunks: SemanticChunk[], videoTitle: string): Promise
     }))
     .filter(chunk => chunk.relevanceScore! > 0.5)
     .sort((a, b) => b.relevanceScore! - a.relevanceScore!)
-    .slice(0, 15); // Top 15 chunks
+    .slice(0, 20); // Top 20 chunks to choose from
   
   if (candidateChunks.length === 0) {
     return [];
   }
   
-  // Use Gemini to identify which chunks contain actual tips
+  // Use Gemini to identify the best 3 chunks with actionable tips
   const prompt = `You are analyzing a snowboarding tutorial video titled "${videoTitle}".
 
-Below are transcript segments. For each segment, determine if it contains actionable snowboarding advice (techniques, tips, common mistakes to avoid, etc.).
+Below are transcript segments. Select EXACTLY 3 segments that contain the most valuable, actionable snowboarding advice.
 
-Respond with ONLY a JSON array of numbers representing the indices of segments that contain actionable tips.
-Ignore: intros, outros, jokes, storytelling, calls to action (subscribe/like), and general chit-chat.
+Choose segments with:
+- Specific techniques or tips
+- Common mistakes to avoid
+- Step-by-step instructions
+- Key insights about the trick/skill
+
+Ignore: intros, outros, jokes, storytelling, calls to action (subscribe/like).
 
 Segments:
-${candidateChunks.map((chunk, i) => `[${i}] ${chunk.text.substring(0, 200)}...`).join('\n\n')}
+${candidateChunks.map((chunk, i) => `[${i}] ${chunk.text.substring(0, 250)}...`).join('\n\n')}
 
-Response format: [0, 2, 5, 7] (just the array of indices)`;
+Respond with ONLY a JSON array of exactly 3 numbers (the best 3 indices).
+Format: [2, 5, 8]`;
 
   try {
     const result = await model.generateContent(prompt);
@@ -140,28 +146,41 @@ Response format: [0, 2, 5, 7] (just the array of indices)`;
     // Parse the response
     const match = response.match(/\[[\d,\s]+\]/);
     if (!match) {
-      console.log('  ⚠️  Could not parse Gemini response, using heuristics only');
-      return candidateChunks.slice(0, 8); // Fallback to top 8
+      console.log('  ⚠️  Could not parse Gemini response, using top 3 by score');
+      return candidateChunks.slice(0, 3);
     }
     
     const indices = JSON.parse(match[0]);
     const actionableChunks = indices
       .filter((i: number) => i < candidateChunks.length)
+      .slice(0, 3) // Ensure exactly 3
       .map((i: number) => ({
         ...candidateChunks[i],
         isActionable: true,
       }));
     
+    // If we got less than 3, fill with top scored chunks
+    while (actionableChunks.length < 3 && actionableChunks.length < candidateChunks.length) {
+      const nextChunk = candidateChunks.find(c => 
+        !actionableChunks.some(ac => ac.text === c.text)
+      );
+      if (nextChunk) {
+        actionableChunks.push({ ...nextChunk, isActionable: true });
+      } else {
+        break;
+      }
+    }
+    
     return actionableChunks;
     
   } catch (error: any) {
-    console.log(`  ⚠️  Gemini error: ${error.message}, using heuristics`);
-    return candidateChunks.slice(0, 8);
+    console.log(`  ⚠️  Gemini error: ${error.message}, using top 3 by score`);
+    return candidateChunks.slice(0, 3);
   }
 }
 
 /**
- * Main function: Process transcript into semantic, actionable chunks
+ * Main function: Process transcript into exactly 3 semantic, actionable chunks per video
  */
 export async function processTranscript(
   sentences: any[],
@@ -171,9 +190,9 @@ export async function processTranscript(
   const topicChunks = groupByTopic(sentences);
   console.log(`  📦 Grouped into ${topicChunks.length} topic chunks`);
   
-  // Step 2: Extract actionable tips using AI
+  // Step 2: Extract exactly 3 best actionable tips using AI
   const actionableTips = await extractTips(topicChunks, videoTitle);
-  console.log(`  ✨ Found ${actionableTips.length} actionable tips`);
+  console.log(`  ✨ Selected ${actionableTips.length} tips (target: 3 per video)`);
   
   return actionableTips;
 }
