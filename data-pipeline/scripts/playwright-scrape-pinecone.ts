@@ -182,12 +182,22 @@ async function main() {
     const sentences = groupIntoSentences(result.segments);
     console.log(`  📝 ${sentences.length} sentences`);
     
-    // Generate embeddings and upload
+    // Use semantic chunker to extract actionable tips
+    const { processTranscript } = await import('./semantic-chunker.js');
+    const actionableTips = await processTranscript(sentences, result.title);
+    
+    if (actionableTips.length === 0) {
+      console.log(`  ⚠️  No actionable tips found, skipping video`);
+      failCount++;
+      continue;
+    }
+    
+    // Generate embeddings for actionable tips only
     const vectors = [];
     
-    for (let j = 0; j < sentences.length; j++) {
+    for (let j = 0; j < actionableTips.length; j++) {
       try {
-        const embedding = await embeddingModel.embedContent(sentences[j].text);
+        const embedding = await embeddingModel.embedContent(actionableTips[j].text);
         
         vectors.push({
           id: `${videoId}-${j}`,
@@ -195,17 +205,14 @@ async function main() {
           metadata: {
             videoId,
             videoTitle: result.title,
-            text: sentences[j].text,
-            timestamp: sentences[j].offset,
-            url: `https://youtube.com/watch?v=${videoId}&t=${Math.floor(sentences[j].offset)}s`,
+            text: actionableTips[j].text,
+            timestamp: actionableTips[j].startTime,
+            url: `https://youtube.com/watch?v=${videoId}&t=${Math.floor(actionableTips[j].startTime)}s`,
+            relevanceScore: actionableTips[j].relevanceScore || 0,
           },
         });
-        
-        if ((j + 1) % 10 === 0) {
-          console.log(`    ${j + 1}/${sentences.length} embedded...`);
-        }
       } catch (error: any) {
-        console.log(`    ⚠️  Failed sentence ${j}`);
+        console.log(`    ⚠️  Failed to embed tip ${j}`);
       }
     }
     
