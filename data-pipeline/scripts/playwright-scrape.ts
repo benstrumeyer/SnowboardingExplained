@@ -6,6 +6,11 @@
 import { chromium } from 'playwright';
 import fs from 'fs/promises';
 import path from 'path';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { Pinecone } from '@pinecone-database/pinecone';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // Group transcript segments into complete sentences
 function groupIntoSentences(segments: any[]): any[] {
@@ -61,7 +66,7 @@ async function loadVideoIds(): Promise<string[]> {
   }
 }
 
-async function scrapeTranscript(videoId: string, browser: any) {
+async function scrapeTranscript(videoId: string, browser: any, embeddingModel: any, index: any, totalVectors: number) {
   const url = `https://www.youtube.com/watch?v=${videoId}`;
   
   try {
@@ -169,20 +174,30 @@ async function scrapeTranscript(videoId: string, browser: any) {
 }
 
 async function main() {
-  console.log('🎭 Starting Playwright transcript scraper...\n');
+  console.log('🎭 Starting Playwright transcript scraper with Pinecone upload...\n');
+  
+  // Initialize Gemini for embeddings
+  const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+  const embeddingModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+  
+  // Initialize Pinecone
+  const pinecone = new Pinecone({
+    apiKey: process.env.PINECONE_API_KEY!,
+  });
+  const index = pinecone.index(process.env.PINECONE_INDEX!);
+  
+  console.log('✅ Connected to Pinecone index:', process.env.PINECONE_INDEX);
   
   const videoIds = await loadVideoIds();
   console.log(`📹 Found ${videoIds.length} videos to scrape\n`);
   
   // Launch browser
   console.log('🌐 Launching browser...');
-  const browser = await chromium.launch({ headless: false }); // Set to false to see what's happening
+  const browser = await chromium.launch({ headless: false });
   
   let successCount = 0;
   let failCount = 0;
-  
-  // Create output directory
-  await fs.mkdir('data/transcripts', { recursive: true });
+  let totalVectors = 0;
   
   // Scrape ALL videos
   for (let i = 0; i < videoIds.length; i++) {
@@ -190,35 +205,68 @@ async function main() {
     console.log(`\n📥 [${i + 1}/${videoIds.length}] Scraping: ${videoId}`);
     console.log(`   URL: https://youtube.com/watch?v=${videoId}`);
     
-    const transcript = await scrapeTranscript(videoId, browser);
+    const transcript = await scrapeTranscript(videoId, browser, embeddingModel, index, totalVectors);
     
     if (transcript) {
       // Get video title
       const page = await browser.newPage();
       await page.goto(`https://www.youtube.com/watch?v=${videoId}`);
-      const title = await page.title();
+      const title = await page.title().then(t => t.replace(' - YouTube', ''));
       await page.close();
       
       // Group segments into sentences
       const sentences = groupIntoSentences(transcript);
       
-      // Create full text
-      const fullText = sentences.map((s: any) => s.text).join(' ');
+      console.log(`  📝 Processing ${sentences.length} sentences...`);
       
-      // Save in the requested format
-      const outputPath = path.join('data', 'transcripts', `${videoId}.json`);
-      await fs.writeFile(
-        outputPath,
-        JSON.stringify({
-          videoId,
-          title: title.replace(' - YouTube', ''),
-          fullText,
-          timestamps: sentences,
-        }, null, 2)
-      );
+      // Generate embeddings and upload to Pinecone
+      const vectors = [];
       
-      console.log(`  ✅ Success! Saved ${sentences.length} sentences`);
-      successCount++;
+      for (let j = 0; j < sentences.length; j++) {
+        const sentence = sentences[j];
+        
+        try {
+          // Generate embedding
+          const result = await embeddingModel.embedContent(sentence.text);
+          const embedding = result.embedding.values;
+          
+          // Create vector for Pinecone
+          vectors.push({
+            id: `${videoId}-${j}`,
+            values: embedding,
+            metadata: {
+              videoId,
+              videoTitle: title,
+              text: sentence.text,
+              timestamp: sentence.offset,
+              timestampFormatted: sentence.time,
+              url: `https://youtube.com/watch?v=${videoId}&t=${Math.floor(sentence.offset)}s`,
+            },
+          });
+          
+          // Show progress
+          if ((j + 1) % 10 === 0) {
+            console.log(`    Embedded ${j + 1}/${sentences.length} sentences...`);
+          }
+        } catch (error: any) {
+          console.log(`    ⚠️  Failed to embed sentence ${j}: ${error.message}`);
+        }
+      }
+      
+      // Upload to Pinecone in batches
+      if (vectors.length > 0) {
+        console.log(`  ☁️  Uploading ${vectors.length} vectors to Pinecone...`);
+        
+        const batchSize = 100;
+        for (let j = 0; j < vectors.length; j += batchSize) {
+          const batch = vectors.slice(j, j + batchSize);
+          await index.upsert(batch);
+        }
+        
+        totalVectors += vectors.length;
+        console.log(`  ✅ Success! Uploaded ${vectors.length} vectors`);
+        successCount++;
+      }
     } else {
       failCount++;
     }
@@ -230,15 +278,14 @@ async function main() {
   await browser.close();
   
   console.log('\n📊 Summary:');
-  console.log(`✅ Success: ${successCount}`);
+  console.log(`✅ Videos processed: ${successCount}`);
   console.log(`❌ Failed: ${failCount}`);
-  console.log(`📁 Transcripts saved to: data/transcripts/`);
+  console.log(`☁️  Total vectors uploaded: ${totalVectors}`);
+  console.log(`📊 Pinecone index: ${process.env.PINECONE_INDEX}`);
   
   if (successCount > 0) {
-    console.log('\n🎯 Next steps:');
-    console.log('1. Run: node node_modules\\tsx\\dist\\cli.mjs scripts\\2-chunk-transcripts.ts');
-    console.log('2. Run: node node_modules\\tsx\\dist\\cli.mjs scripts\\3-generate-embeddings.ts');
-    console.log('3. Run: node node_modules\\tsx\\dist\\cli.mjs scripts\\4-upload-pinecone.ts');
+    console.log('\n🎉 All done! Your data is now in Pinecone.');
+    console.log('🧪 Test your mobile app to see the coaching responses!');
   }
 }
 
