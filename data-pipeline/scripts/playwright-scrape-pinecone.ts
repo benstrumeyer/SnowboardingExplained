@@ -196,7 +196,7 @@ async function main() {
     
     // Summarize each tip into a concise bullet point
     const summarizedTips = [];
-    const summaryModel = genAI.getGenerativeModel({ model: 'gemini-pro' });
+    const summaryModel = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     
     for (let j = 0; j < actionableTips.length; j++) {
       try {

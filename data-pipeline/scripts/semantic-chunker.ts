@@ -104,7 +104,7 @@ function scoreActionability(chunk: string): number {
  * Use Gemini to extract exactly 3 actionable tips from high-scoring chunks
  */
 async function extractTips(chunks: SemanticChunk[], videoTitle: string): Promise<SemanticChunk[]> {
-  const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+  const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
   
   // Filter to chunks with decent actionability scores
   const candidateChunks = chunks
