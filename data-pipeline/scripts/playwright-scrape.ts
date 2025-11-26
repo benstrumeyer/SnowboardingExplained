@@ -80,7 +80,9 @@ async function scrapeTranscript(videoId: string, browser: any) {
       'ytd-transcript-segment-renderer',
       (elements: any[]) => {
         return elements.map(el => {
-          const timeEl = el.querySelector('[class*="cue-group"] [class*="cue"]');
+          // Get the timestamp element
+          const timeEl = el.querySelector('[class*="segment-timestamp"]');
+          // Get the text element
           const textEl = el.querySelector('yt-formatted-string[class*="segment-text"]');
           
           if (!timeEl || !textEl) return null;
@@ -102,6 +104,7 @@ async function scrapeTranscript(videoId: string, browser: any) {
             text: textEl.textContent.trim(),
             offset,
             duration: 0,
+            timestamp: timeText,
           };
         }).filter(Boolean);
       }
