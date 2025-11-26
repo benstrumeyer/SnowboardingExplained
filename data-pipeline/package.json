@@ -17,6 +17,7 @@
     "@pinecone-database/pinecone": "^2.0.0",
     "dotenv": "^16.3.1",
     "googleapis": "^166.0.0",
+    "playwright": "^1.40.0",
     "youtube-transcript": "^1.2.1"
   },
   "devDependencies": {
