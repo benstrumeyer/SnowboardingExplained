@@ -514,6 +514,33 @@ function normalizeTrickName(trick: string): string {
 }
 
 /**
+ * Check if a string contains a spinning trick (rotations or spin-related content)
+ */
+function isSpinTrick(text: string): boolean {
+  const spinPatterns = [
+    /\b(180|360|540|720|900|1080)\b/i,  // Rotation numbers
+    /\bspin/i,                           // "spin" or "spins"
+    /\brotation/i,                       // "rotation"
+  ];
+  return spinPatterns.some(pattern => pattern.test(text));
+}
+
+/**
+ * Check if a string contains a rail/slide trick
+ */
+function isRailTrick(text: string): boolean {
+  const railPatterns = [
+    /\bboardslide\b/i,
+    /\bslide\b/i,
+    /\brail\b/i,
+    /\b50-?50\b/i,
+    /\bnose\s*slide\b/i,
+    /\btail\s*slide\b/i,
+  ];
+  return railPatterns.some(pattern => pattern.test(text));
+}
+
+/**
  * Extract trick from a single message
  */
 function extractTrickFromMessage(message: string): string | null {
@@ -699,17 +726,18 @@ function filterSegmentsByTrick(
         if (title.includes('frontside') && !title.includes('backside')) isDifferentTrick = true;
       }
       
-      // For non-rotation tricks like boardslides, check if it's about a different trick type
-      if (!isDifferentTrick && !requestedRotation) {
-        // If user asked for boardslide, exclude rotation tricks
-        if (normalizedRequest.includes('boardslide') || normalizedRequest.includes('slide')) {
-          for (const rot of ['180', '360', '540', '720', '900', '1080']) {
-            if (title.includes(rot) || text.includes(rot)) {
-              isDifferentTrick = true;
-              break;
-            }
-          }
-        }
+      // Check if requested trick is a rail/slide trick or spin trick
+      const requestedIsRail = isRailTrick(normalizedRequest);
+      const requestedIsSpin = isSpinTrick(normalizedRequest);
+      
+      // For rail tricks, exclude spin tricks
+      if (!isDifferentTrick && requestedIsRail && isSpinTrick(title + ' ' + text)) {
+        isDifferentTrick = true;
+      }
+      
+      // For spin tricks, exclude rail tricks
+      if (!isDifferentTrick && requestedIsSpin && isRailTrick(title + ' ' + text)) {
+        isDifferentTrick = true;
       }
       
       if (isDifferentTrick) {
