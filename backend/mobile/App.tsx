@@ -133,7 +133,7 @@ export default function App() {
       <View style={tw`flex-1`}>
         {/* Hamburger Menu Button */}
         <TouchableOpacity
-          style={tw`absolute top-11 left-1 z-40 w-12 h-12 justify-center items-center`}
+          style={tw`absolute top-10 left-1 z-40 w-12 h-12 justify-center items-center`}
           onPress={openDrawer}
         >
           <Text style={tw`text-white text-2xl`}>☰</Text>
