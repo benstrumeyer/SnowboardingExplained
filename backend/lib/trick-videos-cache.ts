@@ -56,14 +56,15 @@ export function addTrickVideos(trickName: string, videos: VideoReference[]): voi
 
 export function getAllTricks(): string[] {
   if (!cache) return [];
-  return Object.keys(cache || {});
+  return Object.keys(cache);
 }
 
 export function getCacheStats(): { totalTricks: number; totalVideos: number } {
   if (!cache) return { totalTricks: 0, totalVideos: 0 };
   
   let totalVideos = 0;
-  for (const videos of Object.values(cache)) {
+  const tricks = Object.values(cache);
+  for (const videos of tricks) {
     totalVideos += videos.length;
   }
   
