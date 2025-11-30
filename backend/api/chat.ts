@@ -390,7 +390,7 @@ export default async function handler(
           for (const seg of taevisSegments) {
             console.log(`  Checking: ${seg.videoId} | trickName: ${seg.trickName} | title: ${seg.videoTitle.substring(0, 40)}`);
             
-            // Validate that trickName matches (strict check to avoid misclassified content)
+            // Validate that trickName matches exactly (strict check to avoid misclassified content)
             const trickNameMatches = seg.trickName && seg.trickName.toLowerCase() === trickNameToSearch.toLowerCase();
             
             if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId) && trickNameMatches) {
@@ -408,6 +408,11 @@ export default async function handler(
             } else {
               console.log(`    ✗ Skipped (shown: ${shownVideoSet.has(seg.videoId)}, seen: ${seenIds.has(seg.videoId)}, trickMatch: ${trickNameMatches})`);
             }
+          }
+          
+          // If no videos found with exact trickName match, don't show anything (be precise)
+          if (uniqueVideos.length === 0) {
+            console.log(`No videos found with exact trickName match for ${trickNameToSearch}`);
           }
         }
       }
