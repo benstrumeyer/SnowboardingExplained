@@ -1,3 +1,9 @@
+/**
+ * Chat Screen
+ * Main chat interface with sidebar integration
+ * Requirements: 10.1, 13.1, 13.2
+ */
+
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -13,7 +19,10 @@ import {
 import tw from 'twrnc';
 import { useContextCollection } from '../hooks/useContextCollection';
 import { sendChatMessage } from '../services/api';
-import type { VideoReference } from '../types';
+import { Sidebar, InputMode, ChatHistoryItem } from '../components/Sidebar';
+import { VoiceInput } from '../components/VoiceInput';
+import { getChatHistoryItems, createChat, getChatById, addMessageToChat, StoredChat } from '../services/chatStorage';
+import type { VideoReference, UserContext, ChatMessage } from '../types';
 
 export default function ChatScreen() {
   const {
@@ -30,6 +39,22 @@ export default function ChatScreen() {
   const [videos, setVideos] = useState<VideoReference[]>([]);
   const [hasCalledAPI, setHasCalledAPI] = useState(false);
   const scrollViewRef = useRef<ScrollView>(null);
+  
+  // Sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [inputMode, setInputMode] = useState<InputMode>('text');
+  const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
+  const [currentChatId, setCurrentChatId] = useState<string | null>(null);
+
+  // Load chat history on mount
+  useEffect(() => {
+    loadChatHistory();
+  }, []);
+
+  const loadChatHistory = async () => {
+    const history = await getChatHistoryItems();
+    setChatHistory(history);
+  };
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -54,12 +79,19 @@ export default function ChatScreen() {
       const response = await sendChatMessage(
         context,
         undefined,
-        'session-' + Date.now()
+        currentChatId || 'session-' + Date.now()
       );
 
       // Add coach's response
       addCoachResponse(response.response);
       setVideos(response.videos);
+      
+      // Save to chat history
+      if (context.trick) {
+        const chat = await createChat(context as UserContext);
+        setCurrentChatId(chat.id);
+        await loadChatHistory();
+      }
     } catch (error: any) {
       addCoachResponse(
         `Sorry, I'm having trouble right now. ${error.message || 'Please try again.'}`
@@ -77,10 +109,25 @@ export default function ChatScreen() {
     handleUserMessage(userMessage);
   };
 
+  const handleVoiceTranscript = (text: string) => {
+    if (text.trim()) {
+      handleUserMessage(text.trim());
+    }
+  };
+
   const handleReset = () => {
     reset();
     setVideos([]);
     setHasCalledAPI(false);
+    setCurrentChatId(null);
+  };
+
+  const handleSelectChat = async (chatId: string) => {
+    const chat = await getChatById(chatId);
+    if (chat) {
+      // TODO: Restore chat state
+      setCurrentChatId(chatId);
+    }
   };
 
   const openVideo = (video: VideoReference) => {
@@ -91,32 +138,31 @@ export default function ChatScreen() {
     <KeyboardAvoidingView
       style={tw`flex-1 bg-gray-900`}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={90}
+      keyboardVerticalOffset={0}
     >
-      {/* Header */}
-      <View style={tw`bg-gray-800 p-4 border-b border-gray-700`}>
-        <View style={tw`flex-row items-center justify-between`}>
-          <View>
-            <Text style={tw`text-white text-xl font-bold`}>Snowboarding Coach</Text>
-            <Text style={tw`text-gray-400 text-sm`}>
-              {isComplete ? 'Getting your coaching...' : 'Tell me about your trick'}
-            </Text>
-          </View>
-          {hasCalledAPI && (
-            <TouchableOpacity
-              style={tw`bg-gray-700 px-4 py-2 rounded-full`}
-              onPress={handleReset}
-            >
-              <Text style={tw`text-white text-sm`}>New Chat</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+      {/* Sidebar */}
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        activeMode={inputMode}
+        onModeChange={setInputMode}
+        chatHistory={chatHistory}
+        onSelectChat={handleSelectChat}
+        onNewChat={handleReset}
+      />
+
+      {/* Menu Button - No header, just floating menu icon */}
+      <TouchableOpacity
+        style={tw`absolute top-12 left-4 z-10 bg-gray-800 p-3 rounded-full`}
+        onPress={() => setSidebarOpen(true)}
+      >
+        <Text style={tw`text-white text-lg`}>☰</Text>
+      </TouchableOpacity>
 
       {/* Messages */}
       <ScrollView
         ref={scrollViewRef}
-        style={tw`flex-1 p-4`}
+        style={tw`flex-1 pt-20 px-4`}
         contentContainerStyle={tw`pb-4`}
       >
         {messages.map((msg) => (
@@ -168,27 +214,36 @@ export default function ChatScreen() {
         )}
       </ScrollView>
 
-      {/* Input */}
-      <View style={tw`flex-row p-4 bg-gray-800 border-t border-gray-700`}>
-        <TextInput
-          style={tw`flex-1 bg-gray-700 text-white px-4 py-3 rounded-full mr-2`}
-          placeholder={isComplete ? "Waiting for coach..." : "Type your answer..."}
-          placeholderTextColor="#9CA3AF"
-          value={input}
-          onChangeText={setInput}
-          onSubmitEditing={handleSend}
-          editable={!loading && !isComplete}
-        />
-        <TouchableOpacity
-          style={tw`${
-            loading || !input.trim() || isComplete ? 'bg-gray-600' : 'bg-blue-500'
-          } px-6 py-3 rounded-full justify-center`}
-          onPress={handleSend}
-          disabled={loading || !input.trim() || isComplete}
-        >
-          <Text style={tw`text-white font-bold`}>Send</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Input Area */}
+      {inputMode === 'text' ? (
+        <View style={tw`flex-row p-4 bg-gray-800 border-t border-gray-700`}>
+          <TextInput
+            style={tw`flex-1 bg-gray-700 text-white px-4 py-3 rounded-full mr-2`}
+            placeholder={isComplete ? "Waiting for coach..." : "Type your answer..."}
+            placeholderTextColor="#9CA3AF"
+            value={input}
+            onChangeText={setInput}
+            onSubmitEditing={handleSend}
+            editable={!loading && !isComplete}
+          />
+          <TouchableOpacity
+            style={tw`${
+              loading || !input.trim() || isComplete ? 'bg-gray-600' : 'bg-blue-500'
+            } px-6 py-3 rounded-full justify-center`}
+            onPress={handleSend}
+            disabled={loading || !input.trim() || isComplete}
+          >
+            <Text style={tw`text-white font-bold`}>Send</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View style={tw`p-4 bg-gray-800 border-t border-gray-700`}>
+          <VoiceInput
+            onTranscript={handleVoiceTranscript}
+            disabled={loading || isComplete}
+          />
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }

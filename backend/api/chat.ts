@@ -82,12 +82,13 @@ export default async function handler(
     
     if (relevantSegments.length === 0) {
       // Still try to find similar videos by title even without transcript matches
-      const fallbackVideos = getVideosForTrick(context.trick, 5).map(v => ({
-        videoId: v.videoId,
-        title: v.title,
-        url: v.url,
-        thumbnail: v.thumbnail,
-        similarity: v.similarity || 0,
+      const fallbackResults = getVideosForTrick(context.trick, 5);
+      const fallbackVideos = fallbackResults.map(r => ({
+        videoId: r.video.videoId,
+        title: r.video.title,
+        url: r.video.url,
+        thumbnail: r.video.thumbnail,
+        similarity: r.similarity,
       }));
       
       return res.status(200).json({
@@ -166,18 +167,19 @@ Return ONLY a JSON array of 10 tips, like this:
       url: `https://youtube.com/watch?v=${video.videoId}&t=${Math.floor(video.timestamp)}s`,
     }));
     
-    // Get similar videos by title matching
+    // Get similar videos by title matching to fill remaining slots
     const existingVideoIds = new Set(videoReferences.map(v => v.videoId));
-    const similarVideos = getVideosForTrick(context.trick, 10)
-      .filter(v => !existingVideoIds.has(v.videoId))  // Exclude already included videos
-      .slice(0, 5)
-      .map(v => ({
-        videoId: v.videoId,
-        title: v.title,
-        url: v.url,
-        thumbnail: v.thumbnail,
-        similarity: v.similarity || 0,
-      }));
+    const similarResults = getVideosForTrick(context.trick, 10)
+      .filter(r => !existingVideoIds.has(r.video.videoId))  // Exclude already included videos
+      .slice(0, 5 - videoReferences.length);  // Fill to 5 total
+    
+    const similarVideos = similarResults.map(r => ({
+      videoId: r.video.videoId,
+      title: r.video.title,
+      url: r.video.url,
+      thumbnail: r.video.thumbnail,
+      similarity: r.similarity,
+    }));
     console.log(`Found ${similarVideos.length} similar videos by title`);
     
     const response = {
