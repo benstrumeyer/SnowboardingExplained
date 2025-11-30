@@ -345,14 +345,14 @@ export default async function handler(
         .sort((a, b) => (a.stepNumber || 0) - (b.stepNumber || 0))
         .slice(0, 10);  // Max 10 steps
       
-      // Get up to 3 unique videos for this question (skip recently shown)
-      const recentVideoIds = new Set(shownVideoIds.slice(-15));
+      // Get up to 3 unique videos for this question (skip all previously shown)
+      const shownVideoSet = new Set(shownVideoIds);
       const uniqueVideos: VideoReference[] = [];
       const seenIds = new Set<string>();
       
-      // First pass: try to get videos from segments
+      // First pass: try to get videos from segments (excluding all previously shown)
       for (const seg of segments) {
-        if (seg.videoId && !recentVideoIds.has(seg.videoId) && !seenIds.has(seg.videoId)) {
+        if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId)) {
           uniqueVideos.push({
             videoId: seg.videoId,
             videoTitle: seg.videoTitle,
@@ -497,14 +497,14 @@ export default async function handler(
         tipIdsShown.push(tip.id);
       }
       
-      // Get up to 3 unique videos for this question (skip recently shown)
-      const recentVideoIds = new Set(shownVideoIds.slice(-15));
+      // Get up to 3 unique videos for this question (skip all previously shown)
+      const shownVideoSet = new Set(shownVideoIds);
       const uniqueVideos: VideoReference[] = [];
       const seenIds = new Set<string>();
       
-      // First pass: try to get videos not recently shown from available tips
+      // First pass: try to get videos from available tips (excluding all previously shown)
       for (const tip of availableTips) {
-        if (tip.videoId && !recentVideoIds.has(tip.videoId) && !seenIds.has(tip.videoId)) {
+        if (tip.videoId && !shownVideoSet.has(tip.videoId) && !seenIds.has(tip.videoId)) {
           uniqueVideos.push({
             videoId: tip.videoId,
             videoTitle: tip.videoTitle,
@@ -518,10 +518,10 @@ export default async function handler(
         }
       }
       
-      // Second pass: if we have fewer than 3 videos, search through all relevant segments more thoroughly
+      // Second pass: if we have fewer than 3 videos, search through all relevant segments (excluding all previously shown)
       if (uniqueVideos.length < 3) {
         for (const seg of segments) {
-          if (seg.videoId && !seenIds.has(seg.videoId)) {
+          if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId)) {
             uniqueVideos.push({
               videoId: seg.videoId,
               videoTitle: seg.videoTitle,
