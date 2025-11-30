@@ -406,7 +406,7 @@ export default async function handler(
             // Validate that trickName matches exactly (strict check to avoid misclassified content)
             const trickNameMatches = seg.trickName && seg.trickName.toLowerCase() === trickNameToSearch.toLowerCase();
             
-            if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId) && trickNameMatches) {
+            if (seg.videoId && !hasShownVideo(sessionId, seg.videoId) && !seenIds.has(seg.videoId) && trickNameMatches) {
               console.log(`    ✓ Adding video`);
               uniqueVideos.push({
                 videoId: seg.videoId,
@@ -419,7 +419,7 @@ export default async function handler(
               seenIds.add(seg.videoId);
               if (uniqueVideos.length >= 3) break;
             } else {
-              console.log(`    ✗ Skipped (shown: ${shownVideoSet.has(seg.videoId)}, seen: ${seenIds.has(seg.videoId)}, trickMatch: ${trickNameMatches})`);
+              console.log(`    ✗ Skipped (shown: ${hasShownVideo(sessionId, seg.videoId)}, seen: ${seenIds.has(seg.videoId)}, trickMatch: ${trickNameMatches})`);
             }
           }
           
