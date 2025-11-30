@@ -350,9 +350,10 @@ export default async function handler(
       
       // Get up to 3 unique videos for this question (skip all previously shown)
       const shownVideoSet = new Set(shownVideoIds);
-      console.log('=== Video Filtering ===');
+      console.log('=== Video Filtering (Primary Tutorial) ===');
       console.log('Shown videos set size:', shownVideoSet.size);
       console.log('Shown videos:', JSON.stringify(Array.from(shownVideoSet)));
+      console.log('Total segments to search:', segments.length);
       const uniqueVideos: VideoReference[] = [];
       const seenIds = new Set<string>();
       
@@ -360,8 +361,11 @@ export default async function handler(
       for (const seg of segments) {
         const isShown = shownVideoSet.has(seg.videoId);
         const isSeen = seenIds.has(seg.videoId);
-        console.log(`Checking segment: videoId=${seg.videoId}, shown=${isShown}, seen=${isSeen}, title=${seg.videoTitle.substring(0, 30)}`);
+        if (isShown || isSeen) {
+          console.log(`  SKIP: videoId=${seg.videoId}, shown=${isShown}, seen=${isSeen}`);
+        }
         if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId)) {
+          console.log(`  ADD: videoId=${seg.videoId}, title=${seg.videoTitle.substring(0, 30)}`);
           uniqueVideos.push({
             videoId: seg.videoId,
             videoTitle: seg.videoTitle,
@@ -534,12 +538,17 @@ export default async function handler(
       
       // Get up to 3 unique videos for this question (skip all previously shown)
       const shownVideoSet = new Set(shownVideoIds);
+      console.log('=== Video Filtering (General Tips) ===');
+      console.log('Shown videos set size:', shownVideoSet.size);
+      console.log('Shown videos:', JSON.stringify(Array.from(shownVideoSet)));
+      console.log('Available tips:', availableTips.length);
       const uniqueVideos: VideoReference[] = [];
       const seenIds = new Set<string>();
       
       // First pass: try to get videos from available tips (excluding all previously shown)
       for (const tip of availableTips) {
         if (tip.videoId && !shownVideoSet.has(tip.videoId) && !seenIds.has(tip.videoId)) {
+          console.log(`  ADD: videoId=${tip.videoId}, title=${tip.videoTitle.substring(0, 30)}`);
           uniqueVideos.push({
             videoId: tip.videoId,
             videoTitle: tip.videoTitle,
