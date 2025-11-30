@@ -15,8 +15,8 @@ import {
   Linking,
   Image,
   Animated,
-  AsyncStorage,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 // @ts-ignore - Expo vector icons bundled with Expo
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import tw from 'twrnc';
