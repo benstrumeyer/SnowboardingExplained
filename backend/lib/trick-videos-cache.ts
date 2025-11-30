@@ -1,13 +1,17 @@
 /**
  * Trick Videos Cache
- * Pre-built index of all videos grouped by trickName
+ * Pre-built index of all video URLs grouped by trickName
  * Built once and loaded into memory for fast lookups
  */
 
-import type { VideoReference } from '../api/chat';
+interface TrickVideo {
+  url: string;
+  title: string;
+  thumbnail: string;
+}
 
 interface TrickVideosCache {
-  [trickName: string]: VideoReference[];
+  [trickName: string]: TrickVideo[];
 }
 
 let cache: TrickVideosCache | null = null;
@@ -36,7 +40,7 @@ export async function initializeTrickVideosCache(): Promise<void> {
   cache = {};
 }
 
-export function getTrickVideos(trickName: string): VideoReference[] {
+export function getTrickVideos(trickName: string): TrickVideo[] {
   if (!cache) {
     console.warn('Trick videos cache not initialized');
     return [];
@@ -46,7 +50,7 @@ export function getTrickVideos(trickName: string): VideoReference[] {
   return cache[normalized] || [];
 }
 
-export function addTrickVideos(trickName: string, videos: VideoReference[]): void {
+export function addTrickVideos(trickName: string, videos: TrickVideo[]): void {
   if (!cache) {
     cache = {};
   }

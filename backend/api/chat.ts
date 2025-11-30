@@ -505,11 +505,20 @@ export default async function handler(
       console.log(`Looking up videos for trick: "${trickNameToSearch}"`);
       console.log(`Intent trickId: "${intent.trickId}"`);
       
-      const allTrickVideos = getTrickVideos(trickNameToSearch);
-      console.log(`Found ${allTrickVideos.length} videos for "${trickNameToSearch}"`);
-      if (allTrickVideos.length > 0) {
-        console.log(`Video IDs: ${allTrickVideos.map(v => v.videoId).join(', ')}`);
+      const cachedVideos = getTrickVideos(trickNameToSearch);
+      console.log(`Found ${cachedVideos.length} videos for "${trickNameToSearch}"`);
+      if (cachedVideos.length > 0) {
+        console.log(`Video URLs: ${cachedVideos.map(v => v.url).join(', ')}`);
       }
+      
+      // Convert to VideoReference format for response
+      const allTrickVideos: VideoReference[] = cachedVideos.map(v => ({
+        videoId: v.url.split('v=')[1] || '',
+        videoTitle: v.title,
+        timestamp: 0,
+        url: v.url,
+        thumbnail: v.thumbnail,
+      }));
       
       // Log the response being sent
       console.log('=== FINAL RESPONSE (Primary Tutorial) ===');

@@ -17,15 +17,14 @@ const pc = new Pinecone({
 
 const INDEX_NAME = 'snowboarding-explained';
 
+interface TrickVideo {
+  url: string;
+  title: string;
+  thumbnail: string;
+}
+
 interface TrickVideosCache {
-  [trickName: string]: {
-    videoId: string;
-    videoTitle: string;
-    timestamp: number;
-    url: string;
-    thumbnail: string;
-    duration?: number;
-  }[];
+  [trickName: string]: TrickVideo[];
 }
 
 async function buildCache() {
@@ -62,12 +61,9 @@ async function buildCache() {
       }
       
       cache[normalized].push({
-        videoId,
-        videoTitle: match.metadata?.videoTitle || 'Unknown',
-        timestamp: match.metadata?.timestamp || 0,
         url: `https://youtube.com/watch?v=${videoId}`,
+        title: match.metadata?.videoTitle || 'Unknown',
         thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-        duration: match.metadata?.duration,
       });
       
       videoIds.add(videoId);
