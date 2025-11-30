@@ -10,6 +10,7 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import Fuse from 'fuse.js';
 import { generateEmbedding } from '../lib/gemini';
 import { searchVideoSegments, searchVideoSegmentsWithOptions, searchByTrickName, getTrickTutorialById, type EnhancedVideoSegment } from '../lib/pinecone';
 import { getEmbeddingCache, initializeEmbeddingCache } from '../lib/embedding-cache';
@@ -98,28 +99,32 @@ async function detectIntent(message: string, client: GoogleGenerativeAI): Promis
   // First try pattern matching - covers 80% of cases
   const trick = extractTrickFromMessage(message);
   if (trick) {
-    // Found a trick mention - try to match it to available tricks
+    // Found a trick mention - try to match it to available tricks using fuzzy search
     const normalized = normalizeTrickName(trick).replace(/\s+/g, '-');
     
-    for (const availableTrick of AVAILABLE_TRICKS) {
-      const availableNormalized = normalizeTrickName(availableTrick).replace(/\s+/g, '-');
+    // Use Fuse for fuzzy matching to handle typos
+    const fuse = new Fuse(AVAILABLE_TRICKS, {
+      threshold: 0.4,  // Allow up to 60% difference
+      includeScore: true,
+    });
+    
+    const results = fuse.search(normalized);
+    
+    if (results.length > 0) {
+      const bestMatch = results[0];
+      const confidence = 1 - (bestMatch.score || 0);  // Convert score to confidence
+      console.log(`Fuzzy match found: "${trick}" -> "${bestMatch.item}" (confidence: ${confidence.toFixed(2)})`);
       
-      // Direct match or partial match
-      if (availableNormalized === normalized || 
-          availableNormalized.includes(normalized) || 
-          normalized.includes(availableNormalized)) {
-        console.log(`Pattern match found: "${trick}" -> "${availableTrick}"`);
-        return {
-          intent: 'how-to-trick',
-          trickId: availableTrick,
-          confidence: 0.95,
-        };
-      }
+      return {
+        intent: 'how-to-trick',
+        trickId: bestMatch.item,
+        confidence: Math.max(0.8, confidence),  // At least 0.8 confidence
+      };
     }
   }
   
   // If pattern matching didn't work, return general
-  console.log(`No pattern match found for: "${trick}"`);
+  console.log(`No trick match found for: "${trick}"`);
   return { intent: 'general', trickId: null, confidence: 0.5 };
 }
 
