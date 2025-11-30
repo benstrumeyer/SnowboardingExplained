@@ -192,7 +192,8 @@
     - Clean interface with just chat and input
     - Menu icon (☰) to open sidebar
     - _Requirements: 10.1_
-  - [ ] 13.2 Integrate question flow with chat UI
+  - [x] 13.2 Integrate question flow with chat UI
+
     - Display questions as chat messages
     - Show predefined options as buttons
     - _Requirements: 7.1, 7.2_

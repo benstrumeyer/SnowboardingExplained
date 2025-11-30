@@ -21,11 +21,11 @@ export type VoiceCallback = (state: VoiceState) => void;
 let Voice: any = null;
 let webSpeechRecognition: any = null;
 
-// Try to load react-native-voice
+// Try to load @react-native-community/voice
 try {
-  Voice = require('@react-native-voice/voice').default;
+  Voice = require('@react-native-community/voice').default;
 } catch (e) {
-  console.log('react-native-voice not available, will use Web Speech API');
+  console.log('@react-native-community/voice not available, will use Web Speech API');
 }
 
 /**
