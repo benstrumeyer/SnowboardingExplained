@@ -313,6 +313,13 @@ export default async function handler(
     
     // Log raw segment details for debugging
     console.log('=== Raw Segments ===');
+    const videoIdCounts = new Map<string, number>();
+    rawSegments.forEach((seg) => {
+      if (seg.videoId) {
+        videoIdCounts.set(seg.videoId, (videoIdCounts.get(seg.videoId) || 0) + 1);
+      }
+    });
+    console.log('Video ID frequency in raw segments:', JSON.stringify(Object.fromEntries(videoIdCounts)));
     rawSegments.slice(0, 10).forEach((seg, i) => {
       console.log(`  ${i + 1}. ID: ${seg.id} | videoId: ${seg.videoId || 'MISSING'} | trickName: ${seg.trickName || 'N/A'} | title: ${seg.videoTitle?.substring(0, 40) || 'N/A'}`);
     });
