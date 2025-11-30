@@ -6,18 +6,9 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import fs from 'fs';
-import path from 'path';
 
-interface Video {
-  videoId: string;
-  title: string;
-  url: string;
-  thumbnail: string;
-}
-
-// Cache the video list in memory
-let videoCache: Video[] | null = null;
+// Import video database directly (works with Vercel bundling)
+import videoDatabase from '../data/video-database.json';
 
 export default async function handler(
   req: VercelRequest,
@@ -37,23 +28,7 @@ export default async function handler(
   }
   
   try {
-    // Return cached data if available
-    if (videoCache) {
-      return res.status(200).json({ videos: videoCache });
-    }
-    
-    // Try to load from file
-    const videoDbPath = path.join(process.cwd(), 'backend', 'data', 'video-database.json');
-    
-    if (fs.existsSync(videoDbPath)) {
-      const data = fs.readFileSync(videoDbPath, 'utf-8');
-      videoCache = JSON.parse(data);
-      return res.status(200).json({ videos: videoCache });
-    }
-    
-    // Fallback: return empty array
-    return res.status(200).json({ videos: [] });
-    
+    return res.status(200).json({ videos: videoDatabase });
   } catch (error: any) {
     console.error('Videos API Error:', error.message);
     return res.status(500).json({ 
