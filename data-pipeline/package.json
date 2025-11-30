@@ -9,6 +9,8 @@
     "chunk": "tsx scripts/2-chunk-transcripts.ts",
     "embed": "tsx scripts/3-generate-embeddings.ts",
     "upload": "tsx scripts/4-upload-pinecone.ts",
+    "summaries": "tsx scripts/generate-video-summaries.ts",
+    "delete-summaries": "tsx scripts/delete-summaries.ts",
     "all": "npm run fetch-ids && npm run scrape && npm run chunk && npm run embed && npm run upload",
     "test-all": "npm run test-data && npm run chunk && npm run embed && npm run upload"
   },
