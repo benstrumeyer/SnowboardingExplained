@@ -69,16 +69,20 @@ export default function VideoLibraryScreen() {
   const getSmallThumbnail = (videoId: string) => 
     `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
 
-  const renderVideo = ({ item }: { item: Video }) => (
+  // Switch to full-width cards when less than 20 videos
+  const useFullWidth = filteredVideos.length < 20;
+
+  // Grid view (3 columns) for many videos
+  const renderGridVideo = ({ item }: { item: Video }) => (
     <TouchableOpacity
-      style={tw`w-1/3 p-1`}
+      style={tw`flex-1 m-1`}
       onPress={() => openVideo(item.url)}
       activeOpacity={0.8}
     >
       <View style={tw`bg-gray-800 rounded-lg overflow-hidden`}>
         <Image
           source={{ uri: getSmallThumbnail(item.videoId) }}
-          style={tw`w-full h-20`}
+          style={{ width: '100%', aspectRatio: 16 / 9 }}
           resizeMode="cover"
         />
         <View style={tw`p-2`}>
@@ -90,12 +94,36 @@ export default function VideoLibraryScreen() {
     </TouchableOpacity>
   );
 
+  // Full-width card for fewer videos (horizontal layout, 1/3 thumbnail + 2/3 text)
+  const renderFullWidthVideo = ({ item }: { item: Video }) => (
+    <TouchableOpacity
+      style={tw`mx-2 my-1`}
+      onPress={() => openVideo(item.url)}
+      activeOpacity={0.8}
+    >
+      <View style={tw`bg-gray-800 rounded-lg overflow-hidden flex-row h-20`}>
+        <View style={{ flex: 1 }}>
+          <Image
+            source={{ uri: getSmallThumbnail(item.videoId) }}
+            style={{ width: '100%', height: '100%' }}
+            resizeMode="cover"
+          />
+        </View>
+        <View style={[tw`p-3 justify-center`, { flex: 2 }]}>
+          <Text style={tw`text-white text-sm`} numberOfLines={2}>
+            {item.title}
+          </Text>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+
   return (
     <View style={tw`flex-1 bg-gray-900`}>
-      {/* Header - with space for hamburger menu */}
+      {/* Header */}
       <View style={tw`bg-gray-800 pt-12 pb-4 px-4`}>
         <View style={tw`flex-row items-center mb-3`}>
-          <View style={tw`w-10`} />{/* Space for hamburger menu */}
+          <View style={tw`w-12`} />{/* Space for hamburger menu from App.tsx */}
           <Text style={tw`text-white text-xl font-bold`}>
             📹 Video Library
           </Text>
@@ -134,12 +162,34 @@ export default function VideoLibraryScreen() {
             <Text style={tw`text-white font-bold`}>Retry</Text>
           </TouchableOpacity>
         </View>
+      ) : useFullWidth ? (
+        <FlatList
+          key="full-width"
+          data={filteredVideos}
+          renderItem={renderFullWidthVideo}
+          keyExtractor={(item) => item.videoId}
+          contentContainerStyle={tw`pb-4`}
+          showsVerticalScrollIndicator={false}
+          initialNumToRender={12}
+          maxToRenderPerBatch={9}
+          windowSize={5}
+          removeClippedSubviews={true}
+          ListEmptyComponent={
+            <View style={tw`flex-1 items-center justify-center py-20`}>
+              <Text style={tw`text-gray-400 text-center`}>
+                {searchQuery ? `No videos found for "${searchQuery}"` : 'No videos available'}
+              </Text>
+            </View>
+          }
+        />
       ) : (
         <FlatList
+          key="grid"
           data={filteredVideos}
-          renderItem={renderVideo}
+          renderItem={renderGridVideo}
           keyExtractor={(item) => item.videoId}
           numColumns={3}
+          columnWrapperStyle={tw`justify-between`}
           contentContainerStyle={tw`px-2 pb-4`}
           showsVerticalScrollIndicator={false}
           initialNumToRender={12}
