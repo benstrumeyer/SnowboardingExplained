@@ -229,6 +229,7 @@ export default async function handler(
     console.log('=== Chat API ===');
     console.log('Message:', message);
     console.log('History length:', history.length);
+    console.log('Shown video IDs:', shownVideoIds);
     console.log('Passed trick:', passedTrick || 'none');
     
     const client = getGeminiClient();
