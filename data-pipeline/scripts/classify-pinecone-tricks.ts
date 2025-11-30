@@ -160,7 +160,7 @@ async function main() {
       
       // Skip if already classified
       if (existingTrickName && existingTrickName !== 'Other') {
-        console.log(`  ⏭️  ${id} - already classified as "${existingTrickName}"`);
+        console.log(`  ⏭️  ${id} | "${videoTitle}" - already "${existingTrickName}"`);
         processed++;
         continue;
       }
@@ -168,7 +168,7 @@ async function main() {
       // Classify the trick
       const trickName = await classifyTrick(videoTitle || '', text || '');
       
-      console.log(`  ✅ ${id} -> "${trickName}"`);
+      console.log(`  ✅ ${id} | "${videoTitle}" -> "${trickName}"`);
       
       // Queue update
       updateBatch.push({

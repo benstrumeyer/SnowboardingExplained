@@ -6,8 +6,16 @@
 import { Pinecone } from '@pinecone-database/pinecone';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as dotenv from 'dotenv';
+import * as path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config({ path: '../backend/.env' });
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Try multiple .env locations
+dotenv.config({ path: path.join(__dirname, '../../backend/.env') });
+dotenv.config({ path: path.join(__dirname, '../.env') });
+dotenv.config();
 
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY!;
 const PINECONE_INDEX = process.env.PINECONE_INDEX || 'snowboarding-explained';
