@@ -26,12 +26,14 @@ Your personality:
 Rules:
 - Answer the user's question naturally and conversationally
 - Use the provided video transcript content as your knowledge base
-- Reference specific tips from the transcripts when relevant
 - If asked for a specific number of tips, provide that many
 - Keep responses concise but helpful
 - If you don't have relevant content, be honest and suggest what you can help with
+- NEVER include citation markers like [1], [2], (See: [1]), etc. in your response
+- NEVER reference the transcript numbers - just speak naturally as if you know this information
+- Write in plain text without any markdown formatting or special characters
 
-You have access to transcript content from your YouTube videos. Use this knowledge to help riders.`;
+You have access to transcript content from your YouTube videos. Use this knowledge naturally without citing sources.`;
 
 interface ChatRequest {
   message: string;
@@ -121,7 +123,12 @@ export default async function handler(
     
     const prompt = `${COACH_SYSTEM_PROMPT}\n\n${knowledgeContext}\n\nUser: ${message}\n\nRespond as Taevis:`;
     const result = await chat.sendMessage(prompt);
-    const responseText = result.response.text();
+    let responseText = result.response.text();
+    
+    // Clean up any citation markers the AI might have included
+    responseText = cleanResponse(responseText);
+    
+    console.log('AI Response:', responseText.substring(0, 200) + '...');
     
     // Step 5: Get unique videos for references (max 3)
     const videoMap = new Map<string, VideoSegment>();
@@ -158,4 +165,28 @@ function formatTimestamp(seconds: number): string {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+/**
+ * Clean up AI response - remove citation markers and formatting artifacts
+ */
+function cleanResponse(text: string): string {
+  return text
+    // Remove citation markers like [1], [2], (See: [1]), etc.
+    .replace(/\[[\d,\s]+\]/g, '')
+    .replace(/\(See:\s*\[[\d,\s]+\]\)/gi, '')
+    .replace(/\(?\[?\d+\]?\)?/g, (match) => {
+      // Only remove if it looks like a citation (not a number in context)
+      if (match.includes('[') || match.includes(']')) return '';
+      return match;
+    })
+    // Remove markdown formatting
+    .replace(/\*\*/g, '')
+    .replace(/\*/g, '')
+    .replace(/#{1,6}\s/g, '')
+    // Clean up extra whitespace
+    .replace(/\s+/g, ' ')
+    .replace(/\s+\./g, '.')
+    .replace(/\s+,/g, ',')
+    .trim();
 }
