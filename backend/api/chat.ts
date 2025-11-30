@@ -507,7 +507,7 @@ export default async function handler(
         // Get the trickName from available tips
         const trickNames = new Set(availableTips
           .filter(t => t.trickName)
-          .map(t => t.trickName));
+          .map(t => t.trickName as string));
         
         if (trickNames.size > 0) {
           console.log(`Searching Taevis videos for trickNames: ${Array.from(trickNames).join(', ')}`);
