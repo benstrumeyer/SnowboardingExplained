@@ -1,0 +1,77 @@
+{
+  "version": "1.0",
+  "description": "Exhaustive list of snowboard tricks with canonical names and aliases",
+  "other": {
+    "_comment": "General content not specific to one trick"
+  },
+  
+  "spins": {
+    "frontside": {
+      "frontside-180": { "aliases": ["fs 180", "front 180", "fs one eighty", "frontside one eighty", "front one"] },
+      "frontside-360": { "aliases": ["fs 360", "front 360", "fs three sixty", "frontside three", "front three", "fs 3"] },
+      "frontside-540": { "aliases": ["fs 540", "front 540", "fs five forty", "frontside five", "front five", "fs 5"] },
+      "frontside-720": { "aliases": ["fs 720", "front 720", "fs seven twenty", "frontside seven", "front seven", "front 7", "fs 7"] },
+      "frontside-900": { "aliases": ["fs 900", "front 900", "fs nine hundred", "frontside nine", "front nine", "fs 9"] },
+      "frontside-1080": { "aliases": ["fs 1080", "front 1080", "fs ten eighty", "frontside ten", "front ten", "fs 10"] },
+      "frontside-1260": { "aliases": ["fs 1260", "front 1260", "frontside twelve sixty"] },
+      "frontside-1440": { "aliases": ["fs 1440", "front 1440", "frontside fourteen forty"] },
+      "frontside-1620": { "aliases": ["fs 1620", "front 1620"] },
+      "frontside-1800": { "aliases": ["fs 1800", "front 1800"] }
+    },
+    "backside": {
+      "backside-180": { "aliases": ["bs 180", "back 180", "bs one eighty", "backside one eighty", "back one"] },
+      "backside-360": { "aliases": ["bs 360", "back 360", "bs three sixty", "backside three", "back three", "bs 3"] },
+      "backside-540": { "aliases": ["bs 540", "back 540", "bs five forty", "backside five", "back five", "bs 5"] },
+      "backside-720": { "aliases": ["bs 720", "back 720", "bs seven twenty", "backside seven", "back seven", "back 7", "bs 7"] },
+      "backside-900": { "aliases": ["bs 900", "back 900", "bs nine hundred", "backside nine", "back nine", "bs 9"] },
+      "backside-1080": { "aliases": ["bs 1080", "back 1080", "bs ten eighty", "backside ten", "back ten", "bs 10"] },
+      "backside-1260": { "aliases": ["bs 1260", "back 1260", "backside twelve sixty"] },
+      "backside-1440": { "aliases": ["bs 1440", "back 1440", "backside fourteen forty"] },
+      "backside-1620": { "aliases": ["bs 1620", "back 1620"] },
+      "backside-1800": { "aliases": ["bs 1800", "back 1800"] }
+    },
+    "switch-frontside": {
+      "_comment": "Cab = switch frontside (caballerial)",
+      "cab-180": { "aliases": ["cab one eighty", "caballerial 180", "switch frontside 180", "sw fs 180"] },
+      "cab-360": { "aliases": ["cab 3", "cab three", "caballerial 360", "switch frontside 360", "sw fs 360"] },
+      "cab-540": { "aliases": ["cab 5", "cab five", "caballerial 540", "switch frontside 540", "sw fs 540"] },
+      "cab-720": { "aliases": ["cab 7", "cab seven", "caballerial 720", "switch frontside 720", "sw fs 720"] },
+      "cab-900": { "aliases": ["cab 9", "cab nine", "caballerial 900", "switch frontside 900", "sw fs 900"] },
+      "cab-1080": { "aliases": ["cab 10", "cab ten", "caballerial 1080", "switch frontside 1080", "sw fs 1080"] },
+      "cab-1260": { "aliases": ["cab 12", "switch frontside 1260"] },
+      "cab-1440": { "aliases": ["cab 14", "switch frontside 1440"] }
+    },
+    "switch-backside": {
+      "switch-backside-180": { "aliases": ["sw bs 180", "switch back 180", "half cab backside"] },
+      "switch-backside-360": { "aliases": ["sw bs 360", "switch back 360", "sw bs 3", "switch back 3"] },
+      "switch-backside-540": { "aliases": ["sw bs 540", "switch back 540", "sw bs 5", "switch back 5"] },
+      "switch-backside-720": { "aliases": ["sw bs 720", "switch back 720", "sw bs 7", "switch back 7"] },
+      "switch-backside-900": { "aliases": ["sw bs 900", "switch back 900", "sw bs 9"] },
+      "switch-backside-1080": { "aliases": ["sw bs 1080", "switch back 1080", "sw bs 10"] }
+    }
+  },
+  
+  "rails": {
+    "frontside-boardslide": { "aliases": ["fs boardslide", "front boardslide", "frontside board"] },
+    "backside-boardslide": { "aliases": ["bs boardslide", "back boardslide", "backside board"] },
+    "frontside-lipslide": { "aliases": ["fs lipslide", "front lipslide", "frontside lip"] },
+    "backside-lipslide": { "aliases": ["bs lipslide", "back lipslide", "backside lip"] },
+    "50-50": { "aliases": ["fifty fifty", "5050", "fifty", "50 50 grind"] }
+  },
+  
+  "tricks": {
+    "jumping": { "aliases": ["basic jump", "hitting jumps", "straight air", "jump", "jumps"] },
+    "ollie": { "aliases": ["basic ollie"] },
+    "nollie": { "aliases": ["nose ollie"] },
+    "butter": { "aliases": ["buttering", "butter trick"] },
+    "shifty": { "aliases": ["shifty air"] },
+    "carving": { "aliases": ["carve", "carve turns"] }
+  },
+  
+  "foundational": {
+    "_comment": "These are techniques, not tricks - should NOT be primary tutorials",
+    "pop": { "aliases": ["popping", "pop technique"], "isPrimary": false },
+    "edge-control": { "aliases": ["edging", "edge work"], "isPrimary": false },
+    "switch-riding": { "aliases": ["riding switch", "fakie"], "isPrimary": false }
+  }
+}
