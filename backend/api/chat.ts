@@ -100,6 +100,7 @@ interface ChatRequest {
   sessionId: string;
   history?: { role: 'user' | 'coach'; content: string }[];
   shownVideoIds?: string[];  // Track videos already shown to avoid repeats
+  shownTipIds?: string[];    // Track tips already shown to never repeat
 }
 
 interface VideoReference {
@@ -146,7 +147,7 @@ export default async function handler(
   }
   
   try {
-    const { message, history = [], shownVideoIds = [] }: ChatRequest = req.body;
+    const { message, history = [], shownVideoIds = [], shownTipIds = [] }: ChatRequest = req.body;
     
     // If no message, return greeting
     if (!message || !message.trim()) {
@@ -254,12 +255,13 @@ export default async function handler(
         .slice(0, 10);  // Max 10 steps
       
       // Get up to 3 unique videos for this question (skip recently shown)
-      const recentVideoIds = new Set(shownVideoIds.slice(-15));  // Last 5 prompts * 3 videos
+      const recentVideoIds = new Set(shownVideoIds.slice(-15));
       const uniqueVideos: VideoReference[] = [];
       const seenIds = new Set<string>();
       
+      // First pass: try to get videos not recently shown
       for (const seg of segments) {
-        if (!recentVideoIds.has(seg.videoId) && !seenIds.has(seg.videoId)) {
+        if (seg.videoId && !recentVideoIds.has(seg.videoId) && !seenIds.has(seg.videoId)) {
           uniqueVideos.push({
             videoId: seg.videoId,
             videoTitle: seg.videoTitle,
@@ -273,6 +275,24 @@ export default async function handler(
         }
       }
       
+      // Fallback: if no videos found, get ANY video with a valid videoId
+      if (uniqueVideos.length === 0) {
+        for (const seg of segments) {
+          if (seg.videoId && !seenIds.has(seg.videoId)) {
+            uniqueVideos.push({
+              videoId: seg.videoId,
+              videoTitle: seg.videoTitle,
+              timestamp: seg.timestamp,
+              url: `https://youtube.com/watch?v=${seg.videoId}`,
+              thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
+              duration: seg.duration,
+            });
+            seenIds.add(seg.videoId);
+            if (uniqueVideos.length >= 1) break;
+          }
+        }
+      }
+      
       const messages: ChatMessage[] = [];
       
       // Add intro message
@@ -281,20 +301,20 @@ export default async function handler(
       // Add transition
       messages.push({ type: 'text', content: "Here's how to do it step by step:" });
       
-      // Add first 5 steps as separate messages
-      const firstBatch = orderedSteps.slice(0, 5);
+      // Add first 3 steps as separate messages
+      const firstBatch = orderedSteps.slice(0, 3);
       for (const step of firstBatch) {
         messages.push({ type: 'tip', content: step.text });
       }
       
       // Check if there are more steps
-      const hasMoreTips = orderedSteps.length > 5;
+      const hasMoreTips = orderedSteps.length > 3;
       
       // Add follow-up question if there are more steps
       if (hasMoreTips) {
         messages.push({ 
           type: 'follow-up', 
-          content: "What exactly are you having trouble with? I've got more tips if you need them!" 
+          content: "Want more tips? Just ask!" 
         });
       }
       
@@ -308,7 +328,9 @@ export default async function handler(
       
     } else if (segments.length > 0) {
       // GENERAL TIPS: Build separate messages for each tip
-      const allTips = segments.slice(0, 10).map(seg => ({
+      // Sort: primary tips first, then others
+      const allTips = segments.slice(0, 15).map((seg, idx) => ({
+        id: seg.id || `tip-${idx}`,  // Unique ID for tracking
         tip: seg.text.trim(),
         videoId: seg.videoId,
         videoTitle: seg.videoTitle,
@@ -316,7 +338,16 @@ export default async function handler(
         isPrimary: seg.isPrimary,
         duration: seg.duration,
         trickName: seg.trickName,
-      }));
+      })).sort((a, b) => {
+        // Primary tips first
+        if (a.isPrimary && !b.isPrimary) return -1;
+        if (!a.isPrimary && b.isPrimary) return 1;
+        return 0;
+      });
+      
+      // Filter out already shown tips
+      const shownTipSet = new Set(shownTipIds);
+      const availableTips = allTips.filter(t => !shownTipSet.has(t.id));
       
       // Build messages array - each tip is its own message
       const messages: ChatMessage[] = [];
@@ -329,30 +360,22 @@ export default async function handler(
       const transition = cleanResponse(transitionResult.response.text());
       messages.push({ type: 'text', content: transition });
       
-      // Add first 5 tips as separate messages (videos shown separately)
-      const firstBatch = allTips.slice(0, 5);
+      // Add first 3 tips as separate messages
+      const firstBatch = availableTips.slice(0, 3);
+      const tipIdsShown: string[] = [];
       for (const tip of firstBatch) {
         messages.push({ type: 'tip', content: tip.tip });
+        tipIdsShown.push(tip.id);
       }
       
-      // Check if there are more tips available
-      const hasMoreTips = allTips.length > 5;
-      
-      // Add follow-up question if there are more tips
-      if (hasMoreTips) {
-        messages.push({ 
-          type: 'follow-up', 
-          content: "What exactly are you having trouble with? I've got more tips if you need them!" 
-        });
-      }
-      
-      // Get 3 unique videos for this question (skip recently shown)
-      const recentVideoIds = new Set(shownVideoIds.slice(-15));  // Last 5 prompts * 3 videos
+      // Get up to 3 unique videos for this question (skip recently shown)
+      const recentVideoIds = new Set(shownVideoIds.slice(-15));
       const uniqueVideos: VideoReference[] = [];
       const seenIds = new Set<string>();
       
-      for (const tip of allTips) {
-        if (!tip.isPrimary && !recentVideoIds.has(tip.videoId) && !seenIds.has(tip.videoId)) {
+      // First pass: try to get videos not recently shown
+      for (const tip of availableTips) {
+        if (tip.videoId && !recentVideoIds.has(tip.videoId) && !seenIds.has(tip.videoId)) {
           uniqueVideos.push({
             videoId: tip.videoId,
             videoTitle: tip.videoTitle,
@@ -366,6 +389,35 @@ export default async function handler(
         }
       }
       
+      // Fallback: if no videos found, get ANY video with a valid videoId (even if recently shown)
+      if (uniqueVideos.length === 0) {
+        for (const tip of availableTips) {
+          if (tip.videoId && !seenIds.has(tip.videoId)) {
+            uniqueVideos.push({
+              videoId: tip.videoId,
+              videoTitle: tip.videoTitle,
+              timestamp: tip.timestamp,
+              url: `https://youtube.com/watch?v=${tip.videoId}`,
+              thumbnail: `https://img.youtube.com/vi/${tip.videoId}/hqdefault.jpg`,
+              duration: tip.duration,
+            });
+            seenIds.add(tip.videoId);
+            if (uniqueVideos.length >= 1) break;  // Just need at least 1
+          }
+        }
+      }
+      
+      // Check if there are more tips available
+      const hasMoreTips = availableTips.length > 3;
+      
+      // Add follow-up question if there are more tips
+      if (hasMoreTips) {
+        messages.push({ 
+          type: 'follow-up', 
+          content: "Want more tips? Just ask!" 
+        });
+      }
+      
       console.log('AI Response:', coachIntro.substring(0, 100) + '...');
       console.log(`Returning ${messages.length} messages, ${uniqueVideos.length} videos (hasMoreTips: ${hasMoreTips})`);
       
@@ -373,6 +425,7 @@ export default async function handler(
         messages,
         hasMoreTips,
         videos: uniqueVideos,
+        tipIdsShown,  // Return tip IDs so client can track them
       });
         
     } else {

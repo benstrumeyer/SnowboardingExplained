@@ -25,6 +25,7 @@ export interface ChatResponse {
   messages: ChatMessage[];
   hasMoreTips: boolean;
   videos: VideoReference[];  // 3 videos per question
+  tipIdsShown?: string[];    // Track which tips were shown
 }
 
 export interface ChatHistoryItem {

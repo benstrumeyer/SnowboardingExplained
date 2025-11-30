@@ -124,6 +124,7 @@ export default function ChatScreen() {
   const [sessionId] = useState(`session-${Date.now()}`);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const [shownVideoIds, setShownVideoIds] = useState<string[]>([]);
+  const [shownTipIds, setShownTipIds] = useState<string[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Auto-scroll to bottom
