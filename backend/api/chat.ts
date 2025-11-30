@@ -34,6 +34,7 @@ interface ChatRequest {
   message: string;
   sessionId: string;
   history?: { role: 'user' | 'coach'; content: string }[];
+  shownVideoIds?: string[];  // Track videos already shown to avoid repeats
 }
 
 interface VideoReference {
@@ -76,7 +77,7 @@ export default async function handler(
   }
   
   try {
-    const { message, sessionId, history = [] }: ChatRequest = req.body;
+    const { message, sessionId, history = [], shownVideoIds = [] }: ChatRequest = req.body;
     
     // If no message, return greeting
     if (!message || !message.trim()) {
@@ -90,14 +91,19 @@ export default async function handler(
     console.log('Message:', message);
     console.log('History length:', history.length);
     
-    // Step 1: Build context-aware search query
-    // For follow-up questions, include the conversation topic
-    const conversationTopic = extractConversationTopic(history);
-    const searchQuery = conversationTopic 
-      ? `${conversationTopic} ${message}` 
-      : message;
+    // Step 1: Check if current message mentions a new trick
+    // If so, use that. Otherwise fall back to conversation history.
+    const currentTopic = extractTrickFromMessage(message);
+    const historyTopic = currentTopic ? null : extractConversationTopic(history);
+    const activeTopic = currentTopic || historyTopic;
     
-    console.log('Conversation topic:', conversationTopic || 'none');
+    // For search: prioritize current message, add context only if no new topic
+    const searchQuery = currentTopic 
+      ? message  // New topic - search just the message
+      : (historyTopic ? `${historyTopic} ${message}` : message);  // Follow-up - add context
+    
+    console.log('Current topic:', currentTopic || 'none');
+    console.log('History topic:', historyTopic || 'none');
     console.log('Search query:', searchQuery);
     
     // Step 2: Search Pinecone with context-aware query
@@ -113,8 +119,9 @@ export default async function handler(
       : 'No specific video content found for this topic.';
     
     // Step 4: Build conversation context summary for the AI
-    const conversationContext = conversationTopic
-      ? `\n\nIMPORTANT CONTEXT: The user has been asking about "${conversationTopic}". Answer their follow-up question specifically in the context of ${conversationTopic}. Use your knowledge about this trick to give accurate answers.`
+    // Only add context if it's a follow-up (no new topic in current message)
+    const conversationContext = (!currentTopic && historyTopic)
+      ? `\n\nCONTEXT: User was asking about "${historyTopic}". Answer in that context.`
       : '';
     
     // Step 5: Build conversation history for Gemini
@@ -140,15 +147,31 @@ export default async function handler(
     
     console.log('AI Response:', responseText.substring(0, 200) + '...');
     
-    // Step 7: Get unique videos for references (max 3)
+    // Step 7: Get 1 video (or more if user asks), avoiding recent repeats
+    const wantsMoreVideos = /more video|show me video|give me video|videos please/i.test(message);
+    const videoCount = wantsMoreVideos ? 3 : 1;
+    
+    // Only avoid videos shown in last 5 prompts
+    const recentVideoIds = new Set(shownVideoIds.slice(-5));
+    
+    // Filter out recently-shown videos, then dedupe by videoId
     const videoMap = new Map<string, VideoSegment>();
     for (const seg of segments) {
-      if (!videoMap.has(seg.videoId)) {
+      if (!videoMap.has(seg.videoId) && !recentVideoIds.has(seg.videoId)) {
         videoMap.set(seg.videoId, seg);
       }
     }
+    
+    // If all videos were filtered out, allow repeats
+    if (videoMap.size === 0) {
+      for (const seg of segments) {
+        if (!videoMap.has(seg.videoId)) {
+          videoMap.set(seg.videoId, seg);
+        }
+      }
+    }
     const videos: VideoReference[] = Array.from(videoMap.values())
-      .slice(0, 3)
+      .slice(0, videoCount)
       .map(seg => ({
         videoId: seg.videoId,
         videoTitle: seg.videoTitle,
@@ -169,6 +192,55 @@ export default async function handler(
       message: error.message,
     });
   }
+}
+
+// Common trick patterns
+const TRICK_PATTERNS = [
+  /frontside\s*boardslide/i,
+  /backside\s*boardslide/i,
+  /boardslide/i,
+  /50-?50/i,
+  /5-?0/i,
+  /nose\s*slide/i,
+  /tail\s*slide/i,
+  /backside\s*\d+/i,
+  /frontside\s*\d+/i,
+  /bs\s*\d+/i,
+  /fs\s*\d+/i,
+  /switch\s+\w+/i,
+  /nollie\s+\w+/i,
+  /cab\s*\d*/i,
+  /method/i,
+  /indy/i,
+  /melon/i,
+  /stalefish/i,
+  /mute/i,
+  /tail\s*grab/i,
+  /nose\s*grab/i,
+  /180|360|540|720|900|1080/,
+  /carving/i,
+  /buttering/i,
+  /ollie/i,
+  /rail/i,
+  /box/i,
+  /jump/i,
+  /kicker/i,
+];
+
+/**
+ * Extract trick from a single message
+ */
+function extractTrickFromMessage(message: string): string | null {
+  for (const pattern of TRICK_PATTERNS) {
+    const match = message.match(pattern);
+    if (match) {
+      let topic = match[0].toLowerCase();
+      topic = topic.replace(/\bbs\b/i, 'backside');
+      topic = topic.replace(/\bfs\b/i, 'frontside');
+      return topic;
+    }
+  }
+  return null;
 }
 
 /**

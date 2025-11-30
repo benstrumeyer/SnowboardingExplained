@@ -30,7 +30,8 @@ export interface ChatHistoryItem {
 export async function sendMessage(
   message: string,
   sessionId: string,
-  history: ChatHistoryItem[] = []
+  history: ChatHistoryItem[] = [],
+  shownVideoIds: string[] = []
 ): Promise<ChatResponse> {
   try {
     const url = `${config.apiUrl}/api/chat`;
@@ -38,11 +39,13 @@ export async function sendMessage(
     console.log('URL:', url);
     console.log('Message:', message);
     console.log('History length:', history.length);
+    console.log('Shown videos:', shownVideoIds.length);
     
     const response = await axios.post(url, {
       message,
       sessionId,
       history,
+      shownVideoIds,
     }, {
       timeout: 60000, // 60s for AI response
       headers: {

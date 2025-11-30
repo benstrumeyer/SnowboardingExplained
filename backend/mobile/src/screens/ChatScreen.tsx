@@ -36,6 +36,7 @@ export default function ChatScreen() {
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(`session-${Date.now()}`);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
+  const [shownVideoIds, setShownVideoIds] = useState<string[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Auto-scroll to bottom
@@ -65,10 +66,14 @@ export default function ChatScreen() {
     setLoading(true);
     
     try {
-      const response = await sendMessage(userMessage, sessionId, chatHistory);
+      const response = await sendMessage(userMessage, sessionId, chatHistory, shownVideoIds);
       
       // Update history with coach response
       setChatHistory([...newHistory, { role: 'coach', content: response.response }]);
+      
+      // Track shown videos to avoid repeats
+      const newVideoIds = response.videos.map(v => v.videoId);
+      setShownVideoIds(prev => [...prev, ...newVideoIds]);
       
       // Add coach response to UI
       setMessages(prev => [...prev, {
@@ -102,6 +107,7 @@ export default function ChatScreen() {
   const handleNewChat = () => {
     setMessages([{ id: '1', text: GREETING, sender: 'coach' }]);
     setChatHistory([]);
+    setShownVideoIds([]);  // Reset shown videos for new chat
   };
 
   return (
