@@ -13,6 +13,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateEmbedding } from '../lib/gemini';
 import { searchVideoSegments, searchVideoSegmentsWithOptions, searchByTrickName, getTrickTutorialById, type EnhancedVideoSegment } from '../lib/pinecone';
 import { getEmbeddingCache, initializeEmbeddingCache } from '../lib/embedding-cache';
+import { getSession, addShownVideos, hasShownVideo, getShownVideos } from '../lib/session-store';
 
 // Available trick tutorials (specific tricks only, not foundational techniques)
 const AVAILABLE_TRICKS = [
@@ -216,7 +217,7 @@ export default async function handler(
   }
   
   try {
-    const { message, history = [], shownVideoIds = [], shownTipIds = [], currentTrick: passedTrick }: ChatRequest = req.body;
+    const { message, sessionId, history = [], shownVideoIds = [], shownTipIds = [], currentTrick: passedTrick }: ChatRequest = req.body;
     
     // If no message, return greeting
     if (!message || !message.trim()) {
@@ -226,11 +227,16 @@ export default async function handler(
       });
     }
     
+    // Get or create session
+    const session = getSession(sessionId);
+    const sessionShownVideos = getShownVideos(sessionId);
+    
     console.log('=== Chat API ===');
+    console.log('Session ID:', sessionId);
     console.log('Message:', message);
     console.log('History length:', history.length);
-    console.log('Shown video IDs count:', shownVideoIds?.length || 0);
-    console.log('Shown video IDs:', JSON.stringify(shownVideoIds));
+    console.log('Session videos shown count:', sessionShownVideos.length);
+    console.log('Session videos shown:', JSON.stringify(sessionShownVideos));
     console.log('Passed trick:', passedTrick || 'none');
     
     const client = getGeminiClient();
@@ -347,20 +353,19 @@ export default async function handler(
         .sort((a, b) => (a.stepNumber || 0) - (b.stepNumber || 0))
         .slice(0, 10);  // Max 10 steps
       
-      // Get up to 3 unique videos for this question (skip all previously shown)
-      const shownVideoSet = new Set(shownVideoIds);
+      // Get up to 3 unique videos for this question (skip all previously shown in this session)
       console.log('=== Video Filtering ===');
-      console.log('Shown videos set size:', shownVideoSet.size);
-      console.log('Shown videos:', JSON.stringify(Array.from(shownVideoSet)));
+      console.log('Session videos shown count:', sessionShownVideos.length);
+      console.log('Session videos shown:', JSON.stringify(sessionShownVideos));
       const uniqueVideos: VideoReference[] = [];
       const seenIds = new Set<string>();
       
-      // First pass: try to get videos from segments (excluding all previously shown)
+      // First pass: try to get videos from segments (excluding all previously shown in session)
       for (const seg of segments) {
-        const isShown = shownVideoSet.has(seg.videoId);
+        const isShown = hasShownVideo(sessionId, seg.videoId);
         const isSeen = seenIds.has(seg.videoId);
-        console.log(`Segment ${seg.videoId}: shown=${isShown}, seen=${isSeen}`);
-        if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId)) {
+        console.log(`Checking segment: videoId=${seg.videoId}, shown=${isShown}, seen=${isSeen}, title=${seg.videoTitle.substring(0, 30)}`);
+        if (seg.videoId && !hasShownVideo(sessionId, seg.videoId) && !seenIds.has(seg.videoId)) {
           uniqueVideos.push({
             videoId: seg.videoId,
             videoTitle: seg.videoTitle,
@@ -480,6 +485,17 @@ export default async function handler(
         });
       }
       
+      // Track these videos in the session so they won't be shown again
+      if (uniqueVideos.length > 0) {
+        const videoIds = uniqueVideos.map(v => v.videoId);
+        addShownVideos(sessionId, videoIds);
+        console.log(`Added ${videoIds.length} videos to session tracking`);
+      }
+      
+      // Log the response being sent
+      console.log('=== FINAL RESPONSE ===');
+      console.log('Videos in response:', uniqueVideos.map(v => v.videoId).join(', '));
+      
       return res.status(200).json({
         messages,
         hasMoreTips,
@@ -527,14 +543,13 @@ export default async function handler(
         tipIdsShown.push(tip.id);
       }
       
-      // Get up to 3 unique videos for this question (skip all previously shown)
-      const shownVideoSet = new Set(shownVideoIds);
+      // Get up to 3 unique videos for this question (skip all previously shown in session)
       const uniqueVideos: VideoReference[] = [];
       const seenIds = new Set<string>();
       
-      // First pass: try to get videos from available tips (excluding all previously shown)
+      // First pass: try to get videos from available tips (excluding all previously shown in session)
       for (const tip of availableTips) {
-        if (tip.videoId && !shownVideoSet.has(tip.videoId) && !seenIds.has(tip.videoId)) {
+        if (tip.videoId && !hasShownVideo(sessionId, tip.videoId) && !seenIds.has(tip.videoId)) {
           uniqueVideos.push({
             videoId: tip.videoId,
             videoTitle: tip.videoTitle,
@@ -548,10 +563,10 @@ export default async function handler(
         }
       }
       
-      // Second pass: if we have fewer than 3 videos, search through all relevant segments (excluding all previously shown)
+      // Second pass: if we have fewer than 3 videos, search through all relevant segments (excluding all previously shown in session)
       if (uniqueVideos.length < 3) {
         for (const seg of segments) {
-          if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId)) {
+          if (seg.videoId && !hasShownVideo(sessionId, seg.videoId) && !seenIds.has(seg.videoId)) {
             uniqueVideos.push({
               videoId: seg.videoId,
               videoTitle: seg.videoTitle,
@@ -606,6 +621,13 @@ export default async function handler(
         uniqueVideos.forEach((v, i) => {
           console.log(`  ${i + 1}. ${v.videoId} | ${v.videoTitle.substring(0, 40)}`);
         });
+      }
+      
+      // Track these videos in the session so they won't be shown again
+      if (uniqueVideos.length > 0) {
+        const videoIds = uniqueVideos.map(v => v.videoId);
+        addShownVideos(sessionId, videoIds);
+        console.log(`Added ${videoIds.length} videos to session tracking`);
       }
       
       return res.status(200).json({
