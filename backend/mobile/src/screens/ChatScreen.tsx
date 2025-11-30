@@ -116,11 +116,14 @@ export default function ChatScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={0}
     >
-      {/* Header */}
+      {/* Header - with space for hamburger menu */}
       <View style={tw`bg-gray-800 pt-12 pb-4 px-4 flex-row justify-between items-center`}>
-        <Text style={tw`text-white text-xl font-bold`}>
-          🏂 Taevis
-        </Text>
+        <View style={tw`flex-row items-center`}>
+          <View style={tw`w-10`} />{/* Space for hamburger menu */}
+          <Text style={tw`text-white text-xl font-bold`}>
+            🏂 Taevis
+          </Text>
+        </View>
         <TouchableOpacity onPress={handleNewChat}>
           <Text style={tw`text-blue-400`}>New Chat</Text>
         </TouchableOpacity>
