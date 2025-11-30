@@ -346,7 +346,7 @@ export default async function handler(
       const uniqueVideos: VideoReference[] = [];
       const seenIds = new Set<string>();
       
-      // First pass: try to get videos not recently shown
+      // First pass: try to get videos from segments
       for (const seg of segments) {
         if (seg.videoId && !recentVideoIds.has(seg.videoId) && !seenIds.has(seg.videoId)) {
           uniqueVideos.push({
@@ -362,9 +362,32 @@ export default async function handler(
         }
       }
       
-      // Second pass: if we have fewer than 3 videos, search through all segments more thoroughly
-      if (uniqueVideos.length < 3) {
-        for (const seg of segments) {
+      // Fallback: if no videos found from segments, check Taevis trick videos mapping
+      if (uniqueVideos.length === 0 && intent.intent === 'how-to-trick' && intent.trickId) {
+        const taevisVideos = TAEVIS_TRICK_VIDEOS[intent.trickId];
+        if (taevisVideos) {
+          console.log(`Using Taevis videos for ${intent.trickId}`);
+          for (const videoId of taevisVideos) {
+            if (!seenIds.has(videoId)) {
+              uniqueVideos.push({
+                videoId,
+                videoTitle: `Taevis - ${intent.trickId}`,
+                timestamp: 0,
+                url: `https://youtube.com/watch?v=${videoId}`,
+                thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+              });
+              seenIds.add(videoId);
+              if (uniqueVideos.length >= 3) break;
+            }
+          }
+        }
+      }
+      
+      // If still no videos and we have an embedding, do one broader search
+      if (uniqueVideos.length < 3 && queryEmbedding) {
+        console.log('No videos found, searching for related content...');
+        const relatedSegments = await searchVideoSegments(queryEmbedding, 50);
+        for (const seg of relatedSegments) {
           if (seg.videoId && !seenIds.has(seg.videoId)) {
             uniqueVideos.push({
               videoId: seg.videoId,
@@ -376,49 +399,6 @@ export default async function handler(
             });
             seenIds.add(seg.videoId);
             if (uniqueVideos.length >= 3) break;
-          }
-        }
-      }
-      
-      // Fallback: if still no videos, check Taevis trick videos mapping or do broader search
-      if (uniqueVideos.length < 3) {
-        if (intent.intent === 'how-to-trick' && intent.trickId) {
-          const taevisVideos = TAEVIS_TRICK_VIDEOS[intent.trickId];
-          if (taevisVideos) {
-            console.log(`Using Taevis videos for ${intent.trickId}`);
-            for (const videoId of taevisVideos) {
-              if (!seenIds.has(videoId)) {
-                uniqueVideos.push({
-                  videoId,
-                  videoTitle: `Taevis - ${intent.trickId}`,
-                  timestamp: 0,
-                  url: `https://youtube.com/watch?v=${videoId}`,
-                  thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-                });
-                seenIds.add(videoId);
-                if (uniqueVideos.length >= 3) break;
-              }
-            }
-          }
-        }
-        
-        // If still no videos and we have an embedding, do one broader search
-        if (uniqueVideos.length < 3 && queryEmbedding) {
-          console.log('No videos found, searching for related content...');
-          const relatedSegments = await searchVideoSegments(queryEmbedding, 50);
-          for (const seg of relatedSegments) {
-            if (seg.videoId && !seenIds.has(seg.videoId)) {
-              uniqueVideos.push({
-                videoId: seg.videoId,
-                videoTitle: seg.videoTitle,
-                timestamp: seg.timestamp,
-                url: `https://youtube.com/watch?v=${seg.videoId}`,
-                thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
-                duration: seg.duration,
-              });
-              seenIds.add(seg.videoId);
-              if (uniqueVideos.length >= 3) break;
-            }
           }
         }
       }
