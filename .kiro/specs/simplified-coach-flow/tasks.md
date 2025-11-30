@@ -29,7 +29,10 @@
     - _Requirements: 2.3, 2.4, 3.1, 3.2, 3.3, 3.4_
 
 - [ ] 4. Update Chat API
-  - [-] 4.1 Modify chat.ts to use simplified flow
+  - [x] 4.1 Modify chat.ts to use simplified flow
+
+
+
 
     - Bypass multi-question flow
     - Use query interpreter for AI interpretation

@@ -12,23 +12,26 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateEmbedding } from '../lib/gemini';
 import { searchVideoSegments } from '../lib/pinecone';
-import type { VideoSegment } from '../lib/types';
+// VideoSegment type imported for reference but segments come from Pinecone search
 
-const COACH_SYSTEM_PROMPT = `You are Taevis, a chill snowboard coach.
+const COACH_INTRO_PROMPT = `You are Taevis, a chill snowboard coach. Generate ONLY a brief friendly intro (1-2 sentences max) acknowledging what the user wants to work on.
 
-Style:
-- Short, punchy responses (2-4 sentences max for simple questions)
-- Friendly but not overly wordy
-- Get to the point quickly
-- Use simple language
+Examples:
+- "Nice! Backside 180s are super fun once you get them dialed."
+- "Ah, edge catching - that's frustrating but totally fixable."
+- "Frontside boardslides! Let's get you sliding."
 
 Rules:
-- Keep it brief and digestible
-- No citation markers like [1], [2]
-- No markdown formatting
-- Plain text only
-- If listing tips, use short bullet points
-- Answer yes/no questions directly first, then explain briefly`;
+- Just the intro, nothing else
+- No tips or advice yet
+- Keep it casual and encouraging
+- No markdown, plain text only`;
+
+const COACH_TRANSITION_PROMPT = `You are Taevis. Write a single short sentence to transition to tips. Examples:
+- "Here's what I'd focus on:"
+- "Check out these tips:"
+- "Here's what'll help:"
+Keep it to one short line.`;
 
 interface ChatRequest {
   message: string;
@@ -45,10 +48,7 @@ interface VideoReference {
   thumbnail: string;
 }
 
-interface ChatResponse {
-  response: string;
-  videos: VideoReference[];
-}
+// Response shape: { response: string, videos: VideoReference[] }
 
 let genAI: GoogleGenerativeAI | null = null;
 
@@ -77,7 +77,7 @@ export default async function handler(
   }
   
   try {
-    const { message, sessionId, history = [], shownVideoIds = [] }: ChatRequest = req.body;
+    const { message, history = [], shownVideoIds = [] }: ChatRequest = req.body;
     
     // If no message, return greeting
     if (!message || !message.trim()) {
@@ -91,11 +91,9 @@ export default async function handler(
     console.log('Message:', message);
     console.log('History length:', history.length);
     
-    // Step 1: Check if current message mentions a new trick
-    // If so, use that. Otherwise fall back to conversation history.
+    // Step 1: Determine search query with context awareness
     const currentTopic = extractTrickFromMessage(message);
     const historyTopic = currentTopic ? null : extractConversationTopic(history);
-    const activeTopic = currentTopic || historyTopic;
     
     // For search: prioritize current message, add context only if no new topic
     const searchQuery = currentTopic 
@@ -111,73 +109,69 @@ export default async function handler(
     const segments = await searchVideoSegments(queryEmbedding, 8);
     console.log(`Found ${segments.length} relevant segments`);
     
-    // Step 3: Build context from segments
-    const knowledgeContext = segments.length > 0
-      ? `Here's relevant content from your videos:\n\n${segments.map((seg, i) => 
-          `[${i + 1}] From "${seg.videoTitle}" (${formatTimestamp(seg.timestamp)}):\n"${seg.text}"`
-        ).join('\n\n')}`
-      : 'No specific video content found for this topic.';
-    
-    // Step 4: Build conversation context summary for the AI
-    // Only add context if it's a follow-up (no new topic in current message)
-    const conversationContext = (!currentTopic && historyTopic)
-      ? `\n\nCONTEXT: User was asking about "${historyTopic}". Answer in that context.`
-      : '';
-    
-    // Step 5: Build conversation history for Gemini
-    const conversationHistory = history.map(h => ({
-      role: h.role === 'user' ? 'user' : 'model',
-      parts: [{ text: h.content }],
-    }));
-    
-    // Step 6: Generate response with Gemini
+    // Step 3: Generate AI intro (just the friendly acknowledgment)
     const client = getGeminiClient();
     const model = client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
     
-    const chat = model.startChat({
-      history: conversationHistory as any,
-    });
+    const introPrompt = `${COACH_INTRO_PROMPT}\n\nUser asked: "${message}"`;
+    const introResult = await model.generateContent(introPrompt);
+    const coachIntro = cleanResponse(introResult.response.text());
     
-    const prompt = `${COACH_SYSTEM_PROMPT}${conversationContext}\n\n${knowledgeContext}\n\nUser: ${message}\n\nRespond as Taevis:`;
-    const result = await chat.sendMessage(prompt);
-    let responseText = result.response.text();
+    // Step 4: Extract verbatim tips from Pinecone segments
+    // Tips come directly from transcript text - no AI paraphrasing
+    const verbatimTips = segments.slice(0, 5).map(seg => ({
+      tip: seg.text.trim(),
+      videoId: seg.videoId,
+      videoTitle: seg.videoTitle,
+      timestamp: seg.timestamp,
+    }));
     
-    // Clean up any citation markers the AI might have included
-    responseText = cleanResponse(responseText);
+    // Step 5: Build the response with verbatim tips
+    let responseText = coachIntro;
+    
+    if (verbatimTips.length > 0) {
+      // Add transition
+      const transitionResult = await model.generateContent(COACH_TRANSITION_PROMPT);
+      const transition = cleanResponse(transitionResult.response.text());
+      
+      responseText += `\n\n${transition}\n\n`;
+      responseText += verbatimTips.map((t, i) => `${i + 1}. ${t.tip}`).join('\n\n');
+    } else {
+      responseText += "\n\nHmm, I don't have specific tips for that in my videos yet. Try asking about a specific trick like backside 180s, frontside boardslides, or buttering!";
+    }
     
     console.log('AI Response:', responseText.substring(0, 200) + '...');
     
-    // Step 7: Get 1 video (or more if user asks), avoiding recent repeats
-    const wantsMoreVideos = /more video|show me video|give me video|videos please/i.test(message);
-    const videoCount = wantsMoreVideos ? 3 : 1;
-    
+    // Step 6: Build video references from the tips we used
     // Only avoid videos shown in last 5 prompts
     const recentVideoIds = new Set(shownVideoIds.slice(-5));
     
-    // Filter out recently-shown videos, then dedupe by videoId
-    const videoMap = new Map<string, VideoSegment>();
-    for (const seg of segments) {
-      if (!videoMap.has(seg.videoId) && !recentVideoIds.has(seg.videoId)) {
-        videoMap.set(seg.videoId, seg);
+    // Dedupe videos by videoId, avoiding recent repeats
+    const videoMap = new Map<string, typeof verbatimTips[0]>();
+    for (const tip of verbatimTips) {
+      if (!videoMap.has(tip.videoId) && !recentVideoIds.has(tip.videoId)) {
+        videoMap.set(tip.videoId, tip);
       }
     }
     
     // If all videos were filtered out, allow repeats
     if (videoMap.size === 0) {
-      for (const seg of segments) {
-        if (!videoMap.has(seg.videoId)) {
-          videoMap.set(seg.videoId, seg);
+      for (const tip of verbatimTips) {
+        if (!videoMap.has(tip.videoId)) {
+          videoMap.set(tip.videoId, tip);
         }
       }
     }
+    
+    // Return up to 3 unique videos (no repeats within 5 prompts)
     const videos: VideoReference[] = Array.from(videoMap.values())
-      .slice(0, videoCount)
-      .map(seg => ({
-        videoId: seg.videoId,
-        videoTitle: seg.videoTitle,
-        timestamp: seg.timestamp,
-        url: `https://youtube.com/watch?v=${seg.videoId}&t=${Math.floor(seg.timestamp)}s`,
-        thumbnail: `https://img.youtube.com/vi/${seg.videoId}/maxresdefault.jpg`,
+      .slice(0, 3)
+      .map(tip => ({
+        videoId: tip.videoId,
+        videoTitle: tip.videoTitle,
+        timestamp: tip.timestamp,
+        url: `https://youtube.com/watch?v=${tip.videoId}&t=${Math.floor(tip.timestamp)}s`,
+        thumbnail: `https://img.youtube.com/vi/${tip.videoId}/maxresdefault.jpg`,
       }));
     
     return res.status(200).json({
@@ -299,12 +293,6 @@ function extractConversationTopic(history: { role: string; content: string }[]):
   }
   
   return null;
-}
-
-function formatTimestamp(seconds: number): string {
-  const mins = Math.floor(seconds / 60);
-  const secs = Math.floor(seconds % 60);
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
 /**
