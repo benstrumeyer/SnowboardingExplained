@@ -157,6 +157,7 @@ export default function ChatScreen() {
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(`session-${Date.now()}`);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
+  const [shownVideoIds, setShownVideoIds] = useState<string[]>([]);
   const [shownTipIds, setShownTipIds] = useState<string[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -187,11 +188,15 @@ export default function ChatScreen() {
     setLoading(true);
     
     try {
-      const response = await sendMessage(userMessage, sessionId, chatHistory, [], shownTipIds);
+      const response = await sendMessage(userMessage, sessionId, chatHistory, shownVideoIds, shownTipIds);
       
       // Update history with combined coach response for context
       const combinedResponse = response.messages.map(m => m.content).join('\n');
       setChatHistory([...newHistory, { role: 'coach', content: combinedResponse }]);
+      
+      // Track shown videos to never repeat them
+      const newVideoIds = response.videos?.map(v => v.videoId) || [];
+      setShownVideoIds(prev => [...prev, ...newVideoIds]);
       
       // Track shown tips to never repeat them
       const newTipIds = response.tipIdsShown || [];
