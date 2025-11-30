@@ -496,17 +496,28 @@ export default async function handler(
       
       // Get all videos for this trick from cache
       const trickNameToSearch = intent.trickId || '';
-      console.log(`Looking up videos for trick: ${trickNameToSearch}`);
+      console.log(`\n=== PRIMARY TUTORIAL PATH ===`);
+      console.log(`Looking up videos for trick: "${trickNameToSearch}"`);
+      console.log(`Intent trickId: "${intent.trickId}"`);
       
       const allTrickVideos = getTrickVideos(trickNameToSearch);
-      console.log(`Found ${allTrickVideos.length} videos for ${trickNameToSearch}`);
+      console.log(`Found ${allTrickVideos.length} videos for "${trickNameToSearch}"`);
+      if (allTrickVideos.length > 0) {
+        console.log(`Video IDs: ${allTrickVideos.map(v => v.videoId).join(', ')}`);
+      }
       
       // Log the response being sent
       console.log('=== FINAL RESPONSE (Primary Tutorial) ===');
-      console.log('Total trick videos available:', allTrickVideos.length);
+      console.log('Total trick videos to return:', allTrickVideos.length);
       if (allTrickVideos.length > 0) {
-        console.log('Videos:', allTrickVideos.map(v => v.videoId).join(', '));
+        console.log('Video IDs being returned:', allTrickVideos.map(v => v.videoId).join(', '));
       }
+      console.log('Response object:', JSON.stringify({
+        messagesCount: messages.length,
+        hasMoreTips,
+        videosCount: allTrickVideos.length,
+        currentTrick: activeTrick,
+      }));
       
       return res.status(200).json({
         messages,

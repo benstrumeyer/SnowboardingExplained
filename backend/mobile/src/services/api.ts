@@ -75,6 +75,9 @@ export async function sendMessage(
     console.log('Messages:', response.data.messages?.length);
     console.log('Has more tips:', response.data.hasMoreTips);
     console.log('Videos count:', response.data.videos ? response.data.videos.length : 'undefined');
+    if (response.data.videos && response.data.videos.length > 0) {
+      console.log('Video IDs received:', response.data.videos.map((v: any) => v.videoId).join(', '));
+    }
     
     return response.data;
   } catch (error: any) {

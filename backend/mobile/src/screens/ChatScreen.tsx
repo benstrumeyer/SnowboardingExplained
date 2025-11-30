@@ -225,6 +225,11 @@ export default function ChatScreen() {
       
       // Show all videos returned by backend
       const videosToShow = response.videos || [];
+      console.log('=== ChatScreen Video Processing ===');
+      console.log('Videos received from API:', videosToShow.length);
+      if (videosToShow.length > 0) {
+        console.log('Video IDs:', videosToShow.map(v => v.videoId).join(', '));
+      }
       
       // Track shown tips to never repeat them
       const newTipIds = response.tipIdsShown || [];
@@ -258,7 +263,10 @@ export default function ChatScreen() {
         // Show videos after the last message in the response
         const isLast = i === response.messages.length - 1;
         if (isLast && videosToShow.length > 0) {
+          console.log(`Attaching ${videosToShow.length} videos to last message`);
           uiMessage.videos = videosToShow;
+        } else if (isLast) {
+          console.log('Last message but no videos to attach');
         }
         
         setMessages(prev => [...prev, uiMessage]);
