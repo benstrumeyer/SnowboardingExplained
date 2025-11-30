@@ -302,7 +302,8 @@ function extractConversationTopic(history: { role: string; content: string }[]):
 
 /**
  * Filter segments to match the specific trick requested
- * e.g., "frontside 180" should NOT include "frontside 360" videos
+ * e.g., "frontside 180" should NOT include "frontside 360" content
+ * Checks BOTH video title AND transcript text
  */
 function filterSegmentsByTrick(
   segments: { videoTitle: string; text: string; videoId: string; timestamp: number }[],
@@ -318,26 +319,36 @@ function filterSegmentsByTrick(
   const direction = requestedTrick.match(/frontside|backside|fs|bs/i)?.[0]?.toLowerCase();
   const normalizedDirection = direction?.replace(/^fs$/i, 'frontside').replace(/^bs$/i, 'backside');
   
+  const otherRotations = ['180', '360', '540', '720', '900', '1080'].filter(r => r !== requestedRotation);
+  
   return segments.filter(seg => {
     const title = seg.videoTitle.toLowerCase();
     const text = seg.text.toLowerCase();
     
-    // If user asked for a specific rotation (e.g., 180), exclude other rotations
+    // If user asked for a specific rotation (e.g., 180), exclude content about other rotations
     if (requestedRotation) {
-      const otherRotations = ['180', '360', '540', '720', '900', '1080'].filter(r => r !== requestedRotation);
       for (const rot of otherRotations) {
-        // Exclude if title contains a different rotation
+        // Exclude if title mentions a different rotation
         if (title.includes(rot) && !title.includes(requestedRotation)) {
+          return false;
+        }
+        // Exclude if text content mentions a different rotation prominently
+        // Check for patterns like "frontside 360" or "backside 360" in the text
+        const wrongTrickPattern = new RegExp(`(frontside|backside|fs|bs)\\s*${rot}`, 'i');
+        if (wrongTrickPattern.test(text)) {
           return false;
         }
       }
     }
     
-    // If user asked for frontside, exclude backside-specific videos (and vice versa)
+    // If user asked for frontside, exclude backside-specific content (and vice versa)
     if (normalizedDirection === 'frontside') {
       if (title.includes('backside') && !title.includes('frontside')) return false;
+      // Also check text for backside tricks with rotations
+      if (requestedRotation && text.includes(`backside ${requestedRotation}`)) return false;
     } else if (normalizedDirection === 'backside') {
       if (title.includes('frontside') && !title.includes('backside')) return false;
+      if (requestedRotation && text.includes(`frontside ${requestedRotation}`)) return false;
     }
     
     return true;
