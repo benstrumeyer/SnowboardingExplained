@@ -11,7 +11,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateEmbedding } from '../lib/gemini';
-import { searchVideoSegments, searchVideoSegmentsWithOptions, type EnhancedVideoSegment } from '../lib/pinecone';
+import { searchVideoSegments, searchVideoSegmentsWithOptions, searchByTrickName, type EnhancedVideoSegment } from '../lib/pinecone';
 
 // Available trick tutorials (specific tricks only, not foundational techniques)
 const AVAILABLE_TRICKS = [
@@ -479,7 +479,37 @@ export default async function handler(
         }
       }
       
-      // Third pass: if still no videos, do a broader search for related content from all videos
+      // Third pass: if still no videos, search Taevis videos by trickName
+      if (uniqueVideos.length < 3) {
+        // Get the trickName from available tips
+        const trickNames = new Set(availableTips
+          .filter(t => t.trickName)
+          .map(t => t.trickName));
+        
+        if (trickNames.size > 0) {
+          console.log(`Searching Taevis videos for trickNames: ${Array.from(trickNames).join(', ')}`);
+          for (const trickName of trickNames) {
+            if (uniqueVideos.length >= 3) break;
+            const taevisSegments = await searchByTrickName(queryEmbedding, trickName, 50);
+            for (const seg of taevisSegments) {
+              if (seg.videoId && !seenIds.has(seg.videoId)) {
+                uniqueVideos.push({
+                  videoId: seg.videoId,
+                  videoTitle: seg.videoTitle,
+                  timestamp: seg.timestamp,
+                  url: `https://youtube.com/watch?v=${seg.videoId}`,
+                  thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
+                  duration: seg.duration,
+                });
+                seenIds.add(seg.videoId);
+                if (uniqueVideos.length >= 3) break;
+              }
+            }
+          }
+        }
+      }
+      
+      // Fourth pass: if still no videos, do a broader search for related content from all videos
       if (uniqueVideos.length < 3) {
         console.log(`Only ${uniqueVideos.length} videos found, searching all videos for related content...`);
         const relatedSegments = await searchVideoSegments(queryEmbedding, 100);
