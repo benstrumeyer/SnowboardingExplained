@@ -223,7 +223,7 @@ export default function ChatScreen() {
       const combinedResponse = response.messages.map(m => m.content).join('\n');
       setChatHistory([...newHistory, { role: 'coach', content: combinedResponse }]);
       
-      // Just show all videos returned by backend
+      // Show all videos returned by backend
       const videosToShow = response.videos || [];
       
       // Track shown tips to never repeat them
