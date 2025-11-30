@@ -104,9 +104,14 @@ export default async function handler(
     console.log('History topic:', historyTopic || 'none');
     console.log('Search query:', searchQuery);
     
+    // Check if user is asking for more videos
+    const wantsMoreVideos = /(\d+)\s*video|more video|show.*video|give.*video|videos please/i.test(message);
+    const requestedVideoCount = message.match(/(\d+)\s*video/i)?.[1];
+    const videoCount = requestedVideoCount ? Math.min(parseInt(requestedVideoCount), 10) : (wantsMoreVideos ? 5 : 3);
+    
     // Step 2: Search Pinecone with context-aware query
     const queryEmbedding = await generateEmbedding(searchQuery);
-    const rawSegments = await searchVideoSegments(queryEmbedding, 15);  // Get more to filter
+    const rawSegments = await searchVideoSegments(queryEmbedding, Math.max(20, videoCount * 3));  // Get more to filter
     console.log(`Found ${rawSegments.length} raw segments`);
     
     // Step 2.5: Filter segments to match the specific trick requested
@@ -168,9 +173,9 @@ export default async function handler(
       }
     }
     
-    // Return up to 3 unique videos (no repeats within 5 prompts)
+    // Return videos based on request (default 3, up to 10 if asked)
     const videos: VideoReference[] = Array.from(videoMap.values())
-      .slice(0, 3)
+      .slice(0, videoCount)
       .map(tip => ({
         videoId: tip.videoId,
         videoTitle: tip.videoTitle,
