@@ -113,7 +113,7 @@ export default async function handler(
     
     // Step 4: Generate response with Gemini
     const client = getGeminiClient();
-    const model = client.getGenerativeModel({ model: 'gemini-1.5-flash-8b' });
+    const model = client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
     
     const chat = model.startChat({
       history: conversationHistory as any,

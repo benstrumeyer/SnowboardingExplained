@@ -45,7 +45,7 @@ export async function interpretQuery(userInput: string): Promise<InterpretedQuer
 
   try {
     const client = getGeminiClient();
-    const model = client.getGenerativeModel({ model: 'gemini-1.5-flash-8b' });
+    const model = client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
     
     const prompt = getInterpretationPrompt(trimmedInput);
     const result = await model.generateContent(prompt);
