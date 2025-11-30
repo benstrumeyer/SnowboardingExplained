@@ -15,9 +15,15 @@ export interface VideoReference {
   duration?: number;  // Total video duration in seconds
 }
 
+export interface ChatMessage {
+  type: 'text' | 'tip' | 'follow-up';
+  content: string;
+  video?: VideoReference;
+}
+
 export interface ChatResponse {
-  response: string;
-  videos: VideoReference[];
+  messages: ChatMessage[];
+  hasMoreTips: boolean;
 }
 
 export interface ChatHistoryItem {
@@ -55,8 +61,8 @@ export async function sendMessage(
     });
     
     console.log('=== API Response ===');
-    console.log('Response length:', response.data.response?.length);
-    console.log('Videos:', response.data.videos?.length);
+    console.log('Messages:', response.data.messages?.length);
+    console.log('Has more tips:', response.data.hasMoreTips);
     
     return response.data;
   } catch (error: any) {
