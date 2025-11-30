@@ -667,29 +667,49 @@ function filterSegmentsByTrick(
       
       // Check for different rotations - these are NOT matches
       let isDifferentTrick = false;
+      
+      // If user asked for a specific rotation (180, 360, etc.), be VERY strict
       if (requestedRotation) {
+        // Check if title/text mentions ANY other rotation
         for (const rot of otherRotations) {
           // Exclude if title mentions a different rotation
-          if (title.includes(rot) && !title.includes(requestedRotation)) {
+          if (title.includes(rot)) {
             isDifferentTrick = true;
             break;
           }
-          // Exclude if text content mentions a different rotation prominently
-          const wrongTrickPattern = new RegExp(`(frontside|backside|fs|bs)\\s*${rot}`, 'i');
+          // Exclude if text content mentions a different rotation
+          const wrongTrickPattern = new RegExp(`\\b${rot}\\b`, 'i');
           if (wrongTrickPattern.test(text)) {
             isDifferentTrick = true;
             break;
           }
+        }
+        
+        // Also check if it mentions the requested rotation - if not, it might be about a different trick
+        if (!isDifferentTrick && !title.includes(requestedRotation) && !text.includes(requestedRotation)) {
+          // If it's a rotation trick but doesn't mention the rotation, it's probably not relevant
+          isDifferentTrick = true;
         }
       }
       
       // Check for opposite direction
       if (!isDifferentTrick && normalizedDirection === 'frontside') {
         if (title.includes('backside') && !title.includes('frontside')) isDifferentTrick = true;
-        if (requestedRotation && text.includes(`backside ${requestedRotation}`)) isDifferentTrick = true;
       } else if (!isDifferentTrick && normalizedDirection === 'backside') {
         if (title.includes('frontside') && !title.includes('backside')) isDifferentTrick = true;
-        if (requestedRotation && text.includes(`frontside ${requestedRotation}`)) isDifferentTrick = true;
+      }
+      
+      // For non-rotation tricks like boardslides, check if it's about a different trick type
+      if (!isDifferentTrick && !requestedRotation) {
+        // If user asked for boardslide, exclude rotation tricks
+        if (normalizedRequest.includes('boardslide') || normalizedRequest.includes('slide')) {
+          for (const rot of ['180', '360', '540', '720', '900', '1080']) {
+            if (title.includes(rot) || text.includes(rot)) {
+              isDifferentTrick = true;
+              break;
+            }
+          }
+        }
       }
       
       if (isDifferentTrick) {
