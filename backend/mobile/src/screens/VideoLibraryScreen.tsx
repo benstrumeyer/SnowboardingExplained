@@ -1,7 +1,7 @@
 /**
  * Video Library Screen
- * Grid of all Taevis videos with search functionality
- * Animated video cards with staggered fade-in
+ * Carousel of all Taevis videos with search functionality
+ * Swipeable cards with snap carousel
  */
 
 import React, { useState, useEffect, useMemo, useRef } from 'react';
@@ -9,18 +9,30 @@ import {
   View,
   Text,
   TextInput,
-  FlatList,
   TouchableOpacity,
   Image,
   Linking,
   ActivityIndicator,
-  Animated,
   Modal,
-  ScrollView,
+  Dimensions,
+  FlatList,
 } from 'react-native';
+import { useSelector } from 'react-redux';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
+import Carousel from 'react-native-snap-carousel-v4';
 import tw from 'twrnc';
 import { API_URL } from '../config';
+import { useAppDispatch } from '../hooks/useAppDispatch';
+import type { RootState } from '../store/store';
+import {
+  setSelectedVideo,
+  setIsModalOpen,
+  setCarouselVideos,
+  setSelectedVideoIndex,
+  resetVideoState,
+} from '../store/videoSlice';
+import VideoCard from '../components/VideoCard';
+import VideoCardSkeleton from '../components/VideoCardSkeleton';
 
 interface Video {
   videoId: string;
@@ -38,71 +50,42 @@ interface VideoDetails {
   tips: string[];
 }
 
-// Animated video card component
-function AnimatedVideoCard({
-  children,
-  index,
-}: {
-  children: React.ReactNode;
-  index: number;
-}) {
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const translateX = useRef(new Animated.Value(12)).current;  // Start from right
-  const translateY = useRef(new Animated.Value(12)).current;  // Start from bottom
-
-  useEffect(() => {
-    // Wave animation: left to right, top to bottom
-    // Row delay + column delay creates diagonal wave effect
-    const row = Math.floor(index / 3);
-    const col = index % 3;
-    const delay = col * 60 + row * 40;  // Smooth wave timing
-    
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        delay,
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateX, {
-        toValue: 0,
-        duration: 300,
-        delay,
-        useNativeDriver: true,
-      }),
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: 300,
-        delay,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [index]);
-
-  return (
-    <Animated.View
-      style={{
-        opacity: fadeAnim,
-        transform: [{ translateX }, { translateY }],
-      }}
-    >
-      {children}
-    </Animated.View>
-  );
-}
-
 export default function VideoLibraryScreen() {
+  const dispatch = useAppDispatch();
+  const { selectedVideo, isModalOpen, carouselVideos, selectedVideoIndex } = useSelector(
+    (state: RootState) => state.video
+  );
+
   const [videos, setVideos] = useState<Video[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedVideo, setSelectedVideo] = useState<VideoDetails | null>(null);
-  const [modalLoading, setModalLoading] = useState(false);
+  const [loadingVideoIds, setLoadingVideoIds] = useState<Set<string>>(new Set());
+  const carouselRef = useRef<Carousel<any>>(null);
+  const { width: screenWidth } = Dimensions.get('window');
 
   // Fetch videos on mount
   useEffect(() => {
     fetchVideos();
   }, []);
+
+  // Snap carousel to the selected index when modal opens or index changes
+  useEffect(() => {
+    if (isModalOpen && carouselRef.current && selectedVideoIndex >= 0 && carouselVideos.length > 0) {
+      setTimeout(() => {
+        carouselRef.current?.snapToItem(selectedVideoIndex, false);
+      }, 100);
+    }
+  }, [isModalOpen, selectedVideoIndex, carouselVideos.length]);
+
+  // Update carousel data when selectedVideo changes (from API fetch)
+  useEffect(() => {
+    if (selectedVideo && carouselVideos.length > 0 && selectedVideoIndex >= 0) {
+      const updatedCarousel = [...carouselVideos];
+      updatedCarousel[selectedVideoIndex] = selectedVideo;
+      dispatch(setCarouselVideos(updatedCarousel));
+    }
+  }, [selectedVideo, selectedVideoIndex]);
 
   const fetchVideos = async () => {
     try {
@@ -136,80 +119,88 @@ export default function VideoLibraryScreen() {
 
   const fetchVideoDetails = async (videoId: string) => {
     try {
-      setModalLoading(true);
+      setLoadingVideoIds(prev => new Set(prev).add(videoId));
+      console.log('Fetching details for videoId:', videoId);
       const response = await fetch(`${API_URL}/api/video-details?videoId=${videoId}`);
       const data = await response.json();
-      setSelectedVideo(data);
+      console.log('Received video details:', data);
+      dispatch(setSelectedVideo(data));
+      setLoadingVideoIds(prev => {
+        const next = new Set(prev);
+        next.delete(videoId);
+        return next;
+      });
     } catch (err) {
       console.error('Error fetching video details:', err);
-    } finally {
-      setModalLoading(false);
+      setLoadingVideoIds(prev => {
+        const next = new Set(prev);
+        next.delete(videoId);
+        return next;
+      });
     }
   };
 
+  const handleVideoCardPress = (videoId: string) => {
+    // Clear everything first for clean state
+    dispatch(setSelectedVideo(null));
+    dispatch(setCarouselVideos([]));
+    
+    // Load carousel with filtered videos in grid order
+    const videoDetailsArray: VideoDetails[] = filteredVideos.map(v => ({
+      ...v,
+      duration: 0,
+      tips: [],
+    }));
+    dispatch(setCarouselVideos(videoDetailsArray));
+    
+    // Find the clicked video's index in the filtered list
+    const clickedIndex = filteredVideos.findIndex(v => v.videoId === videoId);
+    dispatch(setSelectedVideoIndex(clickedIndex >= 0 ? clickedIndex : 0));
+    
+    dispatch(setIsModalOpen(true));
+    fetchVideoDetails(videoId);
+  };
+
+  const closeModal = () => {
+    dispatch(resetVideoState());
+    dispatch(setIsModalOpen(false));
+  };
+
   const formatDuration = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
+    const hours = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
+    
+    if (hours > 0) {
+      return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Use smaller thumbnail (mqdefault = 320x180, much faster than maxresdefault)
-  const getSmallThumbnail = (videoId: string) =>
-    `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
-
-  // Switch to full-width cards when less than 20 videos
-  const useFullWidth = filteredVideos.length < 20;
-
-  // Grid view (3 columns) for many videos
-  const renderGridVideo = ({ item, index }: { item: Video; index: number }) => (
+  // Grid card renderer
+  const renderGridVideo = ({ item }: { item: Video }) => (
     <View style={tw`flex-1 m-1`}>
-      <AnimatedVideoCard index={index}>
-        <TouchableOpacity
-          onPress={() => fetchVideoDetails(item.videoId)}
-          activeOpacity={0.8}
-        >
-          <View style={tw`bg-gray-800 rounded-lg overflow-hidden`}>
-            <Image
-              source={{ uri: getSmallThumbnail(item.videoId) }}
-              style={{ width: '100%', aspectRatio: 16 / 9 }}
-              resizeMode="cover"
-            />
-            <View style={tw`p-2`}>
-              <Text style={tw`text-white text-xs`} numberOfLines={2}>
-                {item.title}
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      </AnimatedVideoCard>
-    </View>
-  );
-
-  // Full-width card for fewer videos (horizontal layout, 1/3 thumbnail + 2/3 text)
-  const renderFullWidthVideo = ({ item, index }: { item: Video; index: number }) => (
-    <AnimatedVideoCard index={index}>
       <TouchableOpacity
-        style={tw`mx-2 my-1`}
-        onPress={() => fetchVideoDetails(item.videoId)}
+        onPress={() => handleVideoCardPress(item.videoId)}
         activeOpacity={0.8}
       >
-        <View style={tw`bg-gray-800 rounded-lg overflow-hidden flex-row h-20`}>
-          <View style={{ flex: 1 }}>
-            <Image
-              source={{ uri: getSmallThumbnail(item.videoId) }}
-              style={{ width: '100%', height: '100%' }}
-              resizeMode="cover"
-            />
-          </View>
-          <View style={[tw`p-3 justify-center`, { flex: 2 }]}>
-            <Text style={tw`text-white text-sm`} numberOfLines={2}>
+        <View style={tw`bg-gray-800 rounded-lg overflow-hidden`}>
+          <Image
+            source={{ uri: `https://img.youtube.com/vi/${item.videoId}/hqdefault.jpg` }}
+            style={{ width: '100%', aspectRatio: 16 / 9 }}
+            resizeMode="cover"
+          />
+          <View style={tw`p-2`}>
+            <Text style={tw`text-white text-xs`} numberOfLines={2}>
               {item.title}
             </Text>
           </View>
         </View>
       </TouchableOpacity>
-    </AnimatedVideoCard>
+    </View>
   );
+
+
 
   return (
     <View style={tw`flex-1 bg-gray-900`}>
@@ -253,30 +244,16 @@ export default function VideoLibraryScreen() {
             <Text style={tw`text-white font-bold`}>Retry</Text>
           </TouchableOpacity>
         </View>
-      ) : useFullWidth ? (
-        <FlatList
-          key="full-width"
-          data={filteredVideos}
-          renderItem={renderFullWidthVideo}
-          keyExtractor={(item) => item.videoId}
-          contentContainerStyle={tw`pb-4`}
-          showsVerticalScrollIndicator={false}
-          initialNumToRender={12}
-          maxToRenderPerBatch={9}
-          windowSize={5}
-          ListEmptyComponent={
-            <View style={tw`flex-1 items-center justify-center py-20`}>
-              <Text style={tw`text-gray-400 text-center`}>
-                {searchQuery
-                  ? `No videos found for "${searchQuery}"`
-                  : 'No videos available'}
-              </Text>
-            </View>
-          }
-        />
+      ) : filteredVideos.length === 0 ? (
+        <View style={tw`flex-1 items-center justify-center`}>
+          <Text style={tw`text-gray-400 text-center`}>
+            {searchQuery
+              ? `No videos found for "${searchQuery}"`
+              : 'No videos available'}
+          </Text>
+        </View>
       ) : (
         <FlatList
-          key="grid"
           data={filteredVideos}
           renderItem={renderGridVideo}
           keyExtractor={(item) => item.videoId}
@@ -287,93 +264,63 @@ export default function VideoLibraryScreen() {
           initialNumToRender={12}
           maxToRenderPerBatch={9}
           windowSize={5}
-          ListEmptyComponent={
-            <View style={tw`flex-1 items-center justify-center py-20`}>
-              <Text style={tw`text-gray-400 text-center`}>
-                {searchQuery
-                  ? `No videos found for "${searchQuery}"`
-                  : 'No videos available'}
-              </Text>
-            </View>
-          }
         />
       )}
 
-      {/* Video Details Modal */}
+      {/* Video Details Modal with Carousel */}
       <Modal
-        visible={!!selectedVideo}
+        visible={isModalOpen && carouselVideos.length > 0 && selectedVideoIndex >= 0}
         transparent
         animationType="fade"
-        onRequestClose={() => setSelectedVideo(null)}
+        onRequestClose={closeModal}
       >
         <View style={tw`flex-1 bg-black/80`}>
           <View style={tw`flex-1 justify-center items-center px-4`}>
-            <View style={tw`bg-[#141414] rounded-2xl w-full max-h-[90%] overflow-hidden`}>
-              {/* Close Button */}
-              <TouchableOpacity
-                style={tw`absolute top-4 right-4 z-10 bg-black/50 rounded-full p-2`}
-                onPress={() => setSelectedVideo(null)}
-              >
-                <MaterialCommunityIcons name="close" size={24} color="#fff" />
-              </TouchableOpacity>
+            {/* Close Button */}
+            <TouchableOpacity
+              style={tw`absolute top-15 right-6 z-20 bg-black/50 rounded-full p-2`}
+              onPress={closeModal}
+            >
+              <MaterialCommunityIcons name="close" size={24} color="#fff" />
+            </TouchableOpacity>
 
-              <ScrollView showsVerticalScrollIndicator={false}>
-                {/* Title */}
-                <Text style={tw`text-white text-xl font-bold px-4 pt-4`}>
-                  {selectedVideo?.title}
-                </Text>
-
-                {/* Video Thumbnail */}
-                {modalLoading ? (
-                  <View style={tw`w-full h-48 bg-gray-800 items-center justify-center mt-3 mx-4 rounded-lg`}>
-                    <ActivityIndicator size="large" color="#0066CC" />
-                  </View>
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => selectedVideo && openVideo(selectedVideo.url)}
-                    style={tw`mt-3 mx-4`}
-                  >
-                    <View style={tw`relative`}>
-                      <Image
-                        source={{ uri: selectedVideo?.thumbnail }}
-                        style={tw`w-full h-48 rounded-lg`}
-                        resizeMode="cover"
+            {/* Carousel */}
+            <View style={tw`w-full max-h-[85%]`}>
+              <Carousel
+                ref={carouselRef}
+                data={carouselVideos}
+                renderItem={({ item }: { item: VideoDetails }) => {
+                  const isLoading = loadingVideoIds.has(item.videoId) && (!item.duration || item.tips.length === 0);
+                  return (
+                    <View style={tw`bg-[#141414] rounded-2xl overflow-hidden`}>
+                      <VideoCard
+                        title={item.title}
+                        thumbnail={item.thumbnail}
+                        duration={item.duration}
+                        tips={item.tips}
+                        videoUrl={item.url}
+                        formatDuration={formatDuration}
+                        isLoading={isLoading}
                       />
-                      {/* Play Button Overlay */}
-                      <View style={tw`absolute inset-0 items-center justify-center`}>
-                        <View style={tw`bg-black/60 rounded-full p-3`}>
-                          <MaterialCommunityIcons name="play" size={32} color="#fff" />
-                        </View>
-                      </View>
                     </View>
-                  </TouchableOpacity>
-                )}
-
-                {/* View Button */}
-                <View style={tw`px-4 mt-4`}>
-                  <TouchableOpacity
-                    onPress={() => selectedVideo && openVideo(selectedVideo.url)}
-                    style={tw`flex-row items-center justify-center bg-[#22C55E] px-4 py-3 rounded-lg`}
-                  >
-                    <Text style={tw`text-white font-semibold`}>View on YouTube</Text>
-                    <Text style={tw`text-white ml-2`}>→</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Summary Section */}
-                <View style={tw`px-4 mt-6 pb-6`}>
-                  <Text style={tw`text-white text-lg font-bold mb-3`}>Summary</Text>
-                  {selectedVideo?.tips && selectedVideo.tips.length > 0 ? (
-                    selectedVideo.tips.map((tip, idx) => (
-                      <View key={idx} style={tw`bg-[#1A1A1A] rounded-lg p-3 mb-3 border-l-4 border-[#0066CC]`}>
-                        <Text style={tw`text-white text-sm leading-5`}>{tip}</Text>
-                      </View>
-                    ))
-                  ) : (
-                    <Text style={tw`text-[#A0A0A0] text-sm`}>No summary available</Text>
-                  )}
-                </View>
-              </ScrollView>
+                  );
+                }}
+                sliderWidth={screenWidth - 32}
+                itemWidth={screenWidth - 32}
+                onSnapToItem={(index: number) => {
+                  dispatch(setSelectedVideoIndex(index));
+                  // Clear previous video to show skeleton while loading new one
+                  dispatch(setSelectedVideo(null));
+                  if (carouselVideos[index]) {
+                    fetchVideoDetails(carouselVideos[index].videoId);
+                  }
+                }}
+                activeSlideAlignment="center"
+                inactiveSlideScale={0.9}
+                inactiveSlideOpacity={0.6}
+                scrollEnabled={carouselVideos.length > 1}
+                vertical={false}
+              />
             </View>
           </View>
         </View>

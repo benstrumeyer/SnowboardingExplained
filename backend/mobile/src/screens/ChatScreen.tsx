@@ -12,7 +12,6 @@ import {
   ScrollView,
   KeyboardAvoidingView,
   Platform,
-  ActivityIndicator,
   Linking,
   Image,
   Animated,
@@ -66,6 +65,41 @@ function AnimatedBubble({
     >
       {children}
     </Animated.View>
+  );
+}
+
+// Typing indicator with animated dots
+function TypingIndicator() {
+  const [activeDot, setActiveDot] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveDot(prev => (prev + 1) % 3);
+    }, 200);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const getDotColor = (index: number) => {
+    return index === activeDot ? '#FFFFFF' : '#4A4A4A';
+  };
+
+  return (
+    <View style={tw`flex-row gap-1.5`}>
+      {[0, 1, 2].map((index) => (
+        <View
+          key={index}
+          style={[
+            tw`rounded-full`,
+            {
+              width: 8,
+              height: 8,
+              backgroundColor: getDotColor(index),
+            },
+          ]}
+        />
+      ))}
+    </View>
   );
 }
 
@@ -171,6 +205,9 @@ export default function ChatScreen() {
       // Add messages with staggered delays for human-like feel
       setLoading(false);  // Stop loading indicator before showing messages
       
+      // Ensure at least 1 video is shown if available
+      const videosToShow = response.videos?.length > 0 ? response.videos : [];
+      
       for (let i = 0; i < response.messages.length; i++) {
         const msg = response.messages[i];
         const isFirst = i === 0;
@@ -188,9 +225,9 @@ export default function ChatScreen() {
           messageType: msg.type,
         };
         
-        // Show videos after intro message (3 per question)
-        if (isFirst && response.videos?.length > 0) {
-          uiMessage.videos = response.videos;
+        // Show videos after intro message (at least 1 if available, up to 3)
+        if (isFirst && videosToShow.length > 0) {
+          uiMessage.videos = videosToShow;
         }
         
         setMessages(prev => [...prev, uiMessage]);
@@ -301,9 +338,8 @@ export default function ChatScreen() {
         {loading && (
           <View style={tw`items-start mb-4`}>
             <AnimatedBubble sender="coach">
-              <View style={tw`bg-[#2D2D2D] p-4 rounded-2xl flex-row items-center`}>
-                <ActivityIndicator color="#fff" size="small" />
-                <Text style={tw`text-white ml-3`}>Thinking...</Text>
+              <View style={tw`bg-[#2D2D2D] p-4 rounded-2xl`}>
+                <TypingIndicator />
               </View>
             </AnimatedBubble>
           </View>

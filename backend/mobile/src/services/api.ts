@@ -68,6 +68,7 @@ export async function sendMessage(
     console.log('=== API Response ===');
     console.log('Messages:', response.data.messages?.length);
     console.log('Has more tips:', response.data.hasMoreTips);
+    console.log('Videos count:', response.data.videos ? response.data.videos.length : 'undefined');
     
     return response.data;
   } catch (error: any) {

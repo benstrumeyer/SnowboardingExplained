@@ -22,6 +22,11 @@ const AVAILABLE_TRICKS = [
   'method', 'indy', 'melon', 'stalefish', 'mute', 'ollie', 'nollie', 'butter'
 ];
 
+// Map trick IDs to Taevis video IDs for tricks without primary tutorials
+const TAEVIS_TRICK_VIDEOS: Record<string, string[]> = {
+  'backside-720': ['DTU2MY74dcQ', 'xArsPSVoGdo', 'ODLrzWLrPAo', '5cDLnB4ybH0'],
+};
+
 const COACH_INTRO_PROMPT = `You are Taevis, a chill snowboard coach. Generate ONLY a brief friendly intro (1-2 sentences max) acknowledging what the user wants to work on.
 
 Examples:
@@ -221,8 +226,8 @@ export default async function handler(
         isPrimaryTutorial = true;
         console.log(`Found ${primarySegments.length} primary tutorial steps`);
       } else {
-        // No primary tutorial found, fall back to general search
-        console.log('No primary tutorial found, using general search');
+        // No primary tutorial found, fall back to general search for related content
+        console.log('No primary tutorial found, searching for related content');
         rawSegments = await searchVideoSegments(queryEmbedding, Math.max(20, videoCount * 3));
       }
     } else {
@@ -234,7 +239,7 @@ export default async function handler(
     // Log raw segment details for debugging
     console.log('=== Raw Segments ===');
     rawSegments.slice(0, 10).forEach((seg, i) => {
-      console.log(`  ${i + 1}. ID: ${seg.id} | trickName: ${seg.trickName || 'N/A'} | title: ${seg.videoTitle.substring(0, 40)}`);
+      console.log(`  ${i + 1}. ID: ${seg.id} | videoId: ${seg.videoId || 'MISSING'} | trickName: ${seg.trickName || 'N/A'} | title: ${seg.videoTitle?.substring(0, 40) || 'N/A'}`);
     });
     
     // Step 4: Filter segments (skip for primary tutorials - they're already filtered)
@@ -248,7 +253,7 @@ export default async function handler(
     // Log filtered segment details
     console.log('=== Filtered Segments ===');
     segments.slice(0, 10).forEach((seg, i) => {
-      console.log(`  ${i + 1}. ID: ${seg.id} | trickName: ${seg.trickName || 'N/A'} | title: ${seg.videoTitle.substring(0, 40)}`);
+      console.log(`  ${i + 1}. ID: ${seg.id} | videoId: ${seg.videoId || 'MISSING'} | trickName: ${seg.trickName || 'N/A'} | title: ${seg.videoTitle?.substring(0, 40) || 'N/A'}`);
     });
     
     // Step 5: Generate AI intro (just the friendly acknowledgment)
@@ -291,8 +296,8 @@ export default async function handler(
         }
       }
       
-      // Fallback: if no videos found, get ANY video with a valid videoId
-      if (uniqueVideos.length === 0) {
+      // Second pass: if we have fewer than 3 videos, search through all segments more thoroughly
+      if (uniqueVideos.length < 3) {
         for (const seg of segments) {
           if (seg.videoId && !seenIds.has(seg.videoId)) {
             uniqueVideos.push({
@@ -304,7 +309,49 @@ export default async function handler(
               duration: seg.duration,
             });
             seenIds.add(seg.videoId);
-            if (uniqueVideos.length >= 1) break;
+            if (uniqueVideos.length >= 3) break;
+          }
+        }
+      }
+      
+      // Third pass: if still no videos from relevant segments, check for Taevis trick videos
+      if (uniqueVideos.length === 0 && intent.intent === 'how-to-trick' && intent.trickId) {
+        const taevisVideos = TAEVIS_TRICK_VIDEOS[intent.trickId];
+        if (taevisVideos) {
+          console.log(`Using Taevis videos for ${intent.trickId}`);
+          for (const videoId of taevisVideos) {
+            if (!seenIds.has(videoId)) {
+              // We don't have full metadata, so we'll use the videoId as title
+              uniqueVideos.push({
+                videoId,
+                videoTitle: `Taevis - ${intent.trickId}`,
+                timestamp: 0,
+                url: `https://youtube.com/watch?v=${videoId}`,
+                thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+              });
+              seenIds.add(videoId);
+              if (uniqueVideos.length >= 3) break;
+            }
+          }
+        }
+      }
+      
+      // Fourth pass: if still no videos, do a broader search for related content
+      if (uniqueVideos.length === 0) {
+        console.log('No videos found in relevant segments, searching for related content...');
+        const relatedSegments = await searchVideoSegments(queryEmbedding, 50);
+        for (const seg of relatedSegments) {
+          if (seg.videoId && !seenIds.has(seg.videoId)) {
+            uniqueVideos.push({
+              videoId: seg.videoId,
+              videoTitle: seg.videoTitle,
+              timestamp: seg.timestamp,
+              url: `https://youtube.com/watch?v=${seg.videoId}`,
+              thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
+              duration: seg.duration,
+            });
+            seenIds.add(seg.videoId);
+            if (uniqueVideos.length >= 3) break;
           }
         }
       }
@@ -335,6 +382,14 @@ export default async function handler(
       }
       
       console.log(`Returning ${messages.length} messages, ${uniqueVideos.length} videos for primary tutorial (hasMoreTips: ${hasMoreTips})`);
+      console.log('=== Videos Returned ===');
+      if (uniqueVideos.length === 0) {
+        console.log('  NO VIDEOS FOUND');
+      } else {
+        uniqueVideos.forEach((v, i) => {
+          console.log(`  ${i + 1}. ${v.videoId} | ${v.videoTitle.substring(0, 40)}`);
+        });
+      }
       
       return res.status(200).json({
         messages,
@@ -390,7 +445,7 @@ export default async function handler(
       const uniqueVideos: VideoReference[] = [];
       const seenIds = new Set<string>();
       
-      // First pass: try to get videos not recently shown
+      // First pass: try to get videos not recently shown from available tips
       for (const tip of availableTips) {
         if (tip.videoId && !recentVideoIds.has(tip.videoId) && !seenIds.has(tip.videoId)) {
           uniqueVideos.push({
@@ -406,20 +461,40 @@ export default async function handler(
         }
       }
       
-      // Fallback: if no videos found, get ANY video with a valid videoId (even if recently shown)
-      if (uniqueVideos.length === 0) {
-        for (const tip of availableTips) {
-          if (tip.videoId && !seenIds.has(tip.videoId)) {
+      // Second pass: if we have fewer than 3 videos, search through all relevant segments more thoroughly
+      if (uniqueVideos.length < 3) {
+        for (const seg of segments) {
+          if (seg.videoId && !seenIds.has(seg.videoId)) {
             uniqueVideos.push({
-              videoId: tip.videoId,
-              videoTitle: tip.videoTitle,
-              timestamp: tip.timestamp,
-              url: `https://youtube.com/watch?v=${tip.videoId}`,
-              thumbnail: `https://img.youtube.com/vi/${tip.videoId}/hqdefault.jpg`,
-              duration: tip.duration,
+              videoId: seg.videoId,
+              videoTitle: seg.videoTitle,
+              timestamp: seg.timestamp,
+              url: `https://youtube.com/watch?v=${seg.videoId}`,
+              thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
+              duration: seg.duration,
             });
-            seenIds.add(tip.videoId);
-            if (uniqueVideos.length >= 1) break;  // Just need at least 1
+            seenIds.add(seg.videoId);
+            if (uniqueVideos.length >= 3) break;
+          }
+        }
+      }
+      
+      // Third pass: if still no videos, do a broader search for related content from all videos
+      if (uniqueVideos.length < 3) {
+        console.log(`Only ${uniqueVideos.length} videos found, searching all videos for related content...`);
+        const relatedSegments = await searchVideoSegments(queryEmbedding, 100);
+        for (const seg of relatedSegments) {
+          if (seg.videoId && !seenIds.has(seg.videoId)) {
+            uniqueVideos.push({
+              videoId: seg.videoId,
+              videoTitle: seg.videoTitle,
+              timestamp: seg.timestamp,
+              url: `https://youtube.com/watch?v=${seg.videoId}`,
+              thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
+              duration: seg.duration,
+            });
+            seenIds.add(seg.videoId);
+            if (uniqueVideos.length >= 3) break;
           }
         }
       }
@@ -437,6 +512,14 @@ export default async function handler(
       
       console.log('AI Response:', coachIntro.substring(0, 100) + '...');
       console.log(`Returning ${messages.length} messages, ${uniqueVideos.length} videos (hasMoreTips: ${hasMoreTips})`);
+      console.log('=== Videos Returned ===');
+      if (uniqueVideos.length === 0) {
+        console.log('  NO VIDEOS FOUND');
+      } else {
+        uniqueVideos.forEach((v, i) => {
+          console.log(`  ${i + 1}. ${v.videoId} | ${v.videoTitle.substring(0, 40)}`);
+        });
+      }
       
       return res.status(200).json({
         messages,
@@ -455,6 +538,7 @@ export default async function handler(
       return res.status(200).json({
         messages,
         hasMoreTips: false,
+        videos: [],
       });
     }
     

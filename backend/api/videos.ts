@@ -50,7 +50,7 @@ async function fetchVideosFromPinecone(): Promise<Video[]> {
         videoId,
         title: videoTitle || 'Untitled',
         url: `https://youtube.com/watch?v=${videoId}`,
-        thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+        thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
       });
     }
   }

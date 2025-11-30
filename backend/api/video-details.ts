@@ -69,23 +69,43 @@ export default async function handler(
       const firstMatch = queryResponse.matches[0];
       videoTitle = firstMatch.metadata?.videoTitle as string || 'Untitled';
       duration = firstMatch.metadata?.totalDuration as number || 0;
-    } else {
-      // Fallback: query without summaryOnly filter to get video info
+    }
+    
+    // If still no duration, query without summaryOnly filter to get video info
+    if (duration === 0) {
       const fallbackResponse = await index.query({
         vector: dummyVector,
-        topK: 1,
+        topK: 10,
         includeMetadata: true,
         filter: {
           videoId: { $eq: videoId }
         }
       });
       
+      if (fallbackResponse.matches && fallbackResponse.matches.length > 0) {
+        // Find the first match with duration info
+        for (const match of fallbackResponse.matches) {
+          const totalDuration = match.metadata?.totalDuration as number;
+          const segmentDuration = match.metadata?.duration as number;
+          
+          if (totalDuration && totalDuration > 0) {
+            duration = totalDuration;
+            break;
+          } else if (segmentDuration && segmentDuration > 0) {
+            // Use segment duration as fallback
+            duration = segmentDuration;
+          }
+        }
+        
+        // Also get title if we don't have it
+        if (videoTitle === 'Untitled') {
+          videoTitle = fallbackResponse.matches[0].metadata?.videoTitle as string || 'Untitled';
+        }
+      }
+      
       if (!fallbackResponse.matches || fallbackResponse.matches.length === 0) {
         return res.status(404).json({ error: 'Video not found' });
       }
-      
-      videoTitle = fallbackResponse.matches[0].metadata?.videoTitle as string || 'Untitled';
-      duration = fallbackResponse.matches[0].metadata?.totalDuration as number || 0;
     }
     
     // Collect summary points (already sorted by pointIndex)
@@ -107,8 +127,10 @@ export default async function handler(
       duration,
       url: `https://youtube.com/watch?v=${videoId}`,
       thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-      tips,
+      tips: tips.length > 0 ? tips : [],
     };
+    
+    console.log(`Returning details for ${videoId}:`, videoDetails);
     
     return res.status(200).json(videoDetails);
     

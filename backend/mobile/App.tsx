@@ -16,7 +16,9 @@ import {
   TouchableWithoutFeedback,
   PanResponder,
 } from 'react-native';
+import { Provider } from 'react-redux';
 import tw from 'twrnc';
+import { store } from './src/store/store';
 import ChatScreen from './src/screens/ChatScreen';
 import VideoLibraryScreen from './src/screens/VideoLibraryScreen';
 
@@ -126,7 +128,8 @@ export default function App() {
   };
 
   return (
-    <View style={tw`flex-1 bg-[#0D0D0D]`} {...openPanResponder.panHandlers}>
+    <Provider store={store}>
+      <View style={tw`flex-1 bg-[#0D0D0D]`} {...openPanResponder.panHandlers}>
       <StatusBar style="light" />
 
       {/* Main Content */}
@@ -221,6 +224,7 @@ export default function App() {
           </TouchableOpacity>
         </ScrollView>
       </Animated.View>
-    </View>
+      </View>
+    </Provider>
   );
 }
