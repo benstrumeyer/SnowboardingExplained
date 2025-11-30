@@ -229,7 +229,8 @@ export default async function handler(
     console.log('=== Chat API ===');
     console.log('Message:', message);
     console.log('History length:', history.length);
-    console.log('Shown video IDs:', shownVideoIds);
+    console.log('Shown video IDs count:', shownVideoIds?.length || 0);
+    console.log('Shown video IDs:', JSON.stringify(shownVideoIds));
     console.log('Passed trick:', passedTrick || 'none');
     
     const client = getGeminiClient();
@@ -348,11 +349,17 @@ export default async function handler(
       
       // Get up to 3 unique videos for this question (skip all previously shown)
       const shownVideoSet = new Set(shownVideoIds);
+      console.log('=== Video Filtering ===');
+      console.log('Shown videos set size:', shownVideoSet.size);
+      console.log('Shown videos:', JSON.stringify(Array.from(shownVideoSet)));
       const uniqueVideos: VideoReference[] = [];
       const seenIds = new Set<string>();
       
       // First pass: try to get videos from segments (excluding all previously shown)
       for (const seg of segments) {
+        const isShown = shownVideoSet.has(seg.videoId);
+        const isSeen = seenIds.has(seg.videoId);
+        console.log(`Segment ${seg.videoId}: shown=${isShown}, seen=${isSeen}`);
         if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId)) {
           uniqueVideos.push({
             videoId: seg.videoId,
