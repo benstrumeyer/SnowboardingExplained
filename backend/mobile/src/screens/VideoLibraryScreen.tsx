@@ -65,6 +65,10 @@ export default function VideoLibraryScreen() {
     Linking.openURL(url);
   };
 
+  // Use smaller thumbnail (mqdefault = 320x180, much faster than maxresdefault)
+  const getSmallThumbnail = (videoId: string) => 
+    `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
+
   const renderVideo = ({ item }: { item: Video }) => (
     <TouchableOpacity
       style={tw`w-1/3 p-1`}
@@ -73,7 +77,7 @@ export default function VideoLibraryScreen() {
     >
       <View style={tw`bg-gray-800 rounded-lg overflow-hidden`}>
         <Image
-          source={{ uri: item.thumbnail }}
+          source={{ uri: getSmallThumbnail(item.videoId) }}
           style={tw`w-full h-20`}
           resizeMode="cover"
         />
@@ -138,6 +142,10 @@ export default function VideoLibraryScreen() {
           numColumns={3}
           contentContainerStyle={tw`px-2 pb-4`}
           showsVerticalScrollIndicator={false}
+          initialNumToRender={12}
+          maxToRenderPerBatch={9}
+          windowSize={5}
+          removeClippedSubviews={true}
           ListEmptyComponent={
             <View style={tw`flex-1 items-center justify-center py-20`}>
               <Text style={tw`text-gray-400 text-center`}>
