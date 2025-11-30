@@ -520,14 +520,12 @@ export default async function handler(
       
       // Log the response being sent
       console.log('=== FINAL RESPONSE ===');
-      console.log('Videos to show this turn:', uniqueVideos.map(v => v.videoId).join(', '));
       console.log('Total trick videos available:', allTrickVideos.length);
       
       return res.status(200).json({
         messages,
         hasMoreTips,
-        videos: uniqueVideos,
-        allTrickVideos,  // Send all videos for frontend to manage
+        videos: allTrickVideos,  // Return all videos for this trick
         currentTrick: activeTrick,  // Return the trick so client can pass it back
       });
       
@@ -571,67 +569,21 @@ export default async function handler(
         tipIdsShown.push(tip.id);
       }
       
-      // Get up to 3 unique videos for this question (skip all previously shown)
-      const shownVideoSet = new Set(shownVideoIds);
-      console.log('=== Video Filtering (General Tips) ===');
-      console.log('Shown videos set size:', shownVideoSet.size);
-      console.log('Shown videos:', JSON.stringify(Array.from(shownVideoSet)));
-      console.log('Available tips:', availableTips.length);
-      const uniqueVideos: VideoReference[] = [];
+      // Get all unique videos from segments
+      const allVideos: VideoReference[] = [];
       const seenIds = new Set<string>();
       
-      // First pass: try to get videos from available tips (excluding all previously shown)
-      for (const tip of availableTips) {
-        if (tip.videoId && !shownVideoSet.has(tip.videoId) && !seenIds.has(tip.videoId)) {
-          console.log(`  ADD: videoId=${tip.videoId}, title=${tip.videoTitle.substring(0, 30)}`);
-          uniqueVideos.push({
-            videoId: tip.videoId,
-            videoTitle: tip.videoTitle,
-            timestamp: tip.timestamp,
-            url: `https://youtube.com/watch?v=${tip.videoId}`,
-            thumbnail: `https://img.youtube.com/vi/${tip.videoId}/hqdefault.jpg`,
-            duration: tip.duration,
+      for (const seg of segments) {
+        if (seg.videoId && !seenIds.has(seg.videoId)) {
+          allVideos.push({
+            videoId: seg.videoId,
+            videoTitle: seg.videoTitle,
+            timestamp: seg.timestamp,
+            url: `https://youtube.com/watch?v=${seg.videoId}`,
+            thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
+            duration: seg.duration,
           });
-          seenIds.add(tip.videoId);
-          if (uniqueVideos.length >= 3) break;
-        }
-      }
-      
-      // Second pass: if we have fewer than 3 videos, search through all relevant segments (excluding all previously shown)
-      if (uniqueVideos.length < 3) {
-        for (const seg of segments) {
-          if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId)) {
-            uniqueVideos.push({
-              videoId: seg.videoId,
-              videoTitle: seg.videoTitle,
-              timestamp: seg.timestamp,
-              url: `https://youtube.com/watch?v=${seg.videoId}`,
-              thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
-              duration: seg.duration,
-            });
-            seenIds.add(seg.videoId);
-            if (uniqueVideos.length >= 3) break;
-          }
-        }
-      }
-      
-      // Fallback: if still no videos and we have an embedding, do one broader search
-      if (uniqueVideos.length < 3 && queryEmbedding) {
-        console.log(`Only ${uniqueVideos.length} videos found, searching for related content...`);
-        const relatedSegments = await searchVideoSegments(queryEmbedding, 100);
-        for (const seg of relatedSegments) {
-          if (seg.videoId && !seenIds.has(seg.videoId)) {
-            uniqueVideos.push({
-              videoId: seg.videoId,
-              videoTitle: seg.videoTitle,
-              timestamp: seg.timestamp,
-              url: `https://youtube.com/watch?v=${seg.videoId}`,
-              thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
-              duration: seg.duration,
-            });
-            seenIds.add(seg.videoId);
-            if (uniqueVideos.length >= 3) break;
-          }
+          seenIds.add(seg.videoId);
         }
       }
       
@@ -647,20 +599,12 @@ export default async function handler(
       }
       
       console.log('AI Response:', coachIntro.substring(0, 100) + '...');
-      console.log(`Returning ${messages.length} messages, ${uniqueVideos.length} videos (hasMoreTips: ${hasMoreTips})`);
-      console.log('=== Videos Returned ===');
-      if (uniqueVideos.length === 0) {
-        console.log('  NO VIDEOS FOUND');
-      } else {
-        uniqueVideos.forEach((v, i) => {
-          console.log(`  ${i + 1}. ${v.videoId} | ${v.videoTitle.substring(0, 40)}`);
-        });
-      }
+      console.log(`Returning ${messages.length} messages, ${allVideos.length} videos (hasMoreTips: ${hasMoreTips})`);
       
       return res.status(200).json({
         messages,
         hasMoreTips,
-        videos: uniqueVideos,
+        videos: allVideos,
         tipIdsShown,  // Return tip IDs so client can track them
         currentTrick: activeTrick,  // Return the trick so client can pass it back
       });

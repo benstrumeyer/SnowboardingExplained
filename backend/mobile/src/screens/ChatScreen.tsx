@@ -223,12 +223,8 @@ export default function ChatScreen() {
       const combinedResponse = response.messages.map(m => m.content).join('\n');
       setChatHistory([...newHistory, { role: 'coach', content: combinedResponse }]);
       
-      // Deduplicate videos on frontend - filter out any already shown
-      const newVideoIds = response.videos?.map(v => v.videoId) || [];
-      const uniqueNewVideos = response.videos?.filter(v => !shownVideoIds.includes(v.videoId)) || [];
-      
-      // Track shown videos to never repeat them
-      setShownVideoIds(prev => [...prev, ...newVideoIds]);
+      // Just show all videos returned by backend
+      const videosToShow = response.videos || [];
       
       // Track shown tips to never repeat them
       const newTipIds = response.tipIdsShown || [];
@@ -241,9 +237,6 @@ export default function ChatScreen() {
       
       // Add messages with staggered delays for human-like feel
       setLoading(false);  // Stop loading indicator before showing messages
-      
-      // Only show videos that haven't been shown before
-      const videosToShow = uniqueNewVideos.length > 0 ? uniqueNewVideos : [];
       
       for (let i = 0; i < response.messages.length; i++) {
         const msg = response.messages[i];
