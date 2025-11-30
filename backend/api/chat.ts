@@ -367,7 +367,12 @@ export default async function handler(
       }
       
       // Fallback: if no videos found from segments, search for Taevis videos with same trick name
-      if (uniqueVideos.length === 0 && intent.trickId && queryEmbedding) {
+      if (uniqueVideos.length === 0 && intent.trickId) {
+        // Generate embedding if we don't have one yet (for trick questions)
+        if (!queryEmbedding) {
+          queryEmbedding = await generateEmbedding(searchQuery);
+        }
+        
         console.log(`Searching for Taevis videos with trickName: ${intent.trickId}`);
         const taevisSegments = await searchVideoSegmentsWithOptions(queryEmbedding, {
           topK: 50,
