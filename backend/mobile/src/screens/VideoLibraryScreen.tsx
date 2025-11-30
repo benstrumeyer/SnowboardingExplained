@@ -15,7 +15,10 @@ import {
   Linking,
   ActivityIndicator,
   Animated,
+  Modal,
+  ScrollView,
 } from 'react-native';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import tw from 'twrnc';
 import { API_URL } from '../config';
 
@@ -24,6 +27,15 @@ interface Video {
   title: string;
   url: string;
   thumbnail: string;
+}
+
+interface VideoDetails {
+  videoId: string;
+  title: string;
+  duration: number;
+  url: string;
+  thumbnail: string;
+  tips: string[];
 }
 
 // Animated video card component
@@ -84,6 +96,8 @@ export default function VideoLibraryScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedVideo, setSelectedVideo] = useState<VideoDetails | null>(null);
+  const [modalLoading, setModalLoading] = useState(false);
 
   // Fetch videos on mount
   useEffect(() => {
@@ -120,6 +134,25 @@ export default function VideoLibraryScreen() {
     Linking.openURL(url);
   };
 
+  const fetchVideoDetails = async (videoId: string) => {
+    try {
+      setModalLoading(true);
+      const response = await fetch(`${API_URL}/api/video-details?videoId=${videoId}`);
+      const data = await response.json();
+      setSelectedVideo(data);
+    } catch (err) {
+      console.error('Error fetching video details:', err);
+    } finally {
+      setModalLoading(false);
+    }
+  };
+
+  const formatDuration = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   // Use smaller thumbnail (mqdefault = 320x180, much faster than maxresdefault)
   const getSmallThumbnail = (videoId: string) =>
     `https://img.youtube.com/vi/${videoId}/mqdefault.jpg`;
@@ -132,7 +165,7 @@ export default function VideoLibraryScreen() {
     <View style={tw`flex-1 m-1`}>
       <AnimatedVideoCard index={index}>
         <TouchableOpacity
-          onPress={() => openVideo(item.url)}
+          onPress={() => fetchVideoDetails(item.videoId)}
           activeOpacity={0.8}
         >
           <View style={tw`bg-gray-800 rounded-lg overflow-hidden`}>
@@ -157,7 +190,7 @@ export default function VideoLibraryScreen() {
     <AnimatedVideoCard index={index}>
       <TouchableOpacity
         style={tw`mx-2 my-1`}
-        onPress={() => openVideo(item.url)}
+        onPress={() => fetchVideoDetails(item.videoId)}
         activeOpacity={0.8}
       >
         <View style={tw`bg-gray-800 rounded-lg overflow-hidden flex-row h-20`}>
@@ -265,6 +298,89 @@ export default function VideoLibraryScreen() {
           }
         />
       )}
+
+      {/* Video Details Modal */}
+      <Modal
+        visible={!!selectedVideo}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSelectedVideo(null)}
+      >
+        <View style={tw`flex-1 bg-black/80`}>
+          <View style={tw`flex-1 justify-center items-center px-4`}>
+            <View style={tw`bg-[#141414] rounded-2xl w-full max-h-[90%] overflow-hidden`}>
+              {/* Close Button */}
+              <TouchableOpacity
+                style={tw`absolute top-4 right-4 z-10 bg-black/50 rounded-full p-2`}
+                onPress={() => setSelectedVideo(null)}
+              >
+                <MaterialCommunityIcons name="close" size={24} color="#fff" />
+              </TouchableOpacity>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {/* Title */}
+                <Text style={tw`text-white text-xl font-bold px-4 pt-4`}>
+                  {selectedVideo?.title}
+                </Text>
+
+                {/* Video Thumbnail */}
+                {modalLoading ? (
+                  <View style={tw`w-full h-48 bg-gray-800 items-center justify-center mt-3 mx-4 rounded-lg`}>
+                    <ActivityIndicator size="large" color="#0066CC" />
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => selectedVideo && openVideo(selectedVideo.url)}
+                    style={tw`mt-3 mx-4`}
+                  >
+                    <View style={tw`relative`}>
+                      <Image
+                        source={{ uri: selectedVideo?.thumbnail }}
+                        style={tw`w-full h-48 rounded-lg`}
+                        resizeMode="cover"
+                      />
+                      {/* Play Button Overlay */}
+                      <View style={tw`absolute inset-0 items-center justify-center`}>
+                        <View style={tw`bg-black/60 rounded-full p-3`}>
+                          <MaterialCommunityIcons name="play" size={32} color="#fff" />
+                        </View>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                )}
+
+                {/* Duration and View Button */}
+                <View style={tw`flex-row items-center justify-between px-4 mt-4`}>
+                  <Text style={tw`text-[#A0A0A0] text-sm`}>
+                    ⏱️ {selectedVideo && formatDuration(selectedVideo.duration)}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => selectedVideo && openVideo(selectedVideo.url)}
+                    style={tw`flex-row items-center bg-[#0066CC] px-4 py-2 rounded-lg`}
+                  >
+                    <Text style={tw`text-white font-semibold`}>View on YouTube</Text>
+                    <MaterialCommunityIcons name="arrow-right" size={18} color="#fff" style={tw`ml-2`} />
+                  </TouchableOpacity>
+                </View>
+
+                {/* Tips Section */}
+                <View style={tw`px-4 mt-6 pb-6`}>
+                  <Text style={tw`text-white text-lg font-bold mb-3`}>Tips</Text>
+                  {selectedVideo?.tips && selectedVideo.tips.length > 0 ? (
+                    selectedVideo.tips.map((tip, idx) => (
+                      <View key={idx} style={tw`bg-[#1A1A1A] rounded-lg p-3 mb-3`}>
+                        <Text style={tw`text-white text-sm leading-5`}>{tip}</Text>
+                      </View>
+                    ))
+                  ) : (
+                    <Text style={tw`text-[#A0A0A0] text-sm`}>No tips available</Text>
+                  )}
+                </View>
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
