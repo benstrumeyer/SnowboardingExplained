@@ -240,7 +240,12 @@ export default async function handler(
     
     // Step 1: Detect intent - is this a "how to do X trick" question?
     const intent = await detectIntent(message, client);
-    console.log('Intent:', intent);
+    console.log('=== INTENT DETECTION ===');
+    console.log('Message:', message);
+    console.log('Intent:', JSON.stringify(intent));
+    console.log('Is how-to-trick?', intent.intent === 'how-to-trick');
+    console.log('Confidence:', intent.confidence);
+    console.log('TrickId:', intent.trickId);
     
     // Step 2: Determine search query with context awareness
     const currentTopic = extractTrickFromMessage(message);
