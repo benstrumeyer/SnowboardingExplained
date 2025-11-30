@@ -138,3 +138,47 @@ export async function searchByTrickName(
     trickName,
   });
 }
+
+
+/**
+ * Get trick tutorial by ID without needing an embedding
+ * Returns ordered steps for a specific trick
+ * Much faster than semantic search - no embedding needed
+ */
+export async function getTrickTutorialById(
+  trickId: string
+): Promise<EnhancedVideoSegment[]> {
+  const pinecone = getPineconeClient();
+  const indexName = process.env.PINECONE_INDEX || 'snowboarding-explained';
+  const index = pinecone.index(indexName);
+  
+  // Query with filter only - no vector needed
+  const queryResponse = await index.query({
+    vector: new Array(1536).fill(0), // Dummy vector (required by API)
+    topK: 20,
+    includeMetadata: true,
+    filter: {
+      isPrimary: { $eq: true },
+      trickId: { $eq: trickId },
+    },
+  });
+  
+  const segments = queryResponse.matches?.map((match: any) => ({
+    id: match.id,
+    videoId: match.metadata.videoId,
+    videoTitle: match.metadata.videoTitle,
+    text: match.metadata.text,
+    timestamp: match.metadata.timestamp,
+    duration: match.metadata.totalDuration || match.metadata.duration,
+    topics: match.metadata.topics || [],
+    isPrimary: match.metadata.isPrimary || false,
+    trickId: match.metadata.trickId,
+    trickName: match.metadata.trickName,
+    stepNumber: match.metadata.stepNumber,
+    totalSteps: match.metadata.totalSteps,
+    stepTitle: match.metadata.stepTitle,
+  })) || [];
+  
+  // Sort by step number
+  return segments.sort((a, b) => (a.stepNumber || 0) - (b.stepNumber || 0));
+}

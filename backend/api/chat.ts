@@ -11,7 +11,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateEmbedding } from '../lib/gemini';
-import { searchVideoSegments, searchVideoSegmentsWithOptions, searchByTrickName, type EnhancedVideoSegment } from '../lib/pinecone';
+import { searchVideoSegments, searchVideoSegmentsWithOptions, searchByTrickName, getTrickTutorialById, type EnhancedVideoSegment } from '../lib/pinecone';
+import { getEmbeddingCache, initializeEmbeddingCache } from '../lib/embedding-cache';
 
 // Available trick tutorials (specific tricks only, not foundational techniques)
 const AVAILABLE_TRICKS = [
@@ -27,25 +28,36 @@ const TAEVIS_TRICK_VIDEOS: Record<string, string[]> = {
   'backside-720': ['DTU2MY74dcQ', 'xArsPSVoGdo', 'ODLrzWLrPAo', '5cDLnB4ybH0'],
 };
 
-const COACH_INTRO_PROMPT = `You are Taevis, a chill snowboard coach. Generate ONLY a brief friendly intro (1-2 sentences max) acknowledging what the user wants to work on.
+// Pre-written intros by trick - no AI needed
+const TRICK_INTROS: Record<string, string> = {
+  'frontside-180': "Nice! 🔥 Frontside 180s are super fun once you get them dialed.",
+  'backside-180': "Nice! 🔥 Backside 180s are super fun once you get them dialed.",
+  'frontside-360': "Frontside 360s! Let's get you spinning smooth.",
+  'backside-360': "Backside 360s! Let's get you spinning smooth.",
+  'frontside-540': "Frontside 540s - that's ambitious! Let's break it down.",
+  'backside-540': "Backside 540s - that's ambitious! Let's break it down.",
+  'frontside-720': "Frontside 720s! Now we're talking 🔥",
+  'backside-720': "Backside 720s! Now we're talking 🔥",
+  'frontside-900': "Frontside 900s - respect! 💪",
+  'backside-900': "Backside 900s - respect! 💪",
+  'frontside-1080': "Frontside 1080s - that's next level!",
+  'backside-1080': "Backside 1080s - that's next level!",
+  'frontside-boardslide': "Frontside boardslides! Let's get you sliding 🛹",
+  'backside-boardslide': "Backside boardslides! Let's get you sliding 🛹",
+  '50-50': "50-50s are a classic. Let's dial them in.",
+  'nose-slide': "Nose slides - nice choice!",
+  'tail-slide': "Tail slides - solid!",
+  'method': "Method grabs are so stylish 🤙",
+  'indy': "Indy grabs - the classic!",
+  'melon': "Melon grabs - smooth!",
+  'stalefish': "Stalefish - nice grab!",
+  'mute': "Mute grabs - clean!",
+  'ollie': "Ollies are the foundation. Let's get them solid.",
+  'nollie': "Nollies - switch it up!",
+  'butter': "Buttering - that's fun stuff! 🏂",
+};
 
-Examples:
-- "Nice! 🔥 Backside 180s are super fun once you get them dialed."
-- "Ah, edge catching - that's frustrating but totally fixable 💪"
-- "Frontside boardslides! Let's get you sliding 🛹"
-
-Rules:
-- Just the intro, nothing else
-- No tips or advice yet
-- Keep it casual and encouraging
-- No markdown, plain text only
-- You can use cool emojis sparingly (🔥 💪 🏂 🛹 ✨ 👊 🤙) but don't overdo it`;
-
-const COACH_TRANSITION_PROMPT = `You are Taevis. Write a single short sentence to transition to tips. Examples:
-- "Here's what I'd focus on:"
-- "Check out these tips:"
-- "Here's what'll help:"
-Keep it to one short line.`;
+const GENERAL_INTRO = "Ah, let me help with that 💪";
 
 const INTENT_DETECTION_PROMPT = `Analyze this snowboarding question. Determine if the user wants to learn HOW TO DO a specific trick (step-by-step tutorial) or has a general question.
 
@@ -74,9 +86,28 @@ interface IntentResult {
 }
 
 /**
- * Detect user intent using AI - determines if they want a trick tutorial
+ * Detect user intent using pattern matching first, then AI if needed
+ * This reduces AI calls significantly for common trick questions
  */
 async function detectIntent(message: string, client: GoogleGenerativeAI): Promise<IntentResult> {
+  // First try pattern matching - covers 80% of cases
+  const trick = extractTrickFromMessage(message);
+  if (trick) {
+    // Found a trick mention - try to match it to available tricks
+    const normalized = normalizeTrickName(trick);
+    for (const availableTrick of AVAILABLE_TRICKS) {
+      if (normalizeTrickName(availableTrick).includes(normalized) || 
+          normalized.includes(normalizeTrickName(availableTrick))) {
+        return {
+          intent: 'how-to-trick',
+          trickId: availableTrick,
+          confidence: 0.9,
+        };
+      }
+    }
+  }
+  
+  // If pattern matching didn't work, use AI for ambiguous cases
   const model = client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
   
   try {
@@ -127,12 +158,34 @@ interface ChatMessage {
 // Response shape: { messages: ChatMessage[], hasMoreTips: boolean, featuredVideo?: VideoReference }
 
 let genAI: GoogleGenerativeAI | null = null;
+let embeddingCacheInitialized = false;
 
 function getGeminiClient(): GoogleGenerativeAI {
   if (!genAI) {
     genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
   }
   return genAI;
+}
+
+/**
+ * Convert cached chunk to EnhancedVideoSegment format
+ */
+function convertCachedChunkToSegment(chunk: any): EnhancedVideoSegment {
+  return {
+    id: chunk.id,
+    videoId: chunk.videoId,
+    videoTitle: chunk.videoTitle,
+    text: chunk.text,
+    timestamp: chunk.timestamp,
+    duration: chunk.duration,
+    topics: chunk.topics || [],
+    isPrimary: chunk.isPrimary || false,
+    trickId: chunk.trickId,
+    trickName: chunk.trickName,
+    stepNumber: chunk.stepNumber,
+    totalSteps: chunk.totalSteps,
+    stepTitle: chunk.stepTitle,
+  };
 }
 
 export default async function handler(
@@ -150,6 +203,12 @@ export default async function handler(
   
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
+  }
+  
+  // Initialize embedding cache on first request
+  if (!embeddingCacheInitialized) {
+    await initializeEmbeddingCache();
+    embeddingCacheInitialized = true;
   }
   
   try {
@@ -205,20 +264,15 @@ export default async function handler(
     const requestedVideoCount = message.match(/(\d+)\s*video/i)?.[1];
     const videoCount = requestedVideoCount ? Math.min(parseInt(requestedVideoCount), 10) : (wantsMoreVideos ? 5 : 3);
     
-    // Step 3: Search Pinecone - use different strategy based on intent
-    const queryEmbedding = await generateEmbedding(searchQuery);
-    
+    // Step 3: Search - use different strategy based on intent
     let rawSegments: EnhancedVideoSegment[];
     let isPrimaryTutorial = false;
+    let queryEmbedding: number[] | null = null;
     
     if (intent.intent === 'how-to-trick' && intent.trickId && intent.confidence > 0.7) {
-      // Search for primary trick tutorial first
+      // Search for primary trick tutorial first (no embedding needed!)
       console.log(`Searching for primary tutorial: ${intent.trickId}`);
-      const primarySegments = await searchVideoSegmentsWithOptions(queryEmbedding, {
-        topK: 15,
-        filterPrimary: true,
-        trickId: intent.trickId,
-      });
+      const primarySegments = await getTrickTutorialById(intent.trickId);
       
       if (primarySegments.length >= 5) {
         // Found primary tutorial - use it
@@ -226,13 +280,27 @@ export default async function handler(
         isPrimaryTutorial = true;
         console.log(`Found ${primarySegments.length} primary tutorial steps`);
       } else {
-        // No primary tutorial found, fall back to general search for related content
+        // No primary tutorial found, fall back to semantic search
         console.log('No primary tutorial found, searching for related content');
+        queryEmbedding = await generateEmbedding(searchQuery);
         rawSegments = await searchVideoSegments(queryEmbedding, Math.max(20, videoCount * 3));
       }
     } else {
-      // General question - normal search
-      rawSegments = await searchVideoSegments(queryEmbedding, Math.max(20, videoCount * 3));
+      // General question - use semantic search with embedding
+      queryEmbedding = await generateEmbedding(searchQuery);
+      
+      // Try local embedding cache first (no Pinecone API call!)
+      const cache = getEmbeddingCache();
+      const cacheStats = cache.getStats();
+      if (cacheStats.totalChunks > 0) {
+        console.log('Using local embedding cache for search');
+        const cachedResults = cache.search(queryEmbedding, Math.max(20, videoCount * 3));
+        rawSegments = cachedResults.map(convertCachedChunkToSegment);
+      } else {
+        // Fallback to Pinecone if cache not available
+        console.log('Embedding cache not available, using Pinecone');
+        rawSegments = await searchVideoSegments(queryEmbedding, Math.max(20, videoCount * 3));
+      }
     }
     console.log(`Found ${rawSegments.length} raw segments`);
     
@@ -256,12 +324,10 @@ export default async function handler(
       console.log(`  ${i + 1}. ID: ${seg.id} | videoId: ${seg.videoId || 'MISSING'} | trickName: ${seg.trickName || 'N/A'} | title: ${seg.videoTitle?.substring(0, 40) || 'N/A'}`);
     });
     
-    // Step 5: Generate AI intro (just the friendly acknowledgment)
-    const model = client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
-    
-    const introPrompt = `${COACH_INTRO_PROMPT}\n\nUser asked: "${message}"`;
-    const introResult = await model.generateContent(introPrompt);
-    const coachIntro = cleanResponse(introResult.response.text());
+    // Step 5: Get intro (from cache or use general)
+    const coachIntro = intent.intent === 'how-to-trick' && intent.trickId
+      ? TRICK_INTROS[intent.trickId] || GENERAL_INTRO
+      : GENERAL_INTRO;
     
     // Step 6: Build tips - different handling for primary tutorials vs general
     if (isPrimaryTutorial && segments.length > 0) {
@@ -314,13 +380,33 @@ export default async function handler(
         }
       }
       
-      // Third pass: if still no videos, search Taevis videos by trickName
+      // Fallback: if still no videos, check Taevis trick videos mapping or do broader search
       if (uniqueVideos.length < 3) {
-        const trickName = segments[0]?.trickName || intent.trickId;
-        if (trickName) {
-          console.log(`Searching Taevis videos for trickName: ${trickName}`);
-          const taevisSegments = await searchByTrickName(queryEmbedding, trickName, 50);
-          for (const seg of taevisSegments) {
+        if (intent.intent === 'how-to-trick' && intent.trickId) {
+          const taevisVideos = TAEVIS_TRICK_VIDEOS[intent.trickId];
+          if (taevisVideos) {
+            console.log(`Using Taevis videos for ${intent.trickId}`);
+            for (const videoId of taevisVideos) {
+              if (!seenIds.has(videoId)) {
+                uniqueVideos.push({
+                  videoId,
+                  videoTitle: `Taevis - ${intent.trickId}`,
+                  timestamp: 0,
+                  url: `https://youtube.com/watch?v=${videoId}`,
+                  thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+                });
+                seenIds.add(videoId);
+                if (uniqueVideos.length >= 3) break;
+              }
+            }
+          }
+        }
+        
+        // If still no videos and we have an embedding, do one broader search
+        if (uniqueVideos.length < 3 && queryEmbedding) {
+          console.log('No videos found, searching for related content...');
+          const relatedSegments = await searchVideoSegments(queryEmbedding, 50);
+          for (const seg of relatedSegments) {
             if (seg.videoId && !seenIds.has(seg.videoId)) {
               uniqueVideos.push({
                 videoId: seg.videoId,
@@ -337,55 +423,13 @@ export default async function handler(
         }
       }
       
-      // Fourth pass: if still no videos, check for Taevis trick videos mapping
-      if (uniqueVideos.length === 0 && intent.intent === 'how-to-trick' && intent.trickId) {
-        const taevisVideos = TAEVIS_TRICK_VIDEOS[intent.trickId];
-        if (taevisVideos) {
-          console.log(`Using Taevis videos for ${intent.trickId}`);
-          for (const videoId of taevisVideos) {
-            if (!seenIds.has(videoId)) {
-              // We don't have full metadata, so we'll use the videoId as title
-              uniqueVideos.push({
-                videoId,
-                videoTitle: `Taevis - ${intent.trickId}`,
-                timestamp: 0,
-                url: `https://youtube.com/watch?v=${videoId}`,
-                thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-              });
-              seenIds.add(videoId);
-              if (uniqueVideos.length >= 3) break;
-            }
-          }
-        }
-      }
-      
-      // Fourth pass: if still no videos, do a broader search for related content
-      if (uniqueVideos.length === 0) {
-        console.log('No videos found in relevant segments, searching for related content...');
-        const relatedSegments = await searchVideoSegments(queryEmbedding, 50);
-        for (const seg of relatedSegments) {
-          if (seg.videoId && !seenIds.has(seg.videoId)) {
-            uniqueVideos.push({
-              videoId: seg.videoId,
-              videoTitle: seg.videoTitle,
-              timestamp: seg.timestamp,
-              url: `https://youtube.com/watch?v=${seg.videoId}`,
-              thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
-              duration: seg.duration,
-            });
-            seenIds.add(seg.videoId);
-            if (uniqueVideos.length >= 3) break;
-          }
-        }
-      }
-      
       const messages: ChatMessage[] = [];
       
       // Add intro message
       messages.push({ type: 'text', content: coachIntro });
       
-      // Add transition
-      messages.push({ type: 'text', content: "Here's how to do it step by step:" });
+      // Add transition (hardcoded, no AI needed)
+      messages.push({ type: 'text', content: "Here's how to do it:" });
       
       // Add first 3 steps as separate messages
       const firstBatch = orderedSteps.slice(0, 3);
@@ -450,10 +494,8 @@ export default async function handler(
       // Add intro message
       messages.push({ type: 'text', content: coachIntro });
       
-      // Add transition message
-      const transitionResult = await model.generateContent(COACH_TRANSITION_PROMPT);
-      const transition = cleanResponse(transitionResult.response.text());
-      messages.push({ type: 'text', content: transition });
+      // Add transition (hardcoded, no AI needed)
+      messages.push({ type: 'text', content: "Here's what I'd focus on:" });
       
       // Add first 3 tips as separate messages
       const firstBatch = availableTips.slice(0, 3);
@@ -502,39 +544,9 @@ export default async function handler(
         }
       }
       
-      // Third pass: if still no videos, search Taevis videos by trickName
-      if (uniqueVideos.length < 3) {
-        // Get the trickName from available tips
-        const trickNames = new Set(availableTips
-          .filter(t => t.trickName)
-          .map(t => t.trickName as string));
-        
-        if (trickNames.size > 0) {
-          console.log(`Searching Taevis videos for trickNames: ${Array.from(trickNames).join(', ')}`);
-          for (const trickName of trickNames) {
-            if (uniqueVideos.length >= 3) break;
-            const taevisSegments = await searchByTrickName(queryEmbedding, trickName, 50);
-            for (const seg of taevisSegments) {
-              if (seg.videoId && !seenIds.has(seg.videoId)) {
-                uniqueVideos.push({
-                  videoId: seg.videoId,
-                  videoTitle: seg.videoTitle,
-                  timestamp: seg.timestamp,
-                  url: `https://youtube.com/watch?v=${seg.videoId}`,
-                  thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
-                  duration: seg.duration,
-                });
-                seenIds.add(seg.videoId);
-                if (uniqueVideos.length >= 3) break;
-              }
-            }
-          }
-        }
-      }
-      
-      // Fourth pass: if still no videos, do a broader search for related content from all videos
-      if (uniqueVideos.length < 3) {
-        console.log(`Only ${uniqueVideos.length} videos found, searching all videos for related content...`);
+      // Fallback: if still no videos and we have an embedding, do one broader search
+      if (uniqueVideos.length < 3 && queryEmbedding) {
+        console.log(`Only ${uniqueVideos.length} videos found, searching for related content...`);
         const relatedSegments = await searchVideoSegments(queryEmbedding, 100);
         for (const seg of relatedSegments) {
           if (seg.videoId && !seenIds.has(seg.videoId)) {
