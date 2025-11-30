@@ -21,7 +21,8 @@ function getPineconeClient(): Pinecone {
 export interface SearchOptions {
   topK?: number;
   filterPrimary?: boolean;  // Only return primary trick tutorials
-  trickId?: string;         // Filter by specific trick
+  trickId?: string;         // Filter by specific trick (legacy)
+  trickName?: string;       // Filter by trickName metadata
 }
 
 export interface EnhancedVideoSegment extends VideoSegment {
@@ -47,7 +48,7 @@ export async function searchVideoSegmentsWithOptions(
   queryEmbedding: number[],
   options: SearchOptions = {}
 ): Promise<EnhancedVideoSegment[]> {
-  const { topK = 5, filterPrimary, trickId } = options;
+  const { topK = 5, filterPrimary, trickId, trickName } = options;
   
   const pinecone = getPineconeClient();
   const indexName = process.env.PINECONE_INDEX || 'snowboarding-explained';
@@ -55,13 +56,16 @@ export async function searchVideoSegmentsWithOptions(
   
   // Build filter if needed
   let filter: any = undefined;
-  if (filterPrimary || trickId) {
+  if (filterPrimary || trickId || trickName) {
     filter = {};
     if (filterPrimary) {
       filter.isPrimary = { $eq: true };
     }
     if (trickId) {
       filter.trickId = { $eq: trickId };
+    }
+    if (trickName) {
+      filter.trickName = { $eq: trickName };
     }
   }
   
@@ -116,5 +120,21 @@ export async function searchTrickTutorial(
     topK: 15,  // Get all steps
     filterPrimary: true,
     trickId,
+  });
+}
+
+/**
+ * Search by trickName metadata
+ * Use this to find all segments tagged with a specific trick
+ * Example: searchByTrickName(embedding, "Frontside 720")
+ */
+export async function searchByTrickName(
+  queryEmbedding: number[],
+  trickName: string,
+  topK: number = 20
+): Promise<EnhancedVideoSegment[]> {
+  return searchVideoSegmentsWithOptions(queryEmbedding, {
+    topK,
+    trickName,
   });
 }

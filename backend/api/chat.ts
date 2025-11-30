@@ -209,12 +209,24 @@ export default async function handler(
     }
     console.log(`Found ${rawSegments.length} raw segments`);
     
+    // Log raw segment details for debugging
+    console.log('=== Raw Segments ===');
+    rawSegments.slice(0, 10).forEach((seg, i) => {
+      console.log(`  ${i + 1}. ID: ${seg.id} | trickName: ${seg.trickName || 'N/A'} | title: ${seg.videoTitle.substring(0, 40)}`);
+    });
+    
     // Step 4: Filter segments (skip for primary tutorials - they're already filtered)
     // Use trickName metadata for strict filtering when available
     const segments: EnhancedVideoSegment[] = isPrimaryTutorial 
       ? rawSegments 
       : filterSegmentsByTrick(rawSegments, currentTopic || historyTopic);
     console.log(`After filtering: ${segments.length} relevant segments`);
+    
+    // Log filtered segment details
+    console.log('=== Filtered Segments ===');
+    segments.slice(0, 10).forEach((seg, i) => {
+      console.log(`  ${i + 1}. ID: ${seg.id} | trickName: ${seg.trickName || 'N/A'} | title: ${seg.videoTitle.substring(0, 40)}`);
+    });
     
     // Step 5: Generate AI intro (just the friendly acknowledgment)
     const model = client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
