@@ -145,7 +145,7 @@ interface ChatRequest {
   currentTrick?: string;     // Track the current trick being discussed
 }
 
-interface VideoReference {
+export interface VideoReference {
   videoId: string;
   videoTitle: string;
   timestamp: number;
@@ -495,7 +495,7 @@ export default async function handler(
       }
       
       // Get all videos for this trick from cache
-      const trickNameToSearch = intent.trickId;
+      const trickNameToSearch = intent.trickId || '';
       console.log(`Looking up videos for trick: ${trickNameToSearch}`);
       
       const allTrickVideos = getTrickVideos(trickNameToSearch);
