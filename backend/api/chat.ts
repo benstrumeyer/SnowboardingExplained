@@ -379,8 +379,12 @@ export default async function handler(
           trickName: intent.trickId,
         });
         
+        console.log(`Found ${taevisSegments.length} Taevis segments for ${intent.trickId}`);
+        
         for (const seg of taevisSegments) {
-          if (seg.videoId && !seenIds.has(seg.videoId)) {
+          console.log(`  Checking: ${seg.videoId} | trickName: ${seg.trickName} | title: ${seg.videoTitle.substring(0, 40)}`);
+          if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId)) {
+            console.log(`    ✓ Adding video`);
             uniqueVideos.push({
               videoId: seg.videoId,
               videoTitle: seg.videoTitle,
@@ -391,6 +395,8 @@ export default async function handler(
             });
             seenIds.add(seg.videoId);
             if (uniqueVideos.length >= 3) break;
+          } else {
+            console.log(`    ✗ Skipped (shown: ${shownVideoSet.has(seg.videoId)}, seen: ${seenIds.has(seg.videoId)})`);
           }
         }
       }
