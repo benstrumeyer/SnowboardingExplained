@@ -244,9 +244,11 @@ export default function ChatScreen() {
                       <Text style={tw`text-white text-xs`} numberOfLines={1}>
                         {video.videoTitle}
                       </Text>
-                      <Text style={tw`text-[#4DA6FF] text-xs`}>
-                        ▶ {formatTimestamp(video.timestamp)}
-                      </Text>
+                      {video.duration && (
+                        <Text style={tw`text-[#A0A0A0] text-xs`}>
+                          {formatTimestamp(video.duration)}
+                        </Text>
+                      )}
                     </View>
                   </TouchableOpacity>
                 ))}

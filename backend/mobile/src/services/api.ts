@@ -12,6 +12,7 @@ export interface VideoReference {
   timestamp: number;
   url: string;
   thumbnail: string;
+  duration?: number;  // Total video duration in seconds
 }
 
 export interface ChatResponse {

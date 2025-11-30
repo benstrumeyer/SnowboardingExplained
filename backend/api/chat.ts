@@ -108,6 +108,7 @@ interface VideoReference {
   timestamp: number;
   url: string;
   thumbnail: string;
+  duration?: number;  // Total video duration in seconds
 }
 
 // Response shape: { response: string, videos: VideoReference[] }
@@ -209,9 +210,10 @@ export default async function handler(
     console.log(`Found ${rawSegments.length} raw segments`);
     
     // Step 4: Filter segments (skip for primary tutorials - they're already filtered)
+    // Use trickName metadata for strict filtering when available
     const segments: EnhancedVideoSegment[] = isPrimaryTutorial 
       ? rawSegments 
-      : filterSegmentsByTrick(rawSegments, currentTopic || historyTopic) as EnhancedVideoSegment[];
+      : filterSegmentsByTrick(rawSegments, currentTopic || historyTopic);
     console.log(`After filtering: ${segments.length} relevant segments`);
     
     // Step 5: Generate AI intro (just the friendly acknowledgment)
@@ -255,6 +257,8 @@ export default async function handler(
         videoTitle: seg.videoTitle,
         timestamp: seg.timestamp,
         isPrimary: seg.isPrimary,
+        duration: seg.duration,
+        trickName: seg.trickName,
       }));
       
       // Add transition
@@ -293,8 +297,9 @@ export default async function handler(
           videoId: tip.videoId,
           videoTitle: tip.videoTitle,
           timestamp: tip.timestamp,
-          url: `https://youtube.com/watch?v=${tip.videoId}&t=${Math.floor(tip.timestamp)}s`,
-          thumbnail: `https://img.youtube.com/vi/${tip.videoId}/maxresdefault.jpg`,
+          url: `https://youtube.com/watch?v=${tip.videoId}`,
+          thumbnail: `https://img.youtube.com/vi/${tip.videoId}/hqdefault.jpg`,
+          duration: tip.duration,
         }));
         
     } else {
@@ -427,14 +432,21 @@ function extractConversationTopic(history: { role: string; content: string }[]):
 
 /**
  * Filter segments to match the specific trick requested
+ * Uses trickName metadata when available, falls back to title/text matching
  * e.g., "frontside 180" should NOT include "frontside 360" content
- * Checks BOTH video title AND transcript text
  */
 function filterSegmentsByTrick(
-  segments: { videoTitle: string; text: string; videoId: string; timestamp: number }[],
+  segments: EnhancedVideoSegment[],
   requestedTrick: string | null
-): typeof segments {
+): EnhancedVideoSegment[] {
   if (!requestedTrick) return segments;
+  
+  // Normalize the requested trick for matching
+  const normalizedRequest = requestedTrick.toLowerCase()
+    .replace(/\bfs\b/i, 'frontside')
+    .replace(/\bbs\b/i, 'backside')
+    .replace(/\s+/g, ' ')
+    .trim();
   
   // Extract rotation number if present (180, 360, 540, etc.)
   const rotationMatch = requestedTrick.match(/\d+/);
@@ -447,6 +459,36 @@ function filterSegmentsByTrick(
   const otherRotations = ['180', '360', '540', '720', '900', '1080'].filter(r => r !== requestedRotation);
   
   return segments.filter(seg => {
+    // PRIORITY: If segment has trickName metadata, use it for strict matching
+    if (seg.trickName) {
+      const segTrickName = seg.trickName.toLowerCase();
+      
+      // Check if trickName matches the requested trick
+      if (requestedRotation && normalizedDirection) {
+        // For rotation tricks, match both direction and rotation
+        const matchesDirection = segTrickName.includes(normalizedDirection);
+        const matchesRotation = segTrickName.includes(requestedRotation);
+        
+        // Must match both, or be a general tip (no rotation in trickName)
+        if (matchesDirection && matchesRotation) return true;
+        if (!segTrickName.match(/\d+/) && matchesDirection) return true; // General direction tips
+        
+        // Exclude if it's a different rotation
+        for (const rot of otherRotations) {
+          if (segTrickName.includes(rot)) return false;
+        }
+      }
+      
+      // For non-rotation tricks, check if trickName contains the request
+      if (segTrickName.includes(normalizedRequest) || normalizedRequest.includes(segTrickName)) {
+        return true;
+      }
+      
+      // If trickName doesn't match at all, exclude
+      return false;
+    }
+    
+    // FALLBACK: No trickName metadata, use title/text matching
     const title = seg.videoTitle.toLowerCase();
     const text = seg.text.toLowerCase();
     
@@ -458,7 +500,6 @@ function filterSegmentsByTrick(
           return false;
         }
         // Exclude if text content mentions a different rotation prominently
-        // Check for patterns like "frontside 360" or "backside 360" in the text
         const wrongTrickPattern = new RegExp(`(frontside|backside|fs|bs)\\s*${rot}`, 'i');
         if (wrongTrickPattern.test(text)) {
           return false;
@@ -469,7 +510,6 @@ function filterSegmentsByTrick(
     // If user asked for frontside, exclude backside-specific content (and vice versa)
     if (normalizedDirection === 'frontside') {
       if (title.includes('backside') && !title.includes('frontside')) return false;
-      // Also check text for backside tricks with rotations
       if (requestedRotation && text.includes(`backside ${requestedRotation}`)) return false;
     } else if (normalizedDirection === 'backside') {
       if (title.includes('frontside') && !title.includes('backside')) return false;

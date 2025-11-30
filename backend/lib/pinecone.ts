@@ -78,7 +78,7 @@ export async function searchVideoSegmentsWithOptions(
     videoTitle: match.metadata.videoTitle,
     text: match.metadata.text,
     timestamp: match.metadata.timestamp,
-    duration: match.metadata.duration,
+    duration: match.metadata.totalDuration || match.metadata.duration,  // Total video duration
     topics: match.metadata.topics || [],
     // Enhanced fields for trick tutorials
     isPrimary: match.metadata.isPrimary || false,
