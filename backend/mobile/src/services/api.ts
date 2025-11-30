@@ -24,6 +24,7 @@ export interface ChatMessage {
 export interface ChatResponse {
   messages: ChatMessage[];
   hasMoreTips: boolean;
+  videos: VideoReference[];  // 3 videos per question
 }
 
 export interface ChatHistoryItem {

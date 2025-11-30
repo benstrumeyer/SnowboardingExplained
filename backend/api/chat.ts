@@ -117,7 +117,7 @@ interface ChatMessage {
   video?: VideoReference;  // Optional video for this specific message
 }
 
-// Response shape: { messages: ChatMessage[], hasMoreTips: boolean }
+// Response shape: { messages: ChatMessage[], hasMoreTips: boolean, featuredVideo?: VideoReference }
 
 let genAI: GoogleGenerativeAI | null = null;
 
@@ -253,6 +253,26 @@ export default async function handler(
         .sort((a, b) => (a.stepNumber || 0) - (b.stepNumber || 0))
         .slice(0, 10);  // Max 10 steps
       
+      // Get up to 3 unique videos for this question (skip recently shown)
+      const recentVideoIds = new Set(shownVideoIds.slice(-15));  // Last 5 prompts * 3 videos
+      const uniqueVideos: VideoReference[] = [];
+      const seenIds = new Set<string>();
+      
+      for (const seg of segments) {
+        if (!recentVideoIds.has(seg.videoId) && !seenIds.has(seg.videoId)) {
+          uniqueVideos.push({
+            videoId: seg.videoId,
+            videoTitle: seg.videoTitle,
+            timestamp: seg.timestamp,
+            url: `https://youtube.com/watch?v=${seg.videoId}`,
+            thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
+            duration: seg.duration,
+          });
+          seenIds.add(seg.videoId);
+          if (uniqueVideos.length >= 3) break;
+        }
+      }
+      
       const messages: ChatMessage[] = [];
       
       // Add intro message
@@ -278,11 +298,12 @@ export default async function handler(
         });
       }
       
-      console.log(`Returning ${messages.length} messages for primary tutorial (hasMoreTips: ${hasMoreTips})`);
+      console.log(`Returning ${messages.length} messages, ${uniqueVideos.length} videos for primary tutorial (hasMoreTips: ${hasMoreTips})`);
       
       return res.status(200).json({
         messages,
         hasMoreTips,
+        videos: uniqueVideos,
       });
       
     } else if (segments.length > 0) {
@@ -308,29 +329,10 @@ export default async function handler(
       const transition = cleanResponse(transitionResult.response.text());
       messages.push({ type: 'text', content: transition });
       
-      // Track used video IDs to avoid duplicates
-      const recentVideoIds = new Set(shownVideoIds.slice(-5));
-      const usedVideoIds = new Set<string>();
-      
-      // Add first 5 tips as separate messages, each with its own video (if available)
+      // Add first 5 tips as separate messages (videos shown separately)
       const firstBatch = allTips.slice(0, 5);
       for (const tip of firstBatch) {
-        const message: ChatMessage = { type: 'tip', content: tip.tip };
-        
-        // Add video if not already used and not primary
-        if (!tip.isPrimary && !usedVideoIds.has(tip.videoId) && !recentVideoIds.has(tip.videoId)) {
-          message.video = {
-            videoId: tip.videoId,
-            videoTitle: tip.videoTitle,
-            timestamp: tip.timestamp,
-            url: `https://youtube.com/watch?v=${tip.videoId}`,
-            thumbnail: `https://img.youtube.com/vi/${tip.videoId}/hqdefault.jpg`,
-            duration: tip.duration,
-          };
-          usedVideoIds.add(tip.videoId);
-        }
-        
-        messages.push(message);
+        messages.push({ type: 'tip', content: tip.tip });
       }
       
       // Check if there are more tips available
@@ -344,12 +346,33 @@ export default async function handler(
         });
       }
       
+      // Get 3 unique videos for this question (skip recently shown)
+      const recentVideoIds = new Set(shownVideoIds.slice(-15));  // Last 5 prompts * 3 videos
+      const uniqueVideos: VideoReference[] = [];
+      const seenIds = new Set<string>();
+      
+      for (const tip of allTips) {
+        if (!tip.isPrimary && !recentVideoIds.has(tip.videoId) && !seenIds.has(tip.videoId)) {
+          uniqueVideos.push({
+            videoId: tip.videoId,
+            videoTitle: tip.videoTitle,
+            timestamp: tip.timestamp,
+            url: `https://youtube.com/watch?v=${tip.videoId}`,
+            thumbnail: `https://img.youtube.com/vi/${tip.videoId}/hqdefault.jpg`,
+            duration: tip.duration,
+          });
+          seenIds.add(tip.videoId);
+          if (uniqueVideos.length >= 3) break;
+        }
+      }
+      
       console.log('AI Response:', coachIntro.substring(0, 100) + '...');
-      console.log(`Returning ${messages.length} messages (hasMoreTips: ${hasMoreTips})`);
+      console.log(`Returning ${messages.length} messages, ${uniqueVideos.length} videos (hasMoreTips: ${hasMoreTips})`);
       
       return res.status(200).json({
         messages,
         hasMoreTips,
+        videos: uniqueVideos,
       });
         
     } else {

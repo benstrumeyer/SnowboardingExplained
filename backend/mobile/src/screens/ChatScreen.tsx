@@ -20,7 +20,7 @@ import {
 // @ts-ignore - Expo vector icons bundled with Expo
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import tw from 'twrnc';
-import { sendMessage, type VideoReference, type ChatHistoryItem, type ChatMessage as APIChatMessage } from '../services/api';
+import { sendMessage, type VideoReference, type ChatHistoryItem } from '../services/api';
 
 const GREETING = "Hey! I'm Taevis, your snowboarding coach. What trick or technique can I help you with today?";
 
@@ -28,9 +28,12 @@ interface Message {
   id: string;
   text: string;
   sender: 'user' | 'coach';
-  video?: VideoReference;  // Single video per message now
+  videos?: VideoReference[];  // 3 videos per question
   messageType?: 'text' | 'tip' | 'follow-up';
 }
+
+// Helper to add messages with delay for human-like feel
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Animated message bubble component
 function AnimatedBubble({ 
@@ -152,27 +155,43 @@ export default function ChatScreen() {
     try {
       const response = await sendMessage(userMessage, sessionId, chatHistory, shownVideoIds);
       
-      // Convert API messages to UI messages - each becomes its own bubble
-      const coachMessages: Message[] = response.messages.map((msg, idx) => ({
-        id: `coach-${Date.now()}-${idx}`,
-        text: msg.content,
-        sender: 'coach' as const,
-        video: msg.video,
-        messageType: msg.type,
-      }));
-      
       // Update history with combined coach response for context
       const combinedResponse = response.messages.map(m => m.content).join('\n');
       setChatHistory([...newHistory, { role: 'coach', content: combinedResponse }]);
       
-      // Track shown videos to avoid repeats
-      const newVideoIds = response.messages
-        .filter(m => m.video)
-        .map(m => m.video!.videoId);
-      setShownVideoIds(prev => [...prev, ...newVideoIds]);
+      // Track shown videos to avoid repeats (keep last 15 = 5 prompts * 3 videos)
+      const newVideoIds = response.videos?.map(v => v.videoId) || [];
+      setShownVideoIds(prev => [...prev.slice(-12), ...newVideoIds]);
       
-      // Add all coach messages to UI - each as separate bubble
-      setMessages(prev => [...prev, ...coachMessages]);
+      // Add messages with staggered delays for human-like feel
+      setLoading(false);  // Stop loading indicator before showing messages
+      
+      for (let i = 0; i < response.messages.length; i++) {
+        const msg = response.messages[i];
+        const isFirst = i === 0;
+        const isTip = msg.type === 'tip';
+        
+        // Calculate delay: first message quick, tips slower
+        const msgDelay = isFirst ? 300 : (isTip ? 600 + (i * 150) : 400);
+        
+        await delay(msgDelay);
+        
+        const uiMessage: Message = {
+          id: `coach-${Date.now()}-${i}`,
+          text: msg.content,
+          sender: 'coach',
+          messageType: msg.type,
+        };
+        
+        // Show videos after intro message (3 per question)
+        if (isFirst && response.videos?.length > 0) {
+          uiMessage.videos = response.videos;
+        }
+        
+        setMessages(prev => [...prev, uiMessage]);
+      }
+      
+      return;  // Skip the finally block's setLoading since we already did it
       
     } catch (error: any) {
       setMessages(prev => [...prev, {
@@ -232,30 +251,43 @@ export default function ChatScreen() {
               </AnimatedBubble>
             </View>
             
-            {/* Video reference (single video per tip message) */}
-            {msg.video && (
-              <View style={tw`mt-2`}>
-                <TouchableOpacity
-                  style={tw`flex-row bg-[#1A1A1A] rounded-lg overflow-hidden border border-[#333333]`}
-                  onPress={() => openVideo(msg.video!.url)}
-                  activeOpacity={0.8}
-                >
-                  <Image
-                    source={{ uri: msg.video.thumbnail }}
-                    style={tw`w-20 h-12`}
-                    resizeMode="cover"
-                  />
-                  <View style={tw`flex-1 p-2 justify-center`}>
-                    <Text style={tw`text-white text-xs`} numberOfLines={1}>
-                      {msg.video.videoTitle}
-                    </Text>
-                    {msg.video.duration && (
-                      <Text style={tw`text-[#A0A0A0] text-xs`}>
-                        {formatTimestamp(msg.video.duration)}
-                      </Text>
-                    )}
-                  </View>
-                </TouchableOpacity>
+            {/* Video thumbnails (3 per question, shown after intro) */}
+            {msg.videos && msg.videos.length > 0 && (
+              <View style={tw`mt-3`}>
+                {msg.videos.map((video, idx) => (
+                  <TouchableOpacity
+                    key={video.videoId}
+                    style={tw`bg-[#1A1A1A] rounded-xl overflow-hidden border border-[#333333] ${idx > 0 ? 'mt-2' : ''}`}
+                    onPress={() => openVideo(video.url)}
+                    activeOpacity={0.8}
+                  >
+                    <View style={tw`flex-row`}>
+                      <View style={tw`relative`}>
+                        <Image
+                          source={{ uri: video.thumbnail }}
+                          style={tw`w-32 h-20`}
+                          resizeMode="cover"
+                        />
+                        {/* Play button overlay */}
+                        <View style={tw`absolute inset-0 items-center justify-center`}>
+                          <View style={tw`bg-black/60 rounded-full p-1.5`}>
+                            <MaterialCommunityIcons name="play" size={18} color="#FFFFFF" />
+                          </View>
+                        </View>
+                      </View>
+                      <View style={tw`flex-1 p-2 justify-center`}>
+                        <Text style={tw`text-white text-sm`} numberOfLines={2}>
+                          {video.videoTitle}
+                        </Text>
+                        {video.duration && (
+                          <Text style={tw`text-[#A0A0A0] text-xs mt-1`}>
+                            {formatTimestamp(video.duration)}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                ))}
               </View>
             )}
           </View>
