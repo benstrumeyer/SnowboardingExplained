@@ -106,8 +106,13 @@ export default async function handler(
     
     // Step 2: Search Pinecone with context-aware query
     const queryEmbedding = await generateEmbedding(searchQuery);
-    const segments = await searchVideoSegments(queryEmbedding, 8);
-    console.log(`Found ${segments.length} relevant segments`);
+    const rawSegments = await searchVideoSegments(queryEmbedding, 15);  // Get more to filter
+    console.log(`Found ${rawSegments.length} raw segments`);
+    
+    // Step 2.5: Filter segments to match the specific trick requested
+    // e.g., "frontside 180" should NOT return "frontside 360" videos
+    const segments = filterSegmentsByTrick(rawSegments, currentTopic || historyTopic);
+    console.log(`After filtering: ${segments.length} relevant segments`);
     
     // Step 3: Generate AI intro (just the friendly acknowledgment)
     const client = getGeminiClient();
@@ -293,6 +298,50 @@ function extractConversationTopic(history: { role: string; content: string }[]):
   }
   
   return null;
+}
+
+/**
+ * Filter segments to match the specific trick requested
+ * e.g., "frontside 180" should NOT include "frontside 360" videos
+ */
+function filterSegmentsByTrick(
+  segments: { videoTitle: string; text: string; videoId: string; timestamp: number }[],
+  requestedTrick: string | null
+): typeof segments {
+  if (!requestedTrick) return segments;
+  
+  // Extract rotation number if present (180, 360, 540, etc.)
+  const rotationMatch = requestedTrick.match(/\d+/);
+  const requestedRotation = rotationMatch ? rotationMatch[0] : null;
+  
+  // Extract direction (frontside, backside)
+  const direction = requestedTrick.match(/frontside|backside|fs|bs/i)?.[0]?.toLowerCase();
+  const normalizedDirection = direction?.replace(/^fs$/i, 'frontside').replace(/^bs$/i, 'backside');
+  
+  return segments.filter(seg => {
+    const title = seg.videoTitle.toLowerCase();
+    const text = seg.text.toLowerCase();
+    
+    // If user asked for a specific rotation (e.g., 180), exclude other rotations
+    if (requestedRotation) {
+      const otherRotations = ['180', '360', '540', '720', '900', '1080'].filter(r => r !== requestedRotation);
+      for (const rot of otherRotations) {
+        // Exclude if title contains a different rotation
+        if (title.includes(rot) && !title.includes(requestedRotation)) {
+          return false;
+        }
+      }
+    }
+    
+    // If user asked for frontside, exclude backside-specific videos (and vice versa)
+    if (normalizedDirection === 'frontside') {
+      if (title.includes('backside') && !title.includes('frontside')) return false;
+    } else if (normalizedDirection === 'backside') {
+      if (title.includes('frontside') && !title.includes('backside')) return false;
+    }
+    
+    return true;
+  });
 }
 
 /**
