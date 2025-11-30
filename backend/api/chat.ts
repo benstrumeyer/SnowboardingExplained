@@ -2,22 +2,44 @@
  * Chat API Endpoint
  * POST /api/chat
  * 
- * Simplified flow:
- * 1. AI interprets user input (fix typos, expand abbreviations)
- * 2. Search Pinecone with clean query
- * 3. Return transcript segments as tips (no AI extraction)
+ * True conversational AI coach:
+ * 1. Understand user's message naturally
+ * 2. Search Pinecone for relevant knowledge
+ * 3. Generate conversational response using AI with snowboard coach personality
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateEmbedding } from '../lib/gemini';
 import { searchVideoSegments } from '../lib/pinecone';
-import { getCachedResponse, cacheResponse } from '../lib/cache';
-import { interpretQuery } from '../lib/query-interpreter';
-import { GREETING } from '../lib/coach-personality';
 import type { VideoSegment } from '../lib/types';
 
-interface TipWithVideo {
-  tip: string;
+const COACH_SYSTEM_PROMPT = `You are Taevis, a friendly and knowledgeable snowboard coach from the "Snowboarding Explained" YouTube channel.
+
+Your personality:
+- Warm, encouraging, and supportive
+- Break down techniques into simple, actionable steps
+- Use relatable analogies
+- Conversational, like chatting on a chairlift
+- Passionate about helping riders progress
+
+Rules:
+- Answer the user's question naturally and conversationally
+- Use the provided video transcript content as your knowledge base
+- Reference specific tips from the transcripts when relevant
+- If asked for a specific number of tips, provide that many
+- Keep responses concise but helpful
+- If you don't have relevant content, be honest and suggest what you can help with
+
+You have access to transcript content from your YouTube videos. Use this knowledge to help riders.`;
+
+interface ChatRequest {
+  message: string;
+  sessionId: string;
+  history?: { role: 'user' | 'coach'; content: string }[];
+}
+
+interface VideoReference {
   videoId: string;
   videoTitle: string;
   timestamp: number;
@@ -26,15 +48,17 @@ interface TipWithVideo {
 }
 
 interface ChatResponse {
-  greeting?: string;
-  interpretation: {
-    original: string;
-    understood: string;
-    concepts: string[];
-  } | null;
-  coachMessage: string;
-  tips: TipWithVideo[];
-  cached: boolean;
+  response: string;
+  videos: VideoReference[];
+}
+
+let genAI: GoogleGenerativeAI | null = null;
+
+function getGeminiClient(): GoogleGenerativeAI {
+  if (!genAI) {
+    genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!);
+  }
+  return genAI;
 }
 
 export default async function handler(
@@ -55,73 +79,71 @@ export default async function handler(
   }
   
   try {
-    console.log('=== Chat API Called ===');
-    
-    const { message, sessionId } = req.body;
+    const { message, sessionId, history = [] }: ChatRequest = req.body;
     
     // If no message, return greeting
     if (!message || !message.trim()) {
       return res.status(200).json({
-        greeting: GREETING,
-        interpretation: null,
-        coachMessage: '',
-        tips: [],
-        cached: false,
+        response: "Hey! I'm Taevis, your snowboarding coach. What trick or technique can I help you with today?",
+        videos: [],
       });
     }
     
-    console.log('User message:', message);
+    console.log('=== Chat API ===');
+    console.log('Message:', message);
+    console.log('History length:', history.length);
     
-    // Check cache
-    const cacheKey = { trick: message.toLowerCase().trim() };
-    const cachedResponse = await getCachedResponse(cacheKey);
-    if (cachedResponse) {
-      console.log('Cache hit!');
-      return res.status(200).json({
-        ...JSON.parse(cachedResponse),
-        cached: true,
-      });
+    // Step 1: Search Pinecone for relevant content
+    const queryEmbedding = await generateEmbedding(message);
+    const segments = await searchVideoSegments(queryEmbedding, 8);
+    console.log(`Found ${segments.length} relevant segments`);
+    
+    // Step 2: Build context from segments
+    const knowledgeContext = segments.length > 0
+      ? `Here's relevant content from your videos:\n\n${segments.map((seg, i) => 
+          `[${i + 1}] From "${seg.videoTitle}" (${formatTimestamp(seg.timestamp)}):\n"${seg.text}"`
+        ).join('\n\n')}`
+      : 'No specific video content found for this topic.';
+    
+    // Step 3: Build conversation history for context
+    const conversationHistory = history.map(h => ({
+      role: h.role === 'user' ? 'user' : 'model',
+      parts: [{ text: h.content }],
+    }));
+    
+    // Step 4: Generate response with Gemini
+    const client = getGeminiClient();
+    const model = client.getGenerativeModel({ model: 'gemini-1.5-flash-8b' });
+    
+    const chat = model.startChat({
+      history: conversationHistory as any,
+    });
+    
+    const prompt = `${COACH_SYSTEM_PROMPT}\n\n${knowledgeContext}\n\nUser: ${message}\n\nRespond as Taevis:`;
+    const result = await chat.sendMessage(prompt);
+    const responseText = result.response.text();
+    
+    // Step 5: Get unique videos for references (max 3)
+    const videoMap = new Map<string, VideoSegment>();
+    for (const seg of segments) {
+      if (!videoMap.has(seg.videoId)) {
+        videoMap.set(seg.videoId, seg);
+      }
     }
+    const videos: VideoReference[] = Array.from(videoMap.values())
+      .slice(0, 3)
+      .map(seg => ({
+        videoId: seg.videoId,
+        videoTitle: seg.videoTitle,
+        timestamp: seg.timestamp,
+        url: `https://youtube.com/watch?v=${seg.videoId}&t=${Math.floor(seg.timestamp)}s`,
+        thumbnail: `https://img.youtube.com/vi/${seg.videoId}/maxresdefault.jpg`,
+      }));
     
-    // Step 1: AI interprets user input (fix typos, expand abbreviations)
-    console.log('Step 1: Interpreting query...');
-    const interpreted = await interpretQuery(message);
-    console.log('Interpreted:', interpreted.interpretedMeaning);
-    console.log('Search terms:', interpreted.searchTerms);
-    
-    // Step 2: Build clean search query and search Pinecone
-    const searchQuery = [
-      interpreted.interpretedMeaning,
-      ...interpreted.searchTerms,
-      ...interpreted.concepts
-    ].filter(Boolean).join(' ');
-    
-    console.log('Step 2: Searching Pinecone with:', searchQuery);
-    const queryEmbedding = await generateEmbedding(searchQuery);
-    const segments = await searchVideoSegments(queryEmbedding, 5);
-    console.log(`Found ${segments.length} segments`);
-    
-    // Step 3: Convert segments directly to tips (no AI extraction)
-    const tips = segmentsToTips(segments);
-    
-    // Build coach message
-    const coachMessage = buildCoachMessage(interpreted.interpretedMeaning, tips.length);
-    
-    const response: ChatResponse = {
-      interpretation: {
-        original: message,
-        understood: interpreted.interpretedMeaning,
-        concepts: interpreted.concepts,
-      },
-      coachMessage,
-      tips,
-      cached: false,
-    };
-    
-    // Cache it
-    await cacheResponse(cacheKey, JSON.stringify(response));
-    
-    return res.status(200).json(response);
+    return res.status(200).json({
+      response: responseText,
+      videos,
+    });
     
   } catch (error: any) {
     console.error('Chat API Error:', error.message);
@@ -132,48 +154,8 @@ export default async function handler(
   }
 }
 
-/**
- * Convert Pinecone segments directly to tips
- * The transcript text IS the tip - no AI needed
- */
-function segmentsToTips(segments: VideoSegment[]): TipWithVideo[] {
-  return segments.map(seg => ({
-    tip: cleanTranscriptText(seg.text),
-    videoId: seg.videoId,
-    videoTitle: seg.videoTitle,
-    timestamp: seg.timestamp,
-    url: `https://youtube.com/watch?v=${seg.videoId}&t=${Math.floor(seg.timestamp)}s`,
-    thumbnail: `https://img.youtube.com/vi/${seg.videoId}/maxresdefault.jpg`,
-  }));
-}
-
-/**
- * Clean up transcript text for display
- */
-function cleanTranscriptText(text: string): string {
-  // Remove extra whitespace, trim
-  let cleaned = text.trim().replace(/\s+/g, ' ');
-  
-  // Capitalize first letter
-  if (cleaned.length > 0) {
-    cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-  }
-  
-  // Add period if missing
-  if (cleaned.length > 0 && !cleaned.match(/[.!?]$/)) {
-    cleaned += '.';
-  }
-  
-  return cleaned;
-}
-
-/**
- * Build a simple coach message
- */
-function buildCoachMessage(topic: string, tipCount: number): string {
-  if (tipCount === 0) {
-    return `Hmm, I don't have specific content about "${topic}" yet. Try asking about common tricks like backside 180s, frontside 360s, or carving techniques!`;
-  }
-  
-  return `Nice! Here's what I've got on ${topic}:`;
+function formatTimestamp(seconds: number): string {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
 }

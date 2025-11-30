@@ -1,14 +1,12 @@
 /**
  * API Service
- * Handles communication with the backend
- * Updated for simplified coach flow
+ * Handles communication with the conversational coach backend
  */
 
 import axios from 'axios';
 import { config } from '../config';
 
-export interface TipWithVideo {
-  tip: string;
+export interface VideoReference {
   videoId: string;
   videoTitle: string;
   timestamp: number;
@@ -17,22 +15,13 @@ export interface TipWithVideo {
 }
 
 export interface ChatResponse {
-  greeting?: string;
-  interpretation?: {
-    original: string;
-    understood: string;
-    concepts: string[];
-  };
-  coachMessage: string;
-  tips: TipWithVideo[];
-  cached: boolean;
-  costs?: {
-    interpretation: number;
-    tipExtraction: number;
-    coachMessage: number;
-    embedding: number;
-    total: number;
-  };
+  response: string;
+  videos: VideoReference[];
+}
+
+export interface ChatHistoryItem {
+  role: 'user' | 'coach';
+  content: string;
 }
 
 /**
@@ -40,37 +29,30 @@ export interface ChatResponse {
  */
 export async function sendMessage(
   message: string,
-  sessionId: string = 'default',
-  isFollowUp: boolean = false,
-  previousContext?: { interpretedMeaning: string; concepts: string[] }
+  sessionId: string,
+  history: ChatHistoryItem[] = []
 ): Promise<ChatResponse> {
   try {
     const url = `${config.apiUrl}/api/chat`;
     console.log('=== API Request ===');
     console.log('URL:', url);
     console.log('Message:', message);
-    console.log('SessionId:', sessionId);
-    console.log('IsFollowUp:', isFollowUp);
+    console.log('History length:', history.length);
     
     const response = await axios.post(url, {
       message,
       sessionId,
-      isFollowUp,
-      previousContext,
+      history,
     }, {
-      timeout: 30000,
+      timeout: 60000, // 60s for AI response
       headers: {
         'Content-Type': 'application/json',
       },
     });
     
     console.log('=== API Response ===');
-    console.log('Status:', response.status);
-    console.log('Cached:', response.data.cached);
-    console.log('Tips count:', response.data.tips?.length);
-    if (response.data.costs) {
-      console.log('Costs:', response.data.costs);
-    }
+    console.log('Response length:', response.data.response?.length);
+    console.log('Videos:', response.data.videos?.length);
     
     return response.data;
   } catch (error: any) {
@@ -78,15 +60,8 @@ export async function sendMessage(
     console.error('Error:', error.message);
     console.error('Response:', error.response?.data);
     
-    throw new Error(error.response?.data?.message || error.message || 'Failed to get coaching response');
+    throw new Error(error.response?.data?.message || error.message || 'Failed to get response');
   }
-}
-
-/**
- * Get initial greeting (no message)
- */
-export async function getGreeting(sessionId: string = 'default'): Promise<ChatResponse> {
-  return sendMessage('', sessionId);
 }
 
 export async function checkHealth(): Promise<boolean> {
