@@ -26,6 +26,10 @@ const AVAILABLE_TRICKS = [
 // Map trick IDs to Taevis video IDs for tricks without primary tutorials
 const TAEVIS_TRICK_VIDEOS: Record<string, string[]> = {
   'backside-720': ['DTU2MY74dcQ', 'xArsPSVoGdo', 'ODLrzWLrPAo', '5cDLnB4ybH0'],
+  'frontside-180': ['DTU2MY74dcQ', 'xArsPSVoGdo'],
+  'backside-180': ['DTU2MY74dcQ', 'xArsPSVoGdo'],
+  'frontside-360': ['xArsPSVoGdo', 'ODLrzWLrPAo'],
+  'backside-360': ['xArsPSVoGdo', 'ODLrzWLrPAo'],
 };
 
 // Pre-written intros by trick - no AI needed
@@ -362,23 +366,26 @@ export default async function handler(
         }
       }
       
-      // Fallback: if no videos found from segments, check Taevis trick videos mapping
-      if (uniqueVideos.length === 0 && intent.intent === 'how-to-trick' && intent.trickId) {
-        const taevisVideos = TAEVIS_TRICK_VIDEOS[intent.trickId];
-        if (taevisVideos) {
-          console.log(`Using Taevis videos for ${intent.trickId}`);
-          for (const videoId of taevisVideos) {
-            if (!seenIds.has(videoId)) {
-              uniqueVideos.push({
-                videoId,
-                videoTitle: `Taevis - ${intent.trickId}`,
-                timestamp: 0,
-                url: `https://youtube.com/watch?v=${videoId}`,
-                thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-              });
-              seenIds.add(videoId);
-              if (uniqueVideos.length >= 3) break;
-            }
+      // Fallback: if no videos found from segments, search for Taevis videos with same trick name
+      if (uniqueVideos.length === 0 && intent.trickId) {
+        console.log(`Searching for Taevis videos with trickName: ${intent.trickId}`);
+        const taevisSegments = await searchVideoSegmentsWithOptions(new Array(768).fill(0), {
+          topK: 50,
+          trickName: intent.trickId,
+        });
+        
+        for (const seg of taevisSegments) {
+          if (seg.videoId && !seenIds.has(seg.videoId)) {
+            uniqueVideos.push({
+              videoId: seg.videoId,
+              videoTitle: seg.videoTitle,
+              timestamp: seg.timestamp,
+              url: `https://youtube.com/watch?v=${seg.videoId}`,
+              thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
+              duration: seg.duration,
+            });
+            seenIds.add(seg.videoId);
+            if (uniqueVideos.length >= 3) break;
           }
         }
       }
