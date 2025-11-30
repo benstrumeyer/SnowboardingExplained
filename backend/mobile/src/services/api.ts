@@ -26,6 +26,7 @@ export interface ChatResponse {
   hasMoreTips: boolean;
   videos: VideoReference[];  // 3 videos per question
   tipIdsShown?: string[];    // Track which tips were shown
+  currentTrick?: string;     // Current trick being discussed (for follow-ups)
 }
 
 export interface ChatHistoryItem {
@@ -41,7 +42,8 @@ export async function sendMessage(
   sessionId: string,
   history: ChatHistoryItem[] = [],
   shownVideoIds: string[] = [],
-  shownTipIds: string[] = []
+  shownTipIds: string[] = [],
+  currentTrick?: string
 ): Promise<ChatResponse> {
   try {
     const url = `${config.apiUrl}/api/chat`;
@@ -52,6 +54,7 @@ export async function sendMessage(
     console.log('Shown videos count:', shownVideoIds.length);
     console.log('Shown videos IDs:', JSON.stringify(shownVideoIds));
     console.log('Shown tips:', shownTipIds.length);
+    console.log('Current trick:', currentTrick || 'none');
     
     const response = await axios.post(url, {
       message,
@@ -59,6 +62,7 @@ export async function sendMessage(
       history,
       shownVideoIds,
       shownTipIds,
+      currentTrick,
     }, {
       timeout: 60000, // 60s for AI response
       headers: {

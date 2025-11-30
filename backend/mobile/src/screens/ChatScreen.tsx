@@ -159,6 +159,7 @@ export default function ChatScreen() {
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
   const [shownVideoIds, setShownVideoIds] = useState<string[]>([]);
   const [shownTipIds, setShownTipIds] = useState<string[]>([]);
+  const [currentTrick, setCurrentTrick] = useState<string | undefined>();
   const scrollViewRef = useRef<ScrollView>(null);
 
   // Auto-scroll to bottom
@@ -188,7 +189,7 @@ export default function ChatScreen() {
     setLoading(true);
     
     try {
-      const response = await sendMessage(userMessage, sessionId, chatHistory, shownVideoIds, shownTipIds);
+      const response = await sendMessage(userMessage, sessionId, chatHistory, shownVideoIds, shownTipIds, currentTrick);
       
       // Update history with combined coach response for context
       const combinedResponse = response.messages.map(m => m.content).join('\n');
@@ -201,6 +202,11 @@ export default function ChatScreen() {
       // Track shown tips to never repeat them
       const newTipIds = response.tipIdsShown || [];
       setShownTipIds(prev => [...prev, ...newTipIds]);
+      
+      // Update current trick if the response provides one
+      if (response.currentTrick) {
+        setCurrentTrick(response.currentTrick);
+      }
       
       // Add messages with staggered delays for human-like feel
       setLoading(false);  // Stop loading indicator before showing messages
