@@ -81,7 +81,7 @@ export default async function handler(
       });
     }
     
-    // Group by video - take the best chunk per video
+    // Get top 5 unique videos with best matching segments
     const videoMap = new Map<string, typeof relevantSegments[0]>();
     for (const segment of relevantSegments) {
       if (!videoMap.has(segment.videoId)) {
@@ -89,42 +89,49 @@ export default async function handler(
       }
     }
     
-    const topVideos = Array.from(videoMap.values()).slice(0, 3); // Top 3 videos
+    const topVideos = Array.from(videoMap.values()).slice(0, 5); // Top 5 videos
     console.log(`Grouped into ${topVideos.length} videos`);
     
-    // Generate one concise tip per video
-    const videoTips = await Promise.all(
-      topVideos.map(async (segment) => {
-        const tipPrompt = `Extract the single most important snowboarding tip from this transcript.
-Keep it concise (1-2 sentences) and actionable.
+    // Generate 5 actionable tips using AI - one per video
+    const tipsPrompt = `You are a snowboarding coach. Based on these video transcripts about "${context.trick}", generate exactly 5 specific, actionable tips.
 
-Transcript: "${segment.text}"
+Each tip should be:
+- 1-2 sentences max
+- Specific and actionable (not generic advice)
+- Based on the actual content from the transcripts
 
-Tip:`;
-        
-        try {
-          const tipResult = await generateCoachingResponse(
-            { trick: context.trick },
-            [segment],
-            tipPrompt
-          );
-          
-          return {
-            videoId: segment.videoId,
-            title: segment.videoTitle,
-            tip: tipResult.split('\n')[0], // First line only
-            timestamp: segment.timestamp,
-          };
-        } catch {
-          return {
-            videoId: segment.videoId,
-            title: segment.videoTitle,
-            tip: segment.text.substring(0, 150) + '...',
-            timestamp: segment.timestamp,
-          };
-        }
-      })
-    );
+Transcripts:
+${topVideos.map((v, i) => `${i + 1}. [${v.videoTitle}]: "${v.text}"`).join('\n\n')}
+
+User's specific issue: ${context.issues || 'general help'}
+
+Return ONLY a JSON array of 5 tips, like this:
+["Tip 1 text here", "Tip 2 text here", "Tip 3 text here", "Tip 4 text here", "Tip 5 text here"]`;
+
+    let tips: string[] = [];
+    try {
+      const tipsResult = await generateCoachingResponse(
+        { trick: context.trick },
+        topVideos,
+        tipsPrompt
+      );
+      
+      // Parse JSON array from response
+      const jsonMatch = tipsResult.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        tips = JSON.parse(jsonMatch[0]);
+      }
+    } catch (e) {
+      console.log('Failed to generate tips, using fallback');
+      // Fallback: extract key sentences from transcripts
+      tips = topVideos.map(v => v.text.split('.')[0] + '.');
+    }
+    
+    // Ensure we have exactly 5 tips
+    while (tips.length < 5 && topVideos.length > tips.length) {
+      tips.push(topVideos[tips.length]?.text.split('.')[0] + '.' || 'Focus on your form and technique.');
+    }
+    tips = tips.slice(0, 5);
     
     // Generate overall coaching response
     const coachingResponse = await generateCoachingResponse(
@@ -133,14 +140,14 @@ Tip:`;
       message
     );
     
-    // Format video references with tips
-    const videoReferences: VideoReference[] = videoTips.map(tip => ({
-      videoId: tip.videoId,
-      title: tip.title,
-      thumbnail: `https://img.youtube.com/vi/${tip.videoId}/maxresdefault.jpg`,
-      timestamp: tip.timestamp,
-      quote: tip.tip,
-      url: `https://youtube.com/watch?v=${tip.videoId}&t=${Math.floor(tip.timestamp)}s`,
+    // Format video references with tips - each video gets its corresponding tip
+    const videoReferences: VideoReference[] = topVideos.map((video, index) => ({
+      videoId: video.videoId,
+      title: video.videoTitle,
+      thumbnail: `https://img.youtube.com/vi/${video.videoId}/maxresdefault.jpg`,
+      timestamp: video.timestamp,
+      quote: tips[index] || video.text.substring(0, 150) + '...',
+      url: `https://youtube.com/watch?v=${video.videoId}&t=${Math.floor(video.timestamp)}s`,
     }));
     
     const response: ChatResponse = {
