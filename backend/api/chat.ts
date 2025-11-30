@@ -492,14 +492,42 @@ export default async function handler(
         });
       }
       
+      // Convert all segments with matching trickName to video references for frontend ranking
+      const allTrickVideos: VideoReference[] = [];
+      const seenVideoIds = new Set<string>();
+      const trickNameToMatch = segments.length > 0 && segments[0].trickName 
+        ? segments[0].trickName.toLowerCase()
+        : null;
+      
+      for (const seg of segments) {
+        // Only include videos with exact trickName match
+        if (trickNameToMatch && seg.trickName && seg.trickName.toLowerCase() !== trickNameToMatch) {
+          continue;
+        }
+        
+        if (seg.videoId && !seenVideoIds.has(seg.videoId)) {
+          allTrickVideos.push({
+            videoId: seg.videoId,
+            videoTitle: seg.videoTitle,
+            timestamp: seg.timestamp,
+            url: `https://youtube.com/watch?v=${seg.videoId}`,
+            thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
+            duration: seg.duration,
+          });
+          seenVideoIds.add(seg.videoId);
+        }
+      }
+      
       // Log the response being sent
       console.log('=== FINAL RESPONSE ===');
-      console.log('Videos in response:', uniqueVideos.map(v => v.videoId).join(', '));
+      console.log('Videos to show this turn:', uniqueVideos.map(v => v.videoId).join(', '));
+      console.log('Total trick videos available:', allTrickVideos.length);
       
       return res.status(200).json({
         messages,
         hasMoreTips,
         videos: uniqueVideos,
+        allTrickVideos,  // Send all videos for frontend to manage
         currentTrick: activeTrick,  // Return the trick so client can pass it back
       });
       

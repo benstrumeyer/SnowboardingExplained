@@ -24,7 +24,8 @@ export interface ChatMessage {
 export interface ChatResponse {
   messages: ChatMessage[];
   hasMoreTips: boolean;
-  videos: VideoReference[];  // 3 videos per question
+  videos: VideoReference[];  // Videos to show this turn
+  allTrickVideos?: VideoReference[];  // All videos for this trick (ranked by relevance)
   tipIdsShown?: string[];    // Track which tips were shown
   currentTrick?: string;     // Current trick being discussed (for follow-ups)
 }
