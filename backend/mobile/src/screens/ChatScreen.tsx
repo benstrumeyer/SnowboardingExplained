@@ -104,29 +104,18 @@ export default function ChatScreen() {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const handleNewChat = () => {
-    setMessages([{ id: '1', text: GREETING, sender: 'coach' }]);
-    setChatHistory([]);
-    setShownVideoIds([]);  // Reset shown videos for new chat
-  };
-
   return (
     <KeyboardAvoidingView
       style={tw`flex-1 bg-gray-900`}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={0}
     >
-      {/* Header - with space for hamburger menu */}
-      <View style={tw`bg-gray-800 pt-12 pb-4 px-4 flex-row justify-between items-center`}>
-        <View style={tw`flex-row items-center`}>
-          <View style={tw`w-10`} />{/* Space for hamburger menu */}
-          <Text style={tw`text-white text-xl font-bold`}>
-            🏂 Taevis
-          </Text>
-        </View>
-        <TouchableOpacity onPress={handleNewChat}>
-          <Text style={tw`text-blue-400`}>New Chat</Text>
-        </TouchableOpacity>
+      {/* Header - hamburger handled by App.tsx */}
+      <View style={tw`bg-gray-800 pt-12 pb-4 px-4 flex-row items-center`}>
+        <View style={tw`w-10`} />
+        <Text style={tw`text-white text-xl font-bold`}>
+          🏂 Taevis
+        </Text>
       </View>
 
       {/* Messages */}
