@@ -111,7 +111,13 @@ interface VideoReference {
   duration?: number;  // Total video duration in seconds
 }
 
-// Response shape: { response: string, videos: VideoReference[] }
+interface ChatMessage {
+  type: 'text' | 'tip' | 'follow-up';
+  content: string;
+  video?: VideoReference;  // Optional video for this specific message
+}
+
+// Response shape: { messages: ChatMessage[], hasMoreTips: boolean }
 
 let genAI: GoogleGenerativeAI | null = null;
 
@@ -236,11 +242,8 @@ export default async function handler(
     const coachIntro = cleanResponse(introResult.response.text());
     
     // Step 6: Build tips - different handling for primary tutorials vs general
-    let responseText = coachIntro;
-    let videos: VideoReference[] = [];
-    
     if (isPrimaryTutorial && segments.length > 0) {
-      // PRIMARY TUTORIAL: Show ordered steps, NO video links
+      // PRIMARY TUTORIAL: Show ordered steps as separate messages
       const trickName = segments[0].trickName || intent.trickId;
       console.log(`Building primary tutorial response for: ${trickName}`);
       
@@ -248,22 +251,43 @@ export default async function handler(
       const orderedSteps = segments
         .filter(seg => seg.stepNumber !== undefined)
         .sort((a, b) => (a.stepNumber || 0) - (b.stepNumber || 0))
-        .slice(0, 12);  // Max 12 steps
+        .slice(0, 10);  // Max 10 steps
       
-      if (orderedSteps.length > 0) {
-        responseText += `\n\nHere's how to do it step by step:\n\n`;
-        responseText += orderedSteps.map((step, i) => {
-          const title = step.stepTitle || `Step ${step.stepNumber}`;
-          return `${i + 1}. ${title}: ${step.text}`;
-        }).join('\n\n');
+      const messages: ChatMessage[] = [];
+      
+      // Add intro message
+      messages.push({ type: 'text', content: coachIntro });
+      
+      // Add transition
+      messages.push({ type: 'text', content: "Here's how to do it step by step:" });
+      
+      // Add first 5 steps as separate messages
+      const firstBatch = orderedSteps.slice(0, 5);
+      for (const step of firstBatch) {
+        messages.push({ type: 'tip', content: step.text });
       }
       
-      // NO video references for primary tutorials (can't link to these videos)
-      videos = [];
+      // Check if there are more steps
+      const hasMoreTips = orderedSteps.length > 5;
+      
+      // Add follow-up question if there are more steps
+      if (hasMoreTips) {
+        messages.push({ 
+          type: 'follow-up', 
+          content: "What exactly are you having trouble with? I've got more tips if you need them!" 
+        });
+      }
+      
+      console.log(`Returning ${messages.length} messages for primary tutorial (hasMoreTips: ${hasMoreTips})`);
+      
+      return res.status(200).json({
+        messages,
+        hasMoreTips,
+      });
       
     } else if (segments.length > 0) {
-      // GENERAL TIPS: Show tips with video links
-      const verbatimTips = segments.slice(0, 5).map(seg => ({
+      // GENERAL TIPS: Build separate messages for each tip
+      const allTips = segments.slice(0, 10).map(seg => ({
         tip: seg.text.trim(),
         videoId: seg.videoId,
         videoTitle: seg.videoTitle,
@@ -273,58 +297,72 @@ export default async function handler(
         trickName: seg.trickName,
       }));
       
-      // Add transition
+      // Build messages array - each tip is its own message
+      const messages: ChatMessage[] = [];
+      
+      // Add intro message
+      messages.push({ type: 'text', content: coachIntro });
+      
+      // Add transition message
       const transitionResult = await model.generateContent(COACH_TRANSITION_PROMPT);
       const transition = cleanResponse(transitionResult.response.text());
+      messages.push({ type: 'text', content: transition });
       
-      responseText += `\n\n${transition}\n\n`;
-      responseText += verbatimTips.map((t, i) => `${i + 1}. ${t.tip}`).join('\n\n');
-      
-      // Build video references - only for non-primary tips
+      // Track used video IDs to avoid duplicates
       const recentVideoIds = new Set(shownVideoIds.slice(-5));
-      const videoMap = new Map<string, typeof verbatimTips[0]>();
+      const usedVideoIds = new Set<string>();
       
-      for (const tip of verbatimTips) {
-        // Skip primary tutorial videos (can't link to them)
-        if (tip.isPrimary) continue;
+      // Add first 5 tips as separate messages, each with its own video (if available)
+      const firstBatch = allTips.slice(0, 5);
+      for (const tip of firstBatch) {
+        const message: ChatMessage = { type: 'tip', content: tip.tip };
         
-        if (!videoMap.has(tip.videoId) && !recentVideoIds.has(tip.videoId)) {
-          videoMap.set(tip.videoId, tip);
+        // Add video if not already used and not primary
+        if (!tip.isPrimary && !usedVideoIds.has(tip.videoId) && !recentVideoIds.has(tip.videoId)) {
+          message.video = {
+            videoId: tip.videoId,
+            videoTitle: tip.videoTitle,
+            timestamp: tip.timestamp,
+            url: `https://youtube.com/watch?v=${tip.videoId}`,
+            thumbnail: `https://img.youtube.com/vi/${tip.videoId}/hqdefault.jpg`,
+            duration: tip.duration,
+          };
+          usedVideoIds.add(tip.videoId);
         }
+        
+        messages.push(message);
       }
       
-      // If all videos were filtered out, allow repeats (but still skip primary)
-      if (videoMap.size === 0) {
-        for (const tip of verbatimTips) {
-          if (tip.isPrimary) continue;
-          if (!videoMap.has(tip.videoId)) {
-            videoMap.set(tip.videoId, tip);
-          }
-        }
+      // Check if there are more tips available
+      const hasMoreTips = allTips.length > 5;
+      
+      // Add follow-up question if there are more tips
+      if (hasMoreTips) {
+        messages.push({ 
+          type: 'follow-up', 
+          content: "What exactly are you having trouble with? I've got more tips if you need them!" 
+        });
       }
       
-      videos = Array.from(videoMap.values())
-        .slice(0, videoCount)
-        .map(tip => ({
-          videoId: tip.videoId,
-          videoTitle: tip.videoTitle,
-          timestamp: tip.timestamp,
-          url: `https://youtube.com/watch?v=${tip.videoId}`,
-          thumbnail: `https://img.youtube.com/vi/${tip.videoId}/hqdefault.jpg`,
-          duration: tip.duration,
-        }));
+      console.log('AI Response:', coachIntro.substring(0, 100) + '...');
+      console.log(`Returning ${messages.length} messages (hasMoreTips: ${hasMoreTips})`);
+      
+      return res.status(200).json({
+        messages,
+        hasMoreTips,
+      });
         
     } else {
-      responseText += "\n\nHmm, I don't have specific tips for that in my videos yet. Try asking about a specific trick like backside 180s, frontside boardslides, or buttering!";
+      const messages: ChatMessage[] = [
+        { type: 'text', content: coachIntro },
+        { type: 'text', content: "Hmm, I don't have specific tips for that in my videos yet. Try asking about a specific trick like backside 180s, frontside boardslides, or buttering!" }
+      ];
+      
+      return res.status(200).json({
+        messages,
+        hasMoreTips: false,
+      });
     }
-    
-    console.log('AI Response:', responseText.substring(0, 200) + '...');
-    console.log(`Returning ${videos.length} video references (isPrimaryTutorial: ${isPrimaryTutorial})`);
-    
-    return res.status(200).json({
-      response: responseText,
-      videos,
-    });
     
   } catch (error: any) {
     console.error('Chat API Error:', error.message);
