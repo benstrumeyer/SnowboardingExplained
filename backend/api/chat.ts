@@ -367,36 +367,43 @@ export default async function handler(
       }
       
       // Fallback: if no videos found from segments, search for Taevis videos with same trick name
-      if (uniqueVideos.length === 0 && intent.trickId) {
+      if (uniqueVideos.length === 0) {
         // Generate embedding if we don't have one yet (for trick questions)
         if (!queryEmbedding) {
           queryEmbedding = await generateEmbedding(searchQuery);
         }
         
-        console.log(`Searching for Taevis videos with trickName: ${intent.trickId}`);
-        const taevisSegments = await searchVideoSegmentsWithOptions(queryEmbedding, {
-          topK: 50,
-          trickName: intent.trickId,
-        });
+        // Get trickName from segments or use intent.trickId as fallback
+        const trickNameToSearch = segments.length > 0 && segments[0].trickName 
+          ? segments[0].trickName 
+          : intent.trickId;
         
-        console.log(`Found ${taevisSegments.length} Taevis segments for ${intent.trickId}`);
-        
-        for (const seg of taevisSegments) {
-          console.log(`  Checking: ${seg.videoId} | trickName: ${seg.trickName} | title: ${seg.videoTitle.substring(0, 40)}`);
-          if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId)) {
-            console.log(`    ✓ Adding video`);
-            uniqueVideos.push({
-              videoId: seg.videoId,
-              videoTitle: seg.videoTitle,
-              timestamp: seg.timestamp,
-              url: `https://youtube.com/watch?v=${seg.videoId}`,
-              thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
-              duration: seg.duration,
-            });
-            seenIds.add(seg.videoId);
-            if (uniqueVideos.length >= 3) break;
-          } else {
-            console.log(`    ✗ Skipped (shown: ${shownVideoSet.has(seg.videoId)}, seen: ${seenIds.has(seg.videoId)})`);
+        if (trickNameToSearch) {
+          console.log(`Searching for Taevis videos with trickName: ${trickNameToSearch}`);
+          const taevisSegments = await searchVideoSegmentsWithOptions(queryEmbedding, {
+            topK: 50,
+            trickName: trickNameToSearch,
+          });
+          
+          console.log(`Found ${taevisSegments.length} Taevis segments for ${trickNameToSearch}`);
+          
+          for (const seg of taevisSegments) {
+            console.log(`  Checking: ${seg.videoId} | trickName: ${seg.trickName} | title: ${seg.videoTitle.substring(0, 40)}`);
+            if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId)) {
+              console.log(`    ✓ Adding video`);
+              uniqueVideos.push({
+                videoId: seg.videoId,
+                videoTitle: seg.videoTitle,
+                timestamp: seg.timestamp,
+                url: `https://youtube.com/watch?v=${seg.videoId}`,
+                thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
+                duration: seg.duration,
+              });
+              seenIds.add(seg.videoId);
+              if (uniqueVideos.length >= 3) break;
+            } else {
+              console.log(`    ✗ Skipped (shown: ${shownVideoSet.has(seg.videoId)}, seen: ${seenIds.has(seg.videoId)})`);
+            }
           }
         }
       }
