@@ -225,8 +225,9 @@ export default function ChatScreen() {
           messageType: msg.type,
         };
         
-        // Show videos after intro message (at least 1 if available, up to 3)
-        if (isFirst && videosToShow.length > 0) {
+        // Show videos after the last message in the response
+        const isLast = i === response.messages.length - 1;
+        if (isLast && videosToShow.length > 0) {
           uiMessage.videos = videosToShow;
         }
         
