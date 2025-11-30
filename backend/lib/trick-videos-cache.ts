@@ -23,8 +23,9 @@ export async function initializeTrickVideosCache(): Promise<void> {
     
     if (fs.existsSync(cacheFile)) {
       const data = fs.readFileSync(cacheFile, 'utf-8');
-      cache = JSON.parse(data);
-      console.log(`Loaded trick videos cache with ${Object.keys(cache).length} tricks`);
+      const parsed = JSON.parse(data) as TrickVideosCache;
+      cache = parsed;
+      console.log(`Loaded trick videos cache with ${Object.keys(cache || {}).length} tricks`);
       return;
     }
   } catch (error) {
