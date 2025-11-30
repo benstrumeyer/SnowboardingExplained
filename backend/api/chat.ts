@@ -13,6 +13,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateEmbedding } from '../lib/gemini';
 import { searchVideoSegments, searchVideoSegmentsWithOptions, searchByTrickName, getTrickTutorialById, type EnhancedVideoSegment } from '../lib/pinecone';
 import { getEmbeddingCache, initializeEmbeddingCache } from '../lib/embedding-cache';
+import { getTrickVideos, initializeTrickVideosCache } from '../lib/trick-videos-cache';
 
 // Available trick tutorials (specific tricks only, not foundational techniques)
 const AVAILABLE_TRICKS = [
@@ -209,9 +210,10 @@ export default async function handler(
     return res.status(405).json({ error: 'Method not allowed' });
   }
   
-  // Initialize embedding cache on first request
+  // Initialize caches on first request
   if (!embeddingCacheInitialized) {
     await initializeEmbeddingCache();
+    await initializeTrickVideosCache();
     embeddingCacheInitialized = true;
   }
   
@@ -492,41 +494,12 @@ export default async function handler(
         });
       }
       
-      // Get all videos for this trick - use the same search we did for uniqueVideos
-      // Search for all videos with matching trickName
-      const allTrickVideos: VideoReference[] = [];
-      const seenVideoIds = new Set<string>();
-      
-      if (!queryEmbedding) {
-        queryEmbedding = await generateEmbedding(searchQuery);
-      }
-      
+      // Get all videos for this trick from cache
       const trickNameToSearch = intent.trickId;
-      console.log(`Searching for ALL videos with trickName: ${trickNameToSearch}`);
+      console.log(`Looking up videos for trick: ${trickNameToSearch}`);
       
-      const allTrickSegments = await searchVideoSegmentsWithOptions(queryEmbedding, {
-        topK: 100,
-        trickName: trickNameToSearch,
-      });
-      
-      console.log(`Found ${allTrickSegments.length} total segments for ${trickNameToSearch}`);
-      
-      for (const seg of allTrickSegments) {
-        // Only include videos with exact trickName match
-        const trickNameMatches = seg.trickName && seg.trickName.toLowerCase() === trickNameToSearch.toLowerCase();
-        
-        if (seg.videoId && !seenVideoIds.has(seg.videoId) && trickNameMatches) {
-          allTrickVideos.push({
-            videoId: seg.videoId,
-            videoTitle: seg.videoTitle,
-            timestamp: seg.timestamp,
-            url: `https://youtube.com/watch?v=${seg.videoId}`,
-            thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
-            duration: seg.duration,
-          });
-          seenVideoIds.add(seg.videoId);
-        }
-      }
+      const allTrickVideos = getTrickVideos(trickNameToSearch);
+      console.log(`Found ${allTrickVideos.length} videos for ${trickNameToSearch}`);
       
       // Log the response being sent
       console.log('=== FINAL RESPONSE (Primary Tutorial) ===');
