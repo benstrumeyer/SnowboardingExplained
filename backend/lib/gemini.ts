@@ -20,11 +20,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   const model = genAI.getGenerativeModel({ model: 'text-embedding-004' });
   
   const result = await model.embedContent(text);
-  const embedding = result.embedding.values;
-  
-  // Pinecone index expects 768 dimensions, but text-embedding-004 returns 1536
-  // Truncate to 768 to match the index
-  return embedding.slice(0, 768);
+  return result.embedding.values;
 }
 
 export async function generateCoachingResponse(

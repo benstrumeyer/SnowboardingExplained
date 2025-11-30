@@ -74,12 +74,33 @@ class EmbeddingCache {
   /**
    * Calculate cosine similarity between two vectors
    * Returns value between -1 and 1 (higher = more similar)
-   * Handles dimension mismatches by using the minimum length
    */
   private cosineSimilarity(a: number[], b: number[]): number {
-    if (a.length === 0 || b.length === 0) return 0;
+    if (a.length !== b.length) {
+      console.warn(
+        `Dimension mismatch: query=${a.length}, cached=${b.length}. Using minimum.`
+      );
+      return this.cosineSimilarityMismatch(a, b);
+    }
 
-    // Use minimum length to handle dimension mismatches
+    let dotProduct = 0;
+    let normA = 0;
+    let normB = 0;
+
+    for (let i = 0; i < a.length; i++) {
+      dotProduct += a[i] * b[i];
+      normA += a[i] * a[i];
+      normB += b[i] * b[i];
+    }
+
+    const denominator = Math.sqrt(normA) * Math.sqrt(normB);
+    return denominator === 0 ? 0 : dotProduct / denominator;
+  }
+
+  /**
+   * Handle cosine similarity when dimensions don't match
+   */
+  private cosineSimilarityMismatch(a: number[], b: number[]): number {
     const len = Math.min(a.length, b.length);
     let dotProduct = 0;
     let normA = 0;
