@@ -1,0 +1,133 @@
+{
+  "jump": {
+    "videoId": "sf3_cVRWatQ",
+    "aliases": [
+      "jump",
+      "hitting a jump",
+      "air",
+      "taking flight"
+    ],
+    "stepCount": 15
+  },
+  "pop": {
+    "videoId": "-bCYIDG_2wg",
+    "aliases": [
+      "popping",
+      "olliing",
+      "ollie"
+    ],
+    "stepCount": 27
+  },
+  "backside-180": {
+    "videoId": "ln03njzMzuk",
+    "aliases": [
+      "bs 180",
+      "back 180",
+      "backside one eighty"
+    ],
+    "stepCount": 18
+  },
+  "frontside-180": {
+    "videoId": "sBbL8FsRvXc",
+    "aliases": [
+      "fs 180",
+      "front 180",
+      "frontside one eighty",
+      "frontside 1",
+      "fs one eighty"
+    ],
+    "stepCount": 20
+  },
+  "backside-360": {
+    "videoId": "wcz_QMCy2-s",
+    "aliases": [
+      "bs 360",
+      "back 360",
+      "backside three sixty",
+      "back one"
+    ],
+    "stepCount": 30
+  },
+  "frontside-360": {
+    "videoId": "dLZwlLgohFw",
+    "aliases": [
+      "fs 360",
+      "front 360",
+      "frontside three sixty"
+    ],
+    "stepCount": 23
+  },
+  "backside-540": {
+    "videoId": "tCoQ3sSYT2A",
+    "aliases": [
+      "bs 540",
+      "back 540",
+      "backside five forty"
+    ],
+    "stepCount": 24
+  },
+  "frontside-540": {
+    "videoId": "MS6LSphIbRo",
+    "aliases": [
+      "fs 540",
+      "front 540",
+      "frontside five forty"
+    ],
+    "stepCount": 17
+  },
+  "backside-720": {
+    "videoId": "C2EJwuxG4Fs",
+    "aliases": [
+      "bs 720",
+      "back 720",
+      "backside seven-twenty",
+      "backside two twenty"
+    ],
+    "stepCount": 25
+  },
+  "frontside-720": {
+    "videoId": "qDJSAetVz1k",
+    "aliases": [
+      "fs 720",
+      "front 720",
+      "frontside seven twenty"
+    ],
+    "stepCount": 31
+  },
+  "backside-900": {
+    "videoId": "CdshWEEKjXc",
+    "aliases": [
+      "bs 900",
+      "back 900",
+      "backside nine",
+      "bs nine"
+    ],
+    "stepCount": 18
+  },
+  "frontside-900-like-a-pro": {
+    "videoId": "Tdj5eI7SLC4",
+    "aliases": [],
+    "stepCount": 20
+  },
+  "frontside-1080": {
+    "videoId": "0luOaDmSTW4",
+    "aliases": [
+      "fs 1080",
+      "front 1080",
+      "frontside thousand eighty",
+      "1080",
+      "ten eighty"
+    ],
+    "stepCount": 22
+  },
+  "back-double-cork-1080": {
+    "videoId": "BAPfrEr7NXk",
+    "aliases": [
+      "back dub 1080",
+      "backside double cork ten eighty",
+      "back double 10",
+      "BDC 1080"
+    ],
+    "stepCount": 25
+  }
+}
