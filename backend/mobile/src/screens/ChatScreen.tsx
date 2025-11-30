@@ -154,7 +154,7 @@ export default function ChatScreen() {
     setLoading(true);
     
     try {
-      const response = await sendMessage(userMessage, sessionId, chatHistory, shownVideoIds);
+      const response = await sendMessage(userMessage, sessionId, chatHistory, shownVideoIds, shownTipIds);
       
       // Update history with combined coach response for context
       const combinedResponse = response.messages.map(m => m.content).join('\n');
@@ -163,6 +163,10 @@ export default function ChatScreen() {
       // Track shown videos to avoid repeats (keep last 15 = 5 prompts * 3 videos)
       const newVideoIds = response.videos?.map(v => v.videoId) || [];
       setShownVideoIds(prev => [...prev.slice(-12), ...newVideoIds]);
+      
+      // Track shown tips to never repeat them
+      const newTipIds = response.tipIdsShown || [];
+      setShownTipIds(prev => [...prev, ...newTipIds]);
       
       // Add messages with staggered delays for human-like feel
       setLoading(false);  // Stop loading indicator before showing messages
