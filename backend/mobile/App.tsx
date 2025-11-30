@@ -126,14 +126,14 @@ export default function App() {
   };
 
   return (
-    <View style={tw`flex-1 bg-gray-900`} {...openPanResponder.panHandlers}>
+    <View style={tw`flex-1 bg-[#0D0D0D]`} {...openPanResponder.panHandlers}>
       <StatusBar style="light" />
 
       {/* Main Content */}
       <View style={tw`flex-1`}>
         {/* Hamburger Menu Button */}
         <TouchableOpacity
-          style={tw`absolute top-12 left-4 z-40 p-2`}
+          style={tw`absolute top-11 left-1 z-40 w-12 h-12 justify-center items-center`}
           onPress={openDrawer}
         >
           <Text style={tw`text-white text-2xl`}>☰</Text>
@@ -160,39 +160,32 @@ export default function App() {
       <Animated.View
         {...closePanResponder.panHandlers}
         style={[
-          tw`absolute top-0 bottom-0 left-0 bg-gray-800 z-50 pt-12 px-4`,
+          tw`absolute top-0 bottom-0 left-0 bg-[#141414] z-50 pt-12 px-4`,
           { width: DRAWER_WIDTH, transform: [{ translateX: slideAnim }] },
         ]}
       >
-        {/* Close Button */}
-        <TouchableOpacity
-          style={tw`absolute top-12 right-4 p-2 z-10`}
-          onPress={closeDrawer}
-        >
-          <Text style={tw`text-white text-2xl`}>✕</Text>
-        </TouchableOpacity>
-
-        {/* Header */}
-        <View style={tw`mb-6`}>
-          <Text style={tw`text-white text-2xl font-bold`}>🏂 Taevis</Text>
+        {/* Header row with Taevis and X aligned */}
+        <View style={tw`flex-row items-center justify-between mb-6`}>
+          <Text style={tw`text-white text-2xl font-bold`}>Taevis</Text>
+          <TouchableOpacity
+            style={tw`p-2`}
+            onPress={closeDrawer}
+          >
+            <Text style={tw`text-white text-2xl`}>✕</Text>
+          </TouchableOpacity>
         </View>
 
         <ScrollView style={tw`flex-1`}>
-          {/* Chat Section */}
-          <Text style={tw`text-gray-400 text-xs uppercase tracking-wide mb-3`}>
-            Chat
-          </Text>
-
           <TouchableOpacity
             style={tw`flex-row items-center py-3 px-4 rounded-lg mb-2 ${
-              currentScreen === 'chat' ? 'bg-blue-900/50' : ''
+              currentScreen === 'chat' ? 'bg-[#0066CC]/20' : ''
             }`}
             onPress={() => navigateTo('chat')}
           >
             <Text style={tw`text-xl mr-3`}>💬</Text>
             <Text
               style={tw`${
-                currentScreen === 'chat' ? 'text-blue-400' : 'text-gray-300'
+                currentScreen === 'chat' ? 'text-[#4DA6FF]' : 'text-white'
               } text-base`}
             >
               Text Chat
@@ -204,25 +197,23 @@ export default function App() {
             disabled
           >
             <Text style={tw`text-xl mr-3`}>🎤</Text>
-            <Text style={tw`text-gray-500 text-base`}>
-              Voice Chat (Coming Soon)
-            </Text>
+            <Text style={tw`text-[#A0A0A0] text-base`}>Voice Chat</Text>
           </TouchableOpacity>
 
           {/* Separator */}
-          <View style={tw`h-px bg-gray-700 my-4`} />
+          <View style={tw`h-px bg-[#333333] my-4`} />
 
           {/* Video Library */}
           <TouchableOpacity
             style={tw`flex-row items-center py-3 px-4 rounded-lg ${
-              currentScreen === 'videos' ? 'bg-blue-900/50' : ''
+              currentScreen === 'videos' ? 'bg-[#0066CC]/20' : ''
             }`}
             onPress={() => navigateTo('videos')}
           >
             <Text style={tw`text-xl mr-3`}>📹</Text>
             <Text
               style={tw`${
-                currentScreen === 'videos' ? 'text-blue-400' : 'text-gray-300'
+                currentScreen === 'videos' ? 'text-[#4DA6FF]' : 'text-white'
               } text-base`}
             >
               Video Library

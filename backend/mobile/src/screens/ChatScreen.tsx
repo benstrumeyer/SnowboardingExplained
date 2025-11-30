@@ -1,6 +1,6 @@
 /**
  * Chat Screen
- * True conversational AI coach interface
+ * True conversational AI coach interface with animated message bubbles
  */
 
 import React, { useState, useRef, useEffect } from 'react';
@@ -15,7 +15,10 @@ import {
   ActivityIndicator,
   Linking,
   Image,
+  Animated,
 } from 'react-native';
+// @ts-ignore - Expo vector icons bundled with Expo
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import tw from 'twrnc';
 import { sendMessage, type VideoReference, type ChatHistoryItem } from '../services/api';
 
@@ -26,6 +29,86 @@ interface Message {
   text: string;
   sender: 'user' | 'coach';
   videos?: VideoReference[];
+}
+
+// Animated message bubble component
+function AnimatedBubble({ 
+  children, 
+  sender 
+}: { 
+  children: React.ReactNode; 
+  sender: 'user' | 'coach';
+}) {
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const isUser = sender === 'user';
+
+  useEffect(() => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      tension: 100,
+      friction: 8,
+      useNativeDriver: true,
+    }).start();
+  }, []);
+
+  return (
+    <Animated.View
+      style={{
+        transform: [
+          { scale: scaleAnim },
+        ],
+        transformOrigin: isUser ? 'bottom right' : 'bottom left',
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+// Animated send button
+function SendButton({ 
+  onPress, 
+  disabled 
+}: { 
+  onPress: () => void; 
+  disabled: boolean;
+}) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 0.9,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 3,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      disabled={disabled}
+      activeOpacity={1}
+    >
+      <Animated.View
+        style={[
+          tw`${disabled ? 'bg-[#333333]' : 'bg-[#0066CC]'} rounded-full justify-center items-center`,
+          { width: 42, height: 42 },
+          { transform: [{ scale: scaleAnim }] },
+        ]}
+      >
+        <MaterialCommunityIcons name="send" size={20} color="#FFFFFF" />
+      </Animated.View>
+    </TouchableOpacity>
+  );
 }
 
 export default function ChatScreen() {
@@ -106,16 +189,14 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={tw`flex-1 bg-gray-900`}
+      style={tw`flex-1 bg-[#0D0D0D]`}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={0}
     >
-      {/* Header - hamburger handled by App.tsx */}
-      <View style={tw`bg-gray-800 pt-12 pb-4 px-4 flex-row items-center`}>
-        <View style={tw`w-10`} />
-        <Text style={tw`text-white text-xl font-bold`}>
-          🏂 Taevis
-        </Text>
+      {/* Header */}
+      <View style={tw`bg-[#141414] pt-12 pb-4 px-4 flex-row items-center`}>
+        <View style={tw`w-12`} />
+        <Text style={tw`text-white text-xl font-bold`}>Taevis</Text>
       </View>
 
       {/* Messages */}
@@ -128,23 +209,29 @@ export default function ChatScreen() {
           <View key={msg.id} style={tw`mb-4`}>
             {/* Message bubble */}
             <View style={tw`${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
-              <View
-                style={tw`max-w-[85%] p-3 rounded-2xl ${
-                  msg.sender === 'user' ? 'bg-blue-500' : 'bg-gray-700'
-                }`}
-              >
-                <Text style={tw`text-white text-base`}>{msg.text}</Text>
-              </View>
+              <AnimatedBubble sender={msg.sender}>
+                <View
+                  style={tw`max-w-[85%] p-3 rounded-2xl ${
+                    msg.sender === 'user' 
+                      ? 'bg-[#0066CC]'  // Cool blue
+                      : 'bg-[#2D2D2D]'  // Soft dark gray
+                  }`}
+                >
+                  <Text style={tw`text-white text-base`}>
+                    {msg.text}
+                  </Text>
+                </View>
+              </AnimatedBubble>
             </View>
             
             {/* Video references (small, after message) */}
             {msg.videos && msg.videos.length > 0 && (
               <View style={tw`mt-3`}>
-                <Text style={tw`text-gray-400 text-xs mb-2`}>📹 Related videos:</Text>
+                <Text style={tw`text-[#A0A0A0] text-xs mb-2`}>📹 Related videos:</Text>
                 {msg.videos.map((video, idx) => (
                   <TouchableOpacity
                     key={idx}
-                    style={tw`flex-row bg-gray-800 rounded-lg overflow-hidden border border-gray-700 mb-2`}
+                    style={tw`flex-row bg-[#1A1A1A] rounded-lg overflow-hidden border border-[#333333] mb-2`}
                     onPress={() => openVideo(video.url)}
                     activeOpacity={0.8}
                   >
@@ -157,7 +244,7 @@ export default function ChatScreen() {
                       <Text style={tw`text-white text-xs`} numberOfLines={1}>
                         {video.videoTitle}
                       </Text>
-                      <Text style={tw`text-blue-400 text-xs`}>
+                      <Text style={tw`text-[#4DA6FF] text-xs`}>
                         ▶ {formatTimestamp(video.timestamp)}
                       </Text>
                     </View>
@@ -170,35 +257,29 @@ export default function ChatScreen() {
 
         {loading && (
           <View style={tw`items-start mb-4`}>
-            <View style={tw`bg-gray-700 p-4 rounded-2xl flex-row items-center`}>
-              <ActivityIndicator color="#fff" size="small" />
-              <Text style={tw`text-white ml-3`}>Thinking...</Text>
-            </View>
+            <AnimatedBubble sender="coach">
+              <View style={tw`bg-[#2D2D2D] p-4 rounded-2xl flex-row items-center`}>
+                <ActivityIndicator color="#fff" size="small" />
+                <Text style={tw`text-white ml-3`}>Thinking...</Text>
+              </View>
+            </AnimatedBubble>
           </View>
         )}
       </ScrollView>
 
       {/* Input Area */}
-      <View style={tw`flex-row p-4 bg-gray-800 border-t border-gray-700`}>
+      <View style={tw`flex-row items-center p-4 bg-[#141414] border-t border-[#333333]`}>
         <TextInput
-          style={tw`flex-1 bg-gray-700 text-white px-4 py-3 rounded-full mr-2`}
+          style={tw`flex-1 bg-[#262626] text-white px-4 py-3 rounded-full mr-3`}
           placeholder="Ask me anything..."
-          placeholderTextColor="#9CA3AF"
+          placeholderTextColor="#A0A0A0"
           value={input}
           onChangeText={setInput}
           onSubmitEditing={handleSend}
           editable={!loading}
           multiline={false}
         />
-        <TouchableOpacity
-          style={tw`${
-            loading || !input.trim() ? 'bg-gray-600' : 'bg-blue-500'
-          } px-6 py-3 rounded-full justify-center`}
-          onPress={handleSend}
-          disabled={loading || !input.trim()}
-        >
-          <Text style={tw`text-white font-bold`}>Send</Text>
-        </TouchableOpacity>
+        <SendButton onPress={handleSend} disabled={loading || !input.trim()} />
       </View>
     </KeyboardAvoidingView>
   );
