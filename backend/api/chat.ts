@@ -97,7 +97,28 @@ interface IntentResult {
  */
 async function detectIntent(message: string, client: GoogleGenerativeAI): Promise<IntentResult> {
   // First try pattern matching - covers 80% of cases
-  const trick = extractTrickFromMessage(message);
+  let trick = extractTrickFromMessage(message);
+  
+  // Fallback: if no trick found, try direct matching against AVAILABLE_TRICKS
+  if (!trick) {
+    const lowerMsg = message.toLowerCase();
+    for (const availableTrick of AVAILABLE_TRICKS) {
+      const trickVariations = [
+        availableTrick,
+        availableTrick.replace(/-/g, ' '),
+        availableTrick.replace(/-/g, ''),
+      ];
+      
+      for (const variation of trickVariations) {
+        if (lowerMsg.includes(variation)) {
+          trick = variation;
+          break;
+        }
+      }
+      if (trick) break;
+    }
+  }
+  
   if (trick) {
     // Found a trick mention - try to match it to available tricks using fuzzy search
     const normalized = normalizeTrickName(trick).replace(/\s+/g, '-');
