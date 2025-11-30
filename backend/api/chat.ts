@@ -291,43 +291,73 @@ export default async function handler(
     const requestedVideoCount = message.match(/(\d+)\s*video/i)?.[1];
     const videoCount = requestedVideoCount ? Math.min(parseInt(requestedVideoCount), 10) : (wantsMoreVideos ? 5 : 3);
     
-    // Step 3: Search - use different strategy based on intent
+    // Step 3: TRICK PATH - if we detected a main trick with high confidence, go straight to trick videos
+    if (intent.intent === 'how-to-trick' && intent.trickId && intent.confidence > 0.7) {
+      console.log(`\n=== TRICK PATH DETECTED ===`);
+      console.log(`Trick: ${intent.trickId} (confidence: ${intent.confidence})`);
+      
+      // Get trick videos from cache
+      const trickVideos = getTrickVideos(intent.trickId);
+      console.log(`Found ${trickVideos.length} videos for ${intent.trickId}`);
+      
+      // Log the raw videos from cache
+      if (trickVideos.length > 0) {
+        console.log('=== TRICK VIDEOS FROM CACHE ===');
+        trickVideos.forEach((v, i) => {
+          console.log(`  ${i + 1}. URL: ${v.url}`);
+          console.log(`     Title: ${v.title}`);
+          console.log(`     Thumbnail: ${v.thumbnail}`);
+        });
+      }
+      
+      // Convert to VideoReference format
+      const allTrickVideos: VideoReference[] = trickVideos.map(v => ({
+        videoId: v.url.split('v=')[1] || '',
+        videoTitle: v.title,
+        timestamp: 0,
+        url: v.url,
+        thumbnail: v.thumbnail,
+      }));
+      
+      // Build response with trick intro and videos
+      const messages: ChatMessage[] = [
+        { type: 'text', content: TRICK_INTROS[intent.trickId] || GENERAL_INTRO },
+        { type: 'text', content: "Here are the best tutorials for this trick:" }
+      ];
+      
+      console.log(`=== TRICK PATH RESPONSE ===`);
+      console.log(`Messages: ${messages.length}`);
+      console.log(`Videos: ${allTrickVideos.length}`);
+      console.log(`Video IDs: ${allTrickVideos.map(v => v.videoId).join(', ')}`);
+      console.log(`Video URLs: ${allTrickVideos.map(v => v.url).join(', ')}`);
+      
+      return res.status(200).json({
+        messages,
+        hasMoreTips: false,
+        videos: allTrickVideos,
+        currentTrick: intent.trickId,
+      });
+    }
+    
+    // Step 4: GENERAL PATH - semantic search for general questions
+    console.log(`\n=== GENERAL PATH ===`);
     let rawSegments: EnhancedVideoSegment[];
-    let isPrimaryTutorial = false;
     let queryEmbedding: number[] | null = null;
     
-    if (intent.intent === 'how-to-trick' && intent.trickId && intent.confidence > 0.7) {
-      // Search for primary trick tutorial first (no embedding needed!)
-      console.log(`Searching for primary tutorial: ${intent.trickId}`);
-      const primarySegments = await getTrickTutorialById(intent.trickId);
-      
-      if (primarySegments.length >= 5) {
-        // Found primary tutorial - use it
-        rawSegments = primarySegments;
-        isPrimaryTutorial = true;
-        console.log(`Found ${primarySegments.length} primary tutorial steps`);
-      } else {
-        // No primary tutorial found, fall back to semantic search
-        console.log('No primary tutorial found, searching for related content');
-        queryEmbedding = await generateEmbedding(searchQuery);
-        rawSegments = await searchVideoSegments(queryEmbedding, Math.max(20, videoCount * 3));
-      }
+    // General question - use semantic search with embedding
+    queryEmbedding = await generateEmbedding(searchQuery);
+    
+    // Try local embedding cache first (no Pinecone API call!)
+    const cache = getEmbeddingCache();
+    const cacheStats = cache.getStats();
+    if (cacheStats.totalChunks > 0) {
+      console.log('Using local embedding cache for search');
+      const cachedResults = cache.search(queryEmbedding, Math.max(20, videoCount * 3));
+      rawSegments = cachedResults.map(convertCachedChunkToSegment);
     } else {
-      // General question - use semantic search with embedding
-      queryEmbedding = await generateEmbedding(searchQuery);
-      
-      // Try local embedding cache first (no Pinecone API call!)
-      const cache = getEmbeddingCache();
-      const cacheStats = cache.getStats();
-      if (cacheStats.totalChunks > 0) {
-        console.log('Using local embedding cache for search');
-        const cachedResults = cache.search(queryEmbedding, Math.max(20, videoCount * 3));
-        rawSegments = cachedResults.map(convertCachedChunkToSegment);
-      } else {
-        // Fallback to Pinecone if cache not available
-        console.log('Embedding cache not available, using Pinecone');
-        rawSegments = await searchVideoSegments(queryEmbedding, Math.max(20, videoCount * 3));
-      }
+      // Fallback to Pinecone if cache not available
+      console.log('Embedding cache not available, using Pinecone');
+      rawSegments = await searchVideoSegments(queryEmbedding, Math.max(20, videoCount * 3));
     }
     console.log(`Found ${rawSegments.length} raw segments`);
     
@@ -344,12 +374,10 @@ export default async function handler(
       console.log(`  ${i + 1}. ID: ${seg.id} | videoId: ${seg.videoId || 'MISSING'} | trickName: ${seg.trickName || 'N/A'} | title: ${seg.videoTitle?.substring(0, 40) || 'N/A'}`);
     });
     
-    // Step 4: Filter segments (skip for primary tutorials - they're already filtered)
+    // Step 5: Filter segments by active trick
     // Use trickName metadata for strict filtering when available
     // IMPORTANT: Use activeTrick to maintain consistency across follow-up questions
-    const segments: EnhancedVideoSegment[] = isPrimaryTutorial 
-      ? rawSegments 
-      : filterSegmentsByTrick(rawSegments, activeTrick);
+    const segments: EnhancedVideoSegment[] = filterSegmentsByTrick(rawSegments, activeTrick);
     console.log(`After filtering: ${segments.length} relevant segments`);
     
     // Log filtered segment details
@@ -358,202 +386,11 @@ export default async function handler(
       console.log(`  ${i + 1}. ID: ${seg.id} | videoId: ${seg.videoId || 'MISSING'} | trickName: ${seg.trickName || 'N/A'} | title: ${seg.videoTitle?.substring(0, 40) || 'N/A'}`);
     });
     
-    // Step 5: Get intro (from cache or use general)
-    const coachIntro = intent.intent === 'how-to-trick' && intent.trickId
-      ? TRICK_INTROS[intent.trickId] || GENERAL_INTRO
-      : GENERAL_INTRO;
+    // Step 6: Get intro (from cache or use general)
+    const coachIntro = GENERAL_INTRO;
     
-    // Step 6: Build tips - different handling for primary tutorials vs general
-    if (isPrimaryTutorial && segments.length > 0) {
-      // PRIMARY TUTORIAL: Show ordered steps as separate messages
-      const trickName = segments[0].trickName || intent.trickId;
-      console.log(`Building primary tutorial response for: ${trickName}`);
-      
-      // Sort by step number and build ordered steps
-      const orderedSteps = segments
-        .filter(seg => seg.stepNumber !== undefined)
-        .sort((a, b) => (a.stepNumber || 0) - (b.stepNumber || 0))
-        .slice(0, 10);  // Max 10 steps
-      
-      // Get up to 3 unique videos for this question (skip all previously shown)
-      const shownVideoSet = new Set(shownVideoIds);
-      console.log('=== Video Filtering (Primary Tutorial) ===');
-      console.log('Shown videos set size:', shownVideoSet.size);
-      console.log('Shown videos:', JSON.stringify(Array.from(shownVideoSet)));
-      console.log('Total segments to search:', segments.length);
-      const uniqueVideos: VideoReference[] = [];
-      const seenIds = new Set<string>();
-      
-      // First pass: try to get videos from segments (excluding all previously shown)
-      for (const seg of segments) {
-        const isShown = shownVideoSet.has(seg.videoId);
-        const isSeen = seenIds.has(seg.videoId);
-        if (isShown || isSeen) {
-          console.log(`  SKIP: videoId=${seg.videoId}, shown=${isShown}, seen=${isSeen}`);
-        }
-        if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId)) {
-          console.log(`  ADD: videoId=${seg.videoId}, title=${seg.videoTitle.substring(0, 30)}`);
-          uniqueVideos.push({
-            videoId: seg.videoId,
-            videoTitle: seg.videoTitle,
-            timestamp: seg.timestamp,
-            url: `https://youtube.com/watch?v=${seg.videoId}`,
-            thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
-            duration: seg.duration,
-          });
-          seenIds.add(seg.videoId);
-          if (uniqueVideos.length >= 3) break;
-        }
-      }
-      
-      // Fallback: if no videos found from segments, search for Taevis videos with same trick name
-      if (uniqueVideos.length === 0) {
-        // Generate embedding if we don't have one yet (for trick questions)
-        if (!queryEmbedding) {
-          queryEmbedding = await generateEmbedding(searchQuery);
-        }
-        
-        // Get trickName from segments or use intent.trickId as fallback
-        const trickNameToSearch = segments.length > 0 && segments[0].trickName 
-          ? segments[0].trickName 
-          : intent.trickId;
-        
-        if (trickNameToSearch) {
-          console.log(`Searching for Taevis videos with trickName: ${trickNameToSearch}`);
-          const taevisSegments = await searchVideoSegmentsWithOptions(queryEmbedding, {
-            topK: 50,
-            trickName: trickNameToSearch,
-          });
-          
-          console.log(`Found ${taevisSegments.length} Taevis segments for ${trickNameToSearch}`);
-          
-          for (const seg of taevisSegments) {
-            console.log(`  Checking: ${seg.videoId} | trickName: ${seg.trickName} | title: ${seg.videoTitle.substring(0, 40)}`);
-            
-            // Validate that trickName matches exactly (strict check to avoid misclassified content)
-            const trickNameMatches = seg.trickName && seg.trickName.toLowerCase() === trickNameToSearch.toLowerCase();
-            
-            if (seg.videoId && !shownVideoSet.has(seg.videoId) && !seenIds.has(seg.videoId) && trickNameMatches) {
-              console.log(`    ✓ Adding video`);
-              uniqueVideos.push({
-                videoId: seg.videoId,
-                videoTitle: seg.videoTitle,
-                timestamp: seg.timestamp,
-                url: `https://youtube.com/watch?v=${seg.videoId}`,
-                thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
-                duration: seg.duration,
-              });
-              seenIds.add(seg.videoId);
-              if (uniqueVideos.length >= 3) break;
-            } else {
-              console.log(`    ✗ Skipped (shown: ${shownVideoSet.has(seg.videoId)}, seen: ${seenIds.has(seg.videoId)}, trickMatch: ${trickNameMatches})`);
-            }
-          }
-          
-          // If no videos found with exact trickName match, don't show anything (be precise)
-          if (uniqueVideos.length === 0) {
-            console.log(`No videos found with exact trickName match for ${trickNameToSearch}`);
-          }
-        }
-      }
-      
-      // If still no videos and we have an embedding, do one broader search
-      if (uniqueVideos.length < 3 && queryEmbedding) {
-        console.log('No videos found, searching for related content...');
-        const relatedSegments = await searchVideoSegments(queryEmbedding, 50);
-        for (const seg of relatedSegments) {
-          if (seg.videoId && !seenIds.has(seg.videoId)) {
-            uniqueVideos.push({
-              videoId: seg.videoId,
-              videoTitle: seg.videoTitle,
-              timestamp: seg.timestamp,
-              url: `https://youtube.com/watch?v=${seg.videoId}`,
-              thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
-              duration: seg.duration,
-            });
-            seenIds.add(seg.videoId);
-            if (uniqueVideos.length >= 3) break;
-          }
-        }
-      }
-      
-      const messages: ChatMessage[] = [];
-      
-      // Add intro message
-      messages.push({ type: 'text', content: coachIntro });
-      
-      // Add transition (hardcoded, no AI needed)
-      messages.push({ type: 'text', content: "Here's how to do it:" });
-      
-      // Add first 3 steps as separate messages
-      const firstBatch = orderedSteps.slice(0, 3);
-      for (const step of firstBatch) {
-        messages.push({ type: 'tip', content: step.text });
-      }
-      
-      // Check if there are more steps
-      const hasMoreTips = orderedSteps.length > 3;
-      
-      // Add follow-up question if there are more steps
-      if (hasMoreTips) {
-        messages.push({ 
-          type: 'follow-up', 
-          content: "Want more tips? Just ask!" 
-        });
-      }
-      
-      console.log(`Returning ${messages.length} messages, ${uniqueVideos.length} videos for primary tutorial (hasMoreTips: ${hasMoreTips})`);
-      console.log('=== Videos Returned ===');
-      if (uniqueVideos.length === 0) {
-        console.log('  NO VIDEOS FOUND');
-      } else {
-        uniqueVideos.forEach((v, i) => {
-          console.log(`  ${i + 1}. ${v.videoId} | ${v.videoTitle.substring(0, 40)}`);
-        });
-      }
-      
-      // Get all videos for this trick from cache
-      const trickNameToSearch = intent.trickId || '';
-      console.log(`\n=== PRIMARY TUTORIAL PATH ===`);
-      console.log(`Looking up videos for trick: "${trickNameToSearch}"`);
-      console.log(`Intent trickId: "${intent.trickId}"`);
-      
-      const cachedVideos = getTrickVideos(trickNameToSearch);
-      console.log(`Found ${cachedVideos.length} videos for "${trickNameToSearch}"`);
-      if (cachedVideos.length > 0) {
-        console.log(`Video URLs: ${cachedVideos.map(v => v.url).join(', ')}`);
-      }
-      
-      // Convert to VideoReference format for response
-      const allTrickVideos: VideoReference[] = cachedVideos.map(v => ({
-        videoId: v.url.split('v=')[1] || '',
-        videoTitle: v.title,
-        timestamp: 0,
-        url: v.url,
-        thumbnail: v.thumbnail,
-      }));
-      
-      // Log the response being sent
-      console.log('=== FINAL RESPONSE (Primary Tutorial) ===');
-      console.log('Total trick videos to return:', allTrickVideos.length);
-      if (allTrickVideos.length > 0) {
-        console.log('Video IDs being returned:', allTrickVideos.map(v => v.videoId).join(', '));
-      }
-      console.log('Response object:', JSON.stringify({
-        messagesCount: messages.length,
-        hasMoreTips,
-        videosCount: allTrickVideos.length,
-        currentTrick: activeTrick,
-      }));
-      
-      return res.status(200).json({
-        messages,
-        hasMoreTips,
-        videos: allTrickVideos,  // Return all videos for this trick
-        currentTrick: activeTrick,  // Return the trick so client can pass it back
-      });
-      
-    } else if (segments.length > 0) {
+    // Step 7: Build response for general questions
+    if (segments.length > 0) {
       // GENERAL TIPS: Build separate messages for each tip
       // Sort: primary tips first, then others
       const allTips = segments.slice(0, 15).map((seg, idx) => ({

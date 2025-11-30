@@ -182,6 +182,7 @@ export default function ChatScreen() {
   useEffect(() => {
     const persistData = async () => {
       try {
+        console.log('Persisting shown video IDs:', JSON.stringify(shownVideoIds));
         await AsyncStorage.setItem('shownVideoIds', JSON.stringify(shownVideoIds));
       } catch (error) {
         console.error('Failed to persist video IDs:', error);
@@ -229,7 +230,16 @@ export default function ChatScreen() {
       console.log('Videos received from API:', videosToShow.length);
       if (videosToShow.length > 0) {
         console.log('Video IDs:', videosToShow.map(v => v.videoId).join(', '));
+        console.log('Video URLs:', videosToShow.map(v => v.url).join(', '));
       }
+      
+      // Track shown video IDs to avoid repeats
+      const newVideoIds = videosToShow.map(v => v.videoId);
+      setShownVideoIds(prev => {
+        const updated = [...prev, ...newVideoIds];
+        console.log('Updated shown video IDs:', JSON.stringify(updated));
+        return updated;
+      });
       
       // Track shown tips to never repeat them
       const newTipIds = response.tipIdsShown || [];
@@ -237,6 +247,7 @@ export default function ChatScreen() {
       
       // Update current trick if the response provides one
       if (response.currentTrick) {
+        console.log('Setting current trick:', response.currentTrick);
         setCurrentTrick(response.currentTrick);
       }
       
