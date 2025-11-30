@@ -49,7 +49,8 @@ export async function sendMessage(
     console.log('URL:', url);
     console.log('Message:', message);
     console.log('History length:', history.length);
-    console.log('Shown videos:', shownVideoIds.length);
+    console.log('Shown videos count:', shownVideoIds.length);
+    console.log('Shown videos IDs:', JSON.stringify(shownVideoIds));
     console.log('Shown tips:', shownTipIds.length);
     
     const response = await axios.post(url, {
