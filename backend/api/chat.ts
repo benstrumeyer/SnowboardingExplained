@@ -99,40 +99,27 @@ async function detectIntent(message: string, client: GoogleGenerativeAI): Promis
   const trick = extractTrickFromMessage(message);
   if (trick) {
     // Found a trick mention - try to match it to available tricks
-    const normalized = normalizeTrickName(trick);
+    const normalized = normalizeTrickName(trick).replace(/\s+/g, '-');
+    
     for (const availableTrick of AVAILABLE_TRICKS) {
-      if (normalizeTrickName(availableTrick).includes(normalized) || 
-          normalized.includes(normalizeTrickName(availableTrick))) {
+      const availableNormalized = normalizeTrickName(availableTrick).replace(/\s+/g, '-');
+      
+      // Direct match or partial match
+      if (availableNormalized === normalized || 
+          availableNormalized.includes(normalized) || 
+          normalized.includes(availableNormalized)) {
+        console.log(`Pattern match found: "${trick}" -> "${availableTrick}"`);
         return {
           intent: 'how-to-trick',
           trickId: availableTrick,
-          confidence: 0.9,
+          confidence: 0.95,
         };
       }
     }
   }
   
-  // If pattern matching didn't work, use AI for ambiguous cases
-  const model = client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
-  
-  try {
-    const prompt = INTENT_DETECTION_PROMPT.replace('{MESSAGE}', message);
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
-    
-    const match = text.match(/\{[\s\S]*\}/);
-    if (match) {
-      const parsed = JSON.parse(match[0]);
-      return {
-        intent: parsed.intent || 'general',
-        trickId: parsed.trickId || null,
-        confidence: parsed.confidence || 0.5,
-      };
-    }
-  } catch (error) {
-    console.log('Intent detection fallback to general');
-  }
-  
+  // If pattern matching didn't work, return general
+  console.log(`No pattern match found for: "${trick}"`);
   return { intent: 'general', trickId: null, confidence: 0.5 };
 }
 
