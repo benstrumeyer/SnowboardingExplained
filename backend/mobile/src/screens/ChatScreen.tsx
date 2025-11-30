@@ -15,6 +15,7 @@ import {
   Linking,
   Image,
   Animated,
+  AsyncStorage,
 } from 'react-native';
 // @ts-ignore - Expo vector icons bundled with Expo
 import { MaterialCommunityIcons } from '@expo/vector-icons';
@@ -162,6 +163,33 @@ export default function ChatScreen() {
   const [currentTrick, setCurrentTrick] = useState<string | undefined>();
   const scrollViewRef = useRef<ScrollView>(null);
 
+  // Load persisted video tracking from storage on mount
+  useEffect(() => {
+    const loadPersistedData = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('shownVideoIds');
+        if (stored) {
+          setShownVideoIds(JSON.parse(stored));
+        }
+      } catch (error) {
+        console.error('Failed to load persisted video IDs:', error);
+      }
+    };
+    loadPersistedData();
+  }, []);
+
+  // Persist video IDs whenever they change
+  useEffect(() => {
+    const persistData = async () => {
+      try {
+        await AsyncStorage.setItem('shownVideoIds', JSON.stringify(shownVideoIds));
+      } catch (error) {
+        console.error('Failed to persist video IDs:', error);
+      }
+    };
+    persistData();
+  }, [shownVideoIds]);
+
   // Auto-scroll to bottom
   useEffect(() => {
     setTimeout(() => {
@@ -195,8 +223,11 @@ export default function ChatScreen() {
       const combinedResponse = response.messages.map(m => m.content).join('\n');
       setChatHistory([...newHistory, { role: 'coach', content: combinedResponse }]);
       
-      // Track shown videos to never repeat them
+      // Deduplicate videos on frontend - filter out any already shown
       const newVideoIds = response.videos?.map(v => v.videoId) || [];
+      const uniqueNewVideos = response.videos?.filter(v => !shownVideoIds.includes(v.videoId)) || [];
+      
+      // Track shown videos to never repeat them
       setShownVideoIds(prev => [...prev, ...newVideoIds]);
       
       // Track shown tips to never repeat them
@@ -211,8 +242,8 @@ export default function ChatScreen() {
       // Add messages with staggered delays for human-like feel
       setLoading(false);  // Stop loading indicator before showing messages
       
-      // Ensure at least 1 video is shown if available
-      const videosToShow = response.videos?.length > 0 ? response.videos : [];
+      // Only show videos that haven't been shown before
+      const videosToShow = uniqueNewVideos.length > 0 ? uniqueNewVideos : [];
       
       for (let i = 0; i < response.messages.length; i++) {
         const msg = response.messages[i];
