@@ -29,35 +29,55 @@ export default function App() {
   const translateX = React.useRef(new Animated.Value(-SIDEBAR_WIDTH)).current;
   const overlayOpacity = React.useRef(new Animated.Value(0)).current;
 
-  const toggleSidebar = () => {
-    const toValue = sidebarOpen ? -SIDEBAR_WIDTH : 0;
-    const opacityValue = sidebarOpen ? 0 : 0.5;
-    
+  const openSidebar = () => {
     Animated.parallel([
       Animated.timing(translateX, {
-        toValue,
+        toValue: 0,
         duration: 250,
         useNativeDriver: true,
       }),
       Animated.timing(overlayOpacity, {
-        toValue: opacityValue,
+        toValue: 0.5,
         duration: 250,
         useNativeDriver: true,
       }),
     ]).start();
-    
-    setSidebarOpen(!sidebarOpen);
+    setSidebarOpen(true);
+  };
+
+  const closeSidebar = () => {
+    Animated.parallel([
+      Animated.timing(translateX, {
+        toValue: -SIDEBAR_WIDTH,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(overlayOpacity, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start();
+    setSidebarOpen(false);
+  };
+
+  const toggleSidebar = () => {
+    if (sidebarOpen) {
+      closeSidebar();
+    } else {
+      openSidebar();
+    }
   };
 
   const navigateTo = (screen: Screen) => {
     setCurrentScreen(screen);
-    toggleSidebar();
+    closeSidebar();
   };
 
   const selectMode = (mode: InputMode) => {
     setInputMode(mode);
     setCurrentScreen('chat');
-    toggleSidebar();
+    closeSidebar();
   };
 
   return (
