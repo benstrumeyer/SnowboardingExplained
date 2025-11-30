@@ -101,6 +101,7 @@ interface ChatRequest {
   history?: { role: 'user' | 'coach'; content: string }[];
   shownVideoIds?: string[];  // Track videos already shown to avoid repeats
   shownTipIds?: string[];    // Track tips already shown to never repeat
+  currentTrick?: string;     // Track the current trick being discussed
 }
 
 interface VideoReference {
@@ -147,7 +148,7 @@ export default async function handler(
   }
   
   try {
-    const { message, history = [], shownVideoIds = [], shownTipIds = [] }: ChatRequest = req.body;
+    const { message, history = [], shownVideoIds = [], shownTipIds = [], currentTrick: passedTrick }: ChatRequest = req.body;
     
     // If no message, return greeting
     if (!message || !message.trim()) {
@@ -160,6 +161,7 @@ export default async function handler(
     console.log('=== Chat API ===');
     console.log('Message:', message);
     console.log('History length:', history.length);
+    console.log('Passed trick:', passedTrick || 'none');
     
     const client = getGeminiClient();
     
@@ -169,15 +171,28 @@ export default async function handler(
     
     // Step 2: Determine search query with context awareness
     const currentTopic = extractTrickFromMessage(message);
-    const historyTopic = currentTopic ? null : extractConversationTopic(history);
+    
+    // Determine active trick: prioritize new mention, then passed trick, then history
+    let activeTrick = currentTopic || passedTrick || extractConversationTopic(history);
+    
+    // Check if user switched tricks (mentioned a different trick than the current one)
+    const userSwitchedTricks = currentTopic && passedTrick && 
+      normalizeTrickName(currentTopic) !== normalizeTrickName(passedTrick);
+    
+    if (userSwitchedTricks) {
+      console.log(`User switched tricks: ${passedTrick} → ${currentTopic}`);
+      activeTrick = currentTopic;  // Use the new trick
+    }
     
     // For search: prioritize current message, add context only if no new topic
     const searchQuery = currentTopic 
       ? message  // New topic - search just the message
-      : (historyTopic ? `${historyTopic} ${message}` : message);  // Follow-up - add context
+      : (activeTrick ? `${activeTrick} ${message}` : message);  // Follow-up - add context
     
     console.log('Current topic:', currentTopic || 'none');
-    console.log('History topic:', historyTopic || 'none');
+    console.log('Passed trick:', passedTrick || 'none');
+    console.log('Active trick:', activeTrick || 'none');
+    console.log('User switched tricks:', userSwitchedTricks);
     console.log('Search query:', searchQuery);
     
     // Check if user is asking for more videos
@@ -224,9 +239,10 @@ export default async function handler(
     
     // Step 4: Filter segments (skip for primary tutorials - they're already filtered)
     // Use trickName metadata for strict filtering when available
+    // IMPORTANT: Use activeTrick to maintain consistency across follow-up questions
     const segments: EnhancedVideoSegment[] = isPrimaryTutorial 
       ? rawSegments 
-      : filterSegmentsByTrick(rawSegments, currentTopic || historyTopic);
+      : filterSegmentsByTrick(rawSegments, activeTrick);
     console.log(`After filtering: ${segments.length} relevant segments`);
     
     // Log filtered segment details
@@ -324,6 +340,7 @@ export default async function handler(
         messages,
         hasMoreTips,
         videos: uniqueVideos,
+        currentTrick: activeTrick,  // Return the trick so client can pass it back
       });
       
     } else if (segments.length > 0) {
@@ -426,6 +443,7 @@ export default async function handler(
         hasMoreTips,
         videos: uniqueVideos,
         tipIdsShown,  // Return tip IDs so client can track them
+        currentTrick: activeTrick,  // Return the trick so client can pass it back
       });
         
     } else {
@@ -481,6 +499,19 @@ const TRICK_PATTERNS = [
   /jump/i,
   /kicker/i,
 ];
+
+/**
+ * Normalize trick names for comparison
+ * e.g., "fs 180" and "frontside 180" should be considered the same
+ */
+function normalizeTrickName(trick: string): string {
+  return trick
+    .toLowerCase()
+    .replace(/\bfs\b/g, 'frontside')
+    .replace(/\bbs\b/g, 'backside')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 /**
  * Extract trick from a single message
