@@ -492,20 +492,30 @@ export default async function handler(
         });
       }
       
-      // Convert all segments with matching trickName to video references for frontend ranking
+      // Get all videos for this trick - use the same search we did for uniqueVideos
+      // Search for all videos with matching trickName
       const allTrickVideos: VideoReference[] = [];
       const seenVideoIds = new Set<string>();
-      const trickNameToMatch = segments.length > 0 && segments[0].trickName 
-        ? segments[0].trickName.toLowerCase()
-        : null;
       
-      for (const seg of segments) {
+      if (!queryEmbedding) {
+        queryEmbedding = await generateEmbedding(searchQuery);
+      }
+      
+      const trickNameToSearch = intent.trickId;
+      console.log(`Searching for ALL videos with trickName: ${trickNameToSearch}`);
+      
+      const allTrickSegments = await searchVideoSegmentsWithOptions(queryEmbedding, {
+        topK: 100,
+        trickName: trickNameToSearch,
+      });
+      
+      console.log(`Found ${allTrickSegments.length} total segments for ${trickNameToSearch}`);
+      
+      for (const seg of allTrickSegments) {
         // Only include videos with exact trickName match
-        if (trickNameToMatch && seg.trickName && seg.trickName.toLowerCase() !== trickNameToMatch) {
-          continue;
-        }
+        const trickNameMatches = seg.trickName && seg.trickName.toLowerCase() === trickNameToSearch.toLowerCase();
         
-        if (seg.videoId && !seenVideoIds.has(seg.videoId)) {
+        if (seg.videoId && !seenVideoIds.has(seg.videoId) && trickNameMatches) {
           allTrickVideos.push({
             videoId: seg.videoId,
             videoTitle: seg.videoTitle,
