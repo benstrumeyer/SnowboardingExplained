@@ -154,7 +154,7 @@ export async function getTrickTutorialById(
   
   // Query with filter only - no vector needed
   const queryResponse = await index.query({
-    vector: new Array(1536).fill(0), // Dummy vector (required by API)
+    vector: new Array(768).fill(0), // Dummy vector (required by API, must match index dimensions)
     topK: 20,
     includeMetadata: true,
     filter: {
