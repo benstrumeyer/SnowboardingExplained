@@ -2,22 +2,40 @@
  * Chat API Endpoint
  * POST /api/chat
  * 
- * This is a Vercel serverless function
- * It handles coaching requests from the mobile app
+ * Simplified flow:
+ * 1. AI interprets user input (fix typos, expand abbreviations)
+ * 2. Search Pinecone with clean query
+ * 3. Return transcript segments as tips (no AI extraction)
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import type { ChatRequest, VideoReference } from '../lib/types';
-import { generateEmbedding, generateCoachingResponse } from '../lib/gemini';
+import { generateEmbedding } from '../lib/gemini';
 import { searchVideoSegments } from '../lib/pinecone';
 import { getCachedResponse, cacheResponse } from '../lib/cache';
-import { initVideoDatabase, getVideosForTrick, type VideoInfo } from '../lib/video-search';
+import { interpretQuery } from '../lib/query-interpreter';
+import { GREETING } from '../lib/coach-personality';
+import type { VideoSegment } from '../lib/types';
 
-// Video database - loaded from embedded data or fetched
-import videoData from '../data/video-database.json';
+interface TipWithVideo {
+  tip: string;
+  videoId: string;
+  videoTitle: string;
+  timestamp: number;
+  url: string;
+  thumbnail: string;
+}
 
-// Initialize video database on module load
-initVideoDatabase(videoData as VideoInfo[]);
+interface ChatResponse {
+  greeting?: string;
+  interpretation: {
+    original: string;
+    understood: string;
+    concepts: string[];
+  } | null;
+  coachMessage: string;
+  tips: TipWithVideo[];
+  cached: boolean;
+}
 
 export default async function handler(
   req: VercelRequest,
@@ -38,192 +56,124 @@ export default async function handler(
   
   try {
     console.log('=== Chat API Called ===');
-    console.log('Method:', req.method);
-    console.log('Body:', JSON.stringify(req.body, null, 2));
-    console.log('Headers:', JSON.stringify(req.headers, null, 2));
-    console.log('ENV Check:', {
-      hasGemini: !!process.env.GEMINI_API_KEY,
-      hasPinecone: !!process.env.PINECONE_API_KEY,
-      hasIndex: !!process.env.PINECONE_INDEX,
-    });
     
-    const { context, message, sessionId }: ChatRequest = req.body;
+    const { message, sessionId } = req.body;
     
-    if (!context || !sessionId) {
-      console.log('Missing required fields');
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-    
-    console.log('Chat request:', { trick: context.trick, sessionId });
-    
-    // Check cache
-    const cachedResponse = await getCachedResponse(context);
-    if (cachedResponse) {
-      console.log('Cache hit!');
-      const parsed = JSON.parse(cachedResponse);
+    // If no message, return greeting
+    if (!message || !message.trim()) {
       return res.status(200).json({
-        ...parsed,
-        cached: true,
-      });
-    }
-    
-    console.log('Cache miss - generating new response');
-    
-    // Build search query
-    const searchQuery = buildSearchQuery(context, message);
-    console.log('Search query:', searchQuery);
-    
-    // Generate embedding
-    const queryEmbedding = await generateEmbedding(searchQuery);
-    
-    // Search Pinecone for top 10 chunks
-    const relevantSegments = await searchVideoSegments(queryEmbedding, 10);
-    console.log(`Found ${relevantSegments.length} relevant segments`);
-    
-    if (relevantSegments.length === 0) {
-      // Still try to find similar videos by title even without transcript matches
-      const fallbackResults = getVideosForTrick(context.trick, 5);
-      const fallbackVideos = fallbackResults.map(r => ({
-        videoId: r.video.videoId,
-        title: r.video.title,
-        url: r.video.url,
-        thumbnail: r.video.thumbnail,
-        similarity: r.similarity,
-      }));
-      
-      return res.status(200).json({
-        response: "I don't have specific content about that yet, but I'd love to help! Can you describe your issue in more detail?",
+        greeting: GREETING,
+        interpretation: null,
+        coachMessage: '',
         tips: [],
-        videos: [],
-        similarVideos: fallbackVideos,
         cached: false,
       });
     }
     
-    // Generate 10 actionable tips using AI from all segments
-    const tipsPrompt = `You are a snowboarding coach. Based on these video transcripts about "${context.trick}", generate exactly 10 specific, actionable tips.
-
-Each tip should be:
-- 1-2 sentences max
-- Specific and actionable (not generic advice)
-- Based on the actual content from the transcripts
-- Unique (no duplicates)
-
-Transcripts:
-${relevantSegments.map((v, i) => `${i + 1}. [${v.videoTitle}]: "${v.text}"`).join('\n\n')}
-
-User's specific issue: ${context.issues || 'general help'}
-
-Return ONLY a JSON array of 10 tips, like this:
-["Tip 1", "Tip 2", "Tip 3", "Tip 4", "Tip 5", "Tip 6", "Tip 7", "Tip 8", "Tip 9", "Tip 10"]`;
-
-    let tips: string[] = [];
-    try {
-      const tipsResult = await generateCoachingResponse(
-        { trick: context.trick },
-        relevantSegments,
-        tipsPrompt
-      );
-      
-      // Parse JSON array from response
-      const jsonMatch = tipsResult.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        tips = JSON.parse(jsonMatch[0]);
-      }
-    } catch (e) {
-      console.log('Failed to generate tips, using fallback');
-      // Fallback: extract key sentences from transcripts
-      tips = relevantSegments.map(v => v.text.split('.')[0] + '.').slice(0, 10);
+    console.log('User message:', message);
+    
+    // Check cache
+    const cacheKey = { trick: message.toLowerCase().trim() };
+    const cachedResponse = await getCachedResponse(cacheKey);
+    if (cachedResponse) {
+      console.log('Cache hit!');
+      return res.status(200).json({
+        ...JSON.parse(cachedResponse),
+        cached: true,
+      });
     }
     
-    // Ensure we have up to 10 tips
-    tips = tips.slice(0, 10);
-    console.log(`Generated ${tips.length} tips`);
+    // Step 1: AI interprets user input (fix typos, expand abbreviations)
+    console.log('Step 1: Interpreting query...');
+    const interpreted = await interpretQuery(message);
+    console.log('Interpreted:', interpreted.interpretedMeaning);
+    console.log('Search terms:', interpreted.searchTerms);
     
-    // Get unique videos for video references (top 5)
-    const videoMap = new Map<string, typeof relevantSegments[0]>();
-    for (const segment of relevantSegments) {
-      if (!videoMap.has(segment.videoId)) {
-        videoMap.set(segment.videoId, segment);
-      }
-    }
-    const topVideos = Array.from(videoMap.values()).slice(0, 5);
-    console.log(`Grouped into ${topVideos.length} unique videos`);
+    // Step 2: Build clean search query and search Pinecone
+    const searchQuery = [
+      interpreted.interpretedMeaning,
+      ...interpreted.searchTerms,
+      ...interpreted.concepts
+    ].filter(Boolean).join(' ');
     
-    // Generate overall coaching response
-    const coachingResponse = await generateCoachingResponse(
-      context,
-      topVideos,
-      message
-    );
+    console.log('Step 2: Searching Pinecone with:', searchQuery);
+    const queryEmbedding = await generateEmbedding(searchQuery);
+    const segments = await searchVideoSegments(queryEmbedding, 5);
+    console.log(`Found ${segments.length} segments`);
     
-    // Format video references from transcript search
-    const videoReferences: VideoReference[] = topVideos.map((video) => ({
-      videoId: video.videoId,
-      title: video.videoTitle,
-      thumbnail: `https://img.youtube.com/vi/${video.videoId}/maxresdefault.jpg`,
-      timestamp: video.timestamp,
-      quote: video.text.substring(0, 150) + '...',
-      url: `https://youtube.com/watch?v=${video.videoId}&t=${Math.floor(video.timestamp)}s`,
-    }));
+    // Step 3: Convert segments directly to tips (no AI extraction)
+    const tips = segmentsToTips(segments);
     
-    // Get similar videos by title matching to fill remaining slots
-    const existingVideoIds = new Set(videoReferences.map(v => v.videoId));
-    const similarResults = getVideosForTrick(context.trick, 10)
-      .filter(r => !existingVideoIds.has(r.video.videoId))  // Exclude already included videos
-      .slice(0, 5 - videoReferences.length);  // Fill to 5 total
+    // Build coach message
+    const coachMessage = buildCoachMessage(interpreted.interpretedMeaning, tips.length);
     
-    const similarVideos = similarResults.map(r => ({
-      videoId: r.video.videoId,
-      title: r.video.title,
-      url: r.video.url,
-      thumbnail: r.video.thumbnail,
-      similarity: r.similarity,
-    }));
-    console.log(`Found ${similarVideos.length} similar videos by title`);
-    
-    const response = {
-      response: coachingResponse,
-      tips: tips,  // 10 AI-generated tips
-      videos: videoReferences,  // 5 videos from transcript search
-      similarVideos: similarVideos,  // 5 videos from title similarity
+    const response: ChatResponse = {
+      interpretation: {
+        original: message,
+        understood: interpreted.interpretedMeaning,
+        concepts: interpreted.concepts,
+      },
+      coachMessage,
+      tips,
       cached: false,
     };
     
     // Cache it
-    await cacheResponse(context, JSON.stringify(response));
+    await cacheResponse(cacheKey, JSON.stringify(response));
     
     return res.status(200).json(response);
     
   } catch (error: any) {
-    console.error('=== Chat API Error ===');
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Error stack:', error.stack);
-    console.error('Full error:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-    
+    console.error('Chat API Error:', error.message);
     return res.status(500).json({ 
       error: 'Internal server error',
       message: error.message,
-      name: error.name,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 }
 
-function buildSearchQuery(context: any, message?: string): string {
-  const parts = [context.trick];
+/**
+ * Convert Pinecone segments directly to tips
+ * The transcript text IS the tip - no AI needed
+ */
+function segmentsToTips(segments: VideoSegment[]): TipWithVideo[] {
+  return segments.map(seg => ({
+    tip: cleanTranscriptText(seg.text),
+    videoId: seg.videoId,
+    videoTitle: seg.videoTitle,
+    timestamp: seg.timestamp,
+    url: `https://youtube.com/watch?v=${seg.videoId}&t=${Math.floor(seg.timestamp)}s`,
+    thumbnail: `https://img.youtube.com/vi/${seg.videoId}/maxresdefault.jpg`,
+  }));
+}
+
+/**
+ * Clean up transcript text for display
+ */
+function cleanTranscriptText(text: string): string {
+  // Remove extra whitespace, trim
+  let cleaned = text.trim().replace(/\s+/g, ' ');
   
-  if (context.issues) parts.push(context.issues);
-  if (message) parts.push(message);
-  
-  if (context.edgeTransfers === 'struggling') {
-    parts.push('edge control', 'edge transfer');
+  // Capitalize first letter
+  if (cleaned.length > 0) {
+    cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
   }
   
-  if (!context.spotLanding) {
-    parts.push('spotting landing', 'rotation');
+  // Add period if missing
+  if (cleaned.length > 0 && !cleaned.match(/[.!?]$/)) {
+    cleaned += '.';
   }
   
-  return parts.filter(Boolean).join(' ');
+  return cleaned;
+}
+
+/**
+ * Build a simple coach message
+ */
+function buildCoachMessage(topic: string, tipCount: number): string {
+  if (tipCount === 0) {
+    return `Hmm, I don't have specific content about "${topic}" yet. Try asking about common tricks like backside 180s, frontside 360s, or carving techniques!`;
+  }
+  
+  return `Nice! Here's what I've got on ${topic}:`;
 }

@@ -1,45 +1,62 @@
 /**
  * API Service
  * Handles communication with the backend
+ * Updated for simplified coach flow
  */
 
 import axios from 'axios';
 import { config } from '../config';
-import type { UserContext, VideoReference } from '../types';
 
-interface SimilarVideo {
+export interface TipWithVideo {
+  tip: string;
   videoId: string;
-  title: string;
+  videoTitle: string;
+  timestamp: number;
   url: string;
   thumbnail: string;
-  similarity: number;
 }
 
-interface ChatResponse {
-  response: string;
-  tips: string[];  // 10 AI-generated tips
-  videos: VideoReference[];  // 5 videos from transcript search
-  similarVideos: SimilarVideo[];  // 5 videos from title similarity
+export interface ChatResponse {
+  greeting?: string;
+  interpretation?: {
+    original: string;
+    understood: string;
+    concepts: string[];
+  };
+  coachMessage: string;
+  tips: TipWithVideo[];
   cached: boolean;
+  costs?: {
+    interpretation: number;
+    tipExtraction: number;
+    coachMessage: number;
+    embedding: number;
+    total: number;
+  };
 }
 
-export async function sendChatMessage(
-  context: UserContext,
-  message?: string,
-  sessionId: string = 'default'
+/**
+ * Send a message to the coach
+ */
+export async function sendMessage(
+  message: string,
+  sessionId: string = 'default',
+  isFollowUp: boolean = false,
+  previousContext?: { interpretedMeaning: string; concepts: string[] }
 ): Promise<ChatResponse> {
   try {
     const url = `${config.apiUrl}/api/chat`;
     console.log('=== API Request ===');
     console.log('URL:', url);
-    console.log('Context:', JSON.stringify(context, null, 2));
     console.log('Message:', message);
     console.log('SessionId:', sessionId);
+    console.log('IsFollowUp:', isFollowUp);
     
     const response = await axios.post(url, {
-      context,
       message,
       sessionId,
+      isFollowUp,
+      previousContext,
     }, {
       timeout: 30000,
       headers: {
@@ -49,24 +66,27 @@ export async function sendChatMessage(
     
     console.log('=== API Response ===');
     console.log('Status:', response.status);
-    console.log('Data:', JSON.stringify(response.data, null, 2));
+    console.log('Cached:', response.data.cached);
+    console.log('Tips count:', response.data.tips?.length);
+    if (response.data.costs) {
+      console.log('Costs:', response.data.costs);
+    }
     
     return response.data;
   } catch (error: any) {
     console.error('=== API Error ===');
-    console.error('Error name:', error.name);
-    console.error('Error message:', error.message);
-    console.error('Response status:', error.response?.status);
-    console.error('Response data:', JSON.stringify(error.response?.data, null, 2));
-    console.error('Response headers:', JSON.stringify(error.response?.headers, null, 2));
-    console.error('Request config:', JSON.stringify({
-      url: error.config?.url,
-      method: error.config?.method,
-      data: error.config?.data,
-    }, null, 2));
+    console.error('Error:', error.message);
+    console.error('Response:', error.response?.data);
     
     throw new Error(error.response?.data?.message || error.message || 'Failed to get coaching response');
   }
+}
+
+/**
+ * Get initial greeting (no message)
+ */
+export async function getGreeting(sessionId: string = 'default'): Promise<ChatResponse> {
+  return sendMessage('', sessionId);
 }
 
 export async function checkHealth(): Promise<boolean> {

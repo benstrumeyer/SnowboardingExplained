@@ -4,7 +4,7 @@
  * Requirements: 2.1, 2.2, 2.3
  */
 
-import Fuse from 'fuse.js';
+import Fuse, { IFuseOptions } from 'fuse.js';
 
 export interface VideoInfo {
   videoId: string;
@@ -20,7 +20,7 @@ export interface FuzzyResult {
 }
 
 // Fuse.js configuration optimized for snowboarding video titles
-const FUSE_OPTIONS: Fuse.IFuseOptions<VideoInfo> = {
+const FUSE_OPTIONS: IFuseOptions<VideoInfo> = {
   // Search configuration
   keys: ['title'],
   threshold: 0.4,           // 0.0 = exact, 1.0 = match anything

@@ -17,7 +17,7 @@
     - **Validates: Requirements 1.4**
 
 
-- [ ] 2. Implement TF-IDF Scorer
+- [x] 2. Implement TF-IDF Scorer
   - [x] 2.1 Create TF-IDF initialization function
 
 
@@ -54,7 +54,7 @@
     - **Property 2: Fuzzy matching returns results above threshold**
     - **Validates: Requirements 2.1**
 
-- [ ] 4. Implement Score Combiner
+- [x] 4. Implement Score Combiner
   - [x] 4.1 Create combine() function with weighted scoring
 
 
@@ -62,7 +62,8 @@
     - Apply 1.5x multiplier for exact matches
     - _Requirements: 4.1, 4.3_
 
-  - [ ] 4.2 Implement result sorting by combined score
+  - [x] 4.2 Implement result sorting by combined score
+
     - Sort descending by final score
     - Include similarity score in each result
     - _Requirements: 4.2, 4.4_
@@ -93,7 +94,7 @@
 - [ ] 6. Checkpoint - Ensure all search tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 7. Implement Question Flow Manager
+- [x] 7. Implement Question Flow Manager
   - [x] 7.1 Create question configuration data structure
 
 
@@ -106,7 +107,8 @@
     - Store answers in UserContext
     - _Requirements: 7.1, 7.2, 7.3_
 
-  - [ ] 7.3 Implement skip detection
+
+  - [x] 7.3 Implement skip detection
     - Detect "that's all", "skip", "done" commands
     - Halt flow and proceed to API call with partial context
     - _Requirements: 8.1, 8.2_
@@ -116,7 +118,7 @@
     - **Property 11: Partial context triggers API call**
     - **Validates: Requirements 7.3, 8.1, 8.2, 8.4**
 
-- [ ] 8. Implement Follow-up Mode
+- [x] 8. Implement Follow-up Mode
   - [x] 8.1 Add follow-up detection in chat API
 
 
@@ -135,7 +137,7 @@
 - [ ] 9. Checkpoint - Ensure all backend tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 10. Implement Sidebar Component
+- [x] 10. Implement Sidebar Component
   - [x] 10.1 Create Sidebar component with slide-out animation
 
 
@@ -143,43 +145,47 @@
     - Display "Snowboarding Explained" header
     - _Requirements: 10.1_
 
-  - [ ] 10.2 Add Text Mode and Voice Mode buttons
+
+  - [x] 10.2 Add Text Mode and Voice Mode buttons
     - Text Mode (📝) and Voice Mode (🔊) buttons
     - Highlight active mode
-
     - _Requirements: 10.2, 10.3, 10.6_
-  - [ ] 10.3 Implement chat history section
+  - [x] 10.3 Implement chat history section
     - Group chats by trick name
     - Load conversation on tap
     - _Requirements: 10.4, 10.5_
 
 
-- [ ] 11. Implement Voice Input
+- [x] 11. Implement Voice Input
   - [x] 11.1 Set up voice input library
 
     - Use react-native-voice for mobile
+
     - Configure Web Speech API fallback for web
     - _Requirements: 11.5_
 
-  - [ ] 11.2 Create Voice Mode screen
+  - [x] 11.2 Create Voice Mode screen
+
     - Microphone button to start/stop recording
     - Real-time transcription display
 
     - _Requirements: 11.1, 11.2_
-  - [ ] 11.3 Integrate voice transcription with chat
+  - [x] 11.3 Integrate voice transcription with chat
     - Transcribed text appears in chat interface
     - Process identically to typed input
     - _Requirements: 11.3, 11.4_
 
 
 
+
 - [x] 12. Implement Chat History Persistence
 
-  - [ ] 12.1 Create chat storage service
+  - [x] 12.1 Create chat storage service
     - Save chats to AsyncStorage/localStorage
     - Group by trick name
     - _Requirements: 10.5_
   - [x] 12.2 Implement chat loading
+
 
 
     - Load previous conversation and context
@@ -187,8 +193,9 @@
 
     - _Requirements: 10.4_
 
-- [ ] 13. Update Main Chat Interface
-  - [ ] 13.1 Remove header/navbar from text mode screen
+- [x] 13. Update Main Chat Interface
+  - [x] 13.1 Remove header/navbar from text mode screen
+
     - Clean interface with just chat and input
     - Menu icon (☰) to open sidebar
     - _Requirements: 10.1_
