@@ -48,7 +48,7 @@ export default async function handler(
     const indexName = process.env.PINECONE_INDEX || 'snowboarding-explained';
     const index = pinecone.index(indexName);
     
-    // Query for all segments from this video
+    // Query for summary entries from this video
     const dummyVector = new Array(768).fill(0);
     
     const queryResponse = await index.query({
@@ -56,36 +56,57 @@ export default async function handler(
       topK: 500,
       includeMetadata: true,
       filter: {
-        videoId: { $eq: videoId }
+        videoId: { $eq: videoId },
+        summaryOnly: { $eq: true }
       }
     });
     
-    if (!queryResponse.matches || queryResponse.matches.length === 0) {
-      return res.status(404).json({ error: 'Video not found' });
+    // If no summaries found, try to get video info from any segment
+    let videoTitle = 'Untitled';
+    let duration = 0;
+    
+    if (queryResponse.matches && queryResponse.matches.length > 0) {
+      const firstMatch = queryResponse.matches[0];
+      videoTitle = firstMatch.metadata?.videoTitle as string || 'Untitled';
+      duration = firstMatch.metadata?.totalDuration as number || 0;
+    } else {
+      // Fallback: query without summaryOnly filter to get video info
+      const fallbackResponse = await index.query({
+        vector: dummyVector,
+        topK: 1,
+        includeMetadata: true,
+        filter: {
+          videoId: { $eq: videoId }
+        }
+      });
+      
+      if (!fallbackResponse.matches || fallbackResponse.matches.length === 0) {
+        return res.status(404).json({ error: 'Video not found' });
+      }
+      
+      videoTitle = fallbackResponse.matches[0].metadata?.videoTitle as string || 'Untitled';
+      duration = fallbackResponse.matches[0].metadata?.totalDuration as number || 0;
     }
     
-    // Extract video details and tips
-    const firstMatch = queryResponse.matches[0];
-    const videoTitle = firstMatch.metadata?.videoTitle as string;
-    const duration = firstMatch.metadata?.totalDuration as number || 0;
-    
-    // Collect all unique tips from this video
-    const tipsSet = new Set<string>();
-    for (const match of queryResponse.matches) {
-      const text = match.metadata?.text as string;
-      if (text) {
-        tipsSet.add(text.trim());
+    // Collect summary points (already sorted by pointIndex)
+    const summaryPoints: string[] = [];
+    if (queryResponse.matches) {
+      for (const match of queryResponse.matches) {
+        const text = match.metadata?.text as string;
+        if (text) {
+          summaryPoints.push(text.trim());
+        }
       }
     }
     
-    const tips = Array.from(tipsSet);
+    const tips = summaryPoints;
     
     const videoDetails: VideoDetails = {
       videoId,
       title: videoTitle || 'Untitled',
       duration,
       url: `https://youtube.com/watch?v=${videoId}`,
-      thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+      thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
       tips,
     };
     

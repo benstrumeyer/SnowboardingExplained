@@ -349,31 +349,28 @@ export default function VideoLibraryScreen() {
                   </TouchableOpacity>
                 )}
 
-                {/* Duration and View Button */}
-                <View style={tw`flex-row items-center justify-between px-4 mt-4`}>
-                  <Text style={tw`text-[#A0A0A0] text-sm`}>
-                    ⏱️ {selectedVideo && formatDuration(selectedVideo.duration)}
-                  </Text>
+                {/* View Button */}
+                <View style={tw`px-4 mt-4`}>
                   <TouchableOpacity
                     onPress={() => selectedVideo && openVideo(selectedVideo.url)}
-                    style={tw`flex-row items-center bg-[#0066CC] px-4 py-2 rounded-lg`}
+                    style={tw`flex-row items-center justify-center bg-[#22C55E] px-4 py-3 rounded-lg`}
                   >
                     <Text style={tw`text-white font-semibold`}>View on YouTube</Text>
-                    <MaterialCommunityIcons name="arrow-right" size={18} color="#fff" style={tw`ml-2`} />
+                    <Text style={tw`text-white ml-2`}>→</Text>
                   </TouchableOpacity>
                 </View>
 
-                {/* Tips Section */}
+                {/* Summary Section */}
                 <View style={tw`px-4 mt-6 pb-6`}>
-                  <Text style={tw`text-white text-lg font-bold mb-3`}>Tips</Text>
+                  <Text style={tw`text-white text-lg font-bold mb-3`}>Summary</Text>
                   {selectedVideo?.tips && selectedVideo.tips.length > 0 ? (
                     selectedVideo.tips.map((tip, idx) => (
-                      <View key={idx} style={tw`bg-[#1A1A1A] rounded-lg p-3 mb-3`}>
+                      <View key={idx} style={tw`bg-[#1A1A1A] rounded-lg p-3 mb-3 border-l-4 border-[#0066CC]`}>
                         <Text style={tw`text-white text-sm leading-5`}>{tip}</Text>
                       </View>
                     ))
                   ) : (
-                    <Text style={tw`text-[#A0A0A0] text-sm`}>No tips available</Text>
+                    <Text style={tw`text-[#A0A0A0] text-sm`}>No summary available</Text>
                   )}
                 </View>
               </ScrollView>
