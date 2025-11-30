@@ -11,8 +11,16 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { generateEmbedding } from '../lib/gemini';
-import { searchVideoSegments } from '../lib/pinecone';
-// VideoSegment type imported for reference but segments come from Pinecone search
+import { searchVideoSegments, searchVideoSegmentsWithOptions, type EnhancedVideoSegment } from '../lib/pinecone';
+
+// Available trick tutorials (specific tricks only, not foundational techniques)
+const AVAILABLE_TRICKS = [
+  'frontside-180', 'backside-180', 'frontside-360', 'backside-360',
+  'frontside-540', 'backside-540', 'frontside-720', 'backside-720',
+  'frontside-900', 'backside-900', 'frontside-1080', 'backside-1080',
+  'frontside-boardslide', 'backside-boardslide', '50-50', 'nose-slide', 'tail-slide',
+  'method', 'indy', 'melon', 'stalefish', 'mute', 'ollie', 'nollie', 'butter'
+];
 
 const COACH_INTRO_PROMPT = `You are Taevis, a chill snowboard coach. Generate ONLY a brief friendly intro (1-2 sentences max) acknowledging what the user wants to work on.
 
@@ -33,6 +41,59 @@ const COACH_TRANSITION_PROMPT = `You are Taevis. Write a single short sentence t
 - "Check out these tips:"
 - "Here's what'll help:"
 Keep it to one short line.`;
+
+const INTENT_DETECTION_PROMPT = `Analyze this snowboarding question. Determine if the user wants to learn HOW TO DO a specific trick (step-by-step tutorial) or has a general question.
+
+Available tricks we have tutorials for: ${AVAILABLE_TRICKS.join(', ')}
+
+User message: "{MESSAGE}"
+
+Respond with JSON only:
+{
+  "intent": "how-to-trick" or "general",
+  "trickId": "frontside-180" or null,
+  "confidence": 0.0-1.0
+}
+
+Examples:
+- "frontside 180" → {"intent": "how-to-trick", "trickId": "frontside-180", "confidence": 0.95}
+- "how do I fs 180" → {"intent": "how-to-trick", "trickId": "frontside-180", "confidence": 0.95}
+- "teach me backside boardslides" → {"intent": "how-to-trick", "trickId": "backside-boardslide", "confidence": 0.9}
+- "why do I keep catching my edge" → {"intent": "general", "trickId": null, "confidence": 0.85}
+- "tips for landing switch" → {"intent": "general", "trickId": null, "confidence": 0.8}`;
+
+interface IntentResult {
+  intent: 'how-to-trick' | 'general';
+  trickId: string | null;
+  confidence: number;
+}
+
+/**
+ * Detect user intent using AI - determines if they want a trick tutorial
+ */
+async function detectIntent(message: string, client: GoogleGenerativeAI): Promise<IntentResult> {
+  const model = client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+  
+  try {
+    const prompt = INTENT_DETECTION_PROMPT.replace('{MESSAGE}', message);
+    const result = await model.generateContent(prompt);
+    const text = result.response.text();
+    
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      const parsed = JSON.parse(match[0]);
+      return {
+        intent: parsed.intent || 'general',
+        trickId: parsed.trickId || null,
+        confidence: parsed.confidence || 0.5,
+      };
+    }
+  } catch (error) {
+    console.log('Intent detection fallback to general');
+  }
+  
+  return { intent: 'general', trickId: null, confidence: 0.5 };
+}
 
 interface ChatRequest {
   message: string;
@@ -92,7 +153,13 @@ export default async function handler(
     console.log('Message:', message);
     console.log('History length:', history.length);
     
-    // Step 1: Determine search query with context awareness
+    const client = getGeminiClient();
+    
+    // Step 1: Detect intent - is this a "how to do X trick" question?
+    const intent = await detectIntent(message, client);
+    console.log('Intent:', intent);
+    
+    // Step 2: Determine search query with context awareness
     const currentTopic = extractTrickFromMessage(message);
     const historyTopic = currentTopic ? null : extractConversationTopic(history);
     
@@ -110,80 +177,132 @@ export default async function handler(
     const requestedVideoCount = message.match(/(\d+)\s*video/i)?.[1];
     const videoCount = requestedVideoCount ? Math.min(parseInt(requestedVideoCount), 10) : (wantsMoreVideos ? 5 : 3);
     
-    // Step 2: Search Pinecone with context-aware query
+    // Step 3: Search Pinecone - use different strategy based on intent
     const queryEmbedding = await generateEmbedding(searchQuery);
-    const rawSegments = await searchVideoSegments(queryEmbedding, Math.max(20, videoCount * 3));  // Get more to filter
+    
+    let rawSegments: EnhancedVideoSegment[];
+    let isPrimaryTutorial = false;
+    
+    if (intent.intent === 'how-to-trick' && intent.trickId && intent.confidence > 0.7) {
+      // Search for primary trick tutorial first
+      console.log(`Searching for primary tutorial: ${intent.trickId}`);
+      const primarySegments = await searchVideoSegmentsWithOptions(queryEmbedding, {
+        topK: 15,
+        filterPrimary: true,
+        trickId: intent.trickId,
+      });
+      
+      if (primarySegments.length >= 5) {
+        // Found primary tutorial - use it
+        rawSegments = primarySegments;
+        isPrimaryTutorial = true;
+        console.log(`Found ${primarySegments.length} primary tutorial steps`);
+      } else {
+        // No primary tutorial found, fall back to general search
+        console.log('No primary tutorial found, using general search');
+        rawSegments = await searchVideoSegments(queryEmbedding, Math.max(20, videoCount * 3));
+      }
+    } else {
+      // General question - normal search
+      rawSegments = await searchVideoSegments(queryEmbedding, Math.max(20, videoCount * 3));
+    }
     console.log(`Found ${rawSegments.length} raw segments`);
     
-    // Step 2.5: Filter segments to match the specific trick requested
-    // e.g., "frontside 180" should NOT return "frontside 360" videos
-    const segments = filterSegmentsByTrick(rawSegments, currentTopic || historyTopic);
+    // Step 4: Filter segments (skip for primary tutorials - they're already filtered)
+    const segments: EnhancedVideoSegment[] = isPrimaryTutorial 
+      ? rawSegments 
+      : filterSegmentsByTrick(rawSegments, currentTopic || historyTopic) as EnhancedVideoSegment[];
     console.log(`After filtering: ${segments.length} relevant segments`);
     
-    // Step 3: Generate AI intro (just the friendly acknowledgment)
-    const client = getGeminiClient();
+    // Step 5: Generate AI intro (just the friendly acknowledgment)
     const model = client.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
     
     const introPrompt = `${COACH_INTRO_PROMPT}\n\nUser asked: "${message}"`;
     const introResult = await model.generateContent(introPrompt);
     const coachIntro = cleanResponse(introResult.response.text());
     
-    // Step 4: Extract verbatim tips from Pinecone segments
-    // Tips come directly from transcript text - no AI paraphrasing
-    const verbatimTips = segments.slice(0, 5).map(seg => ({
-      tip: seg.text.trim(),
-      videoId: seg.videoId,
-      videoTitle: seg.videoTitle,
-      timestamp: seg.timestamp,
-    }));
-    
-    // Step 5: Build the response with verbatim tips
+    // Step 6: Build tips - different handling for primary tutorials vs general
     let responseText = coachIntro;
+    let videos: VideoReference[] = [];
     
-    if (verbatimTips.length > 0) {
+    if (isPrimaryTutorial && segments.length > 0) {
+      // PRIMARY TUTORIAL: Show ordered steps, NO video links
+      const trickName = segments[0].trickName || intent.trickId;
+      console.log(`Building primary tutorial response for: ${trickName}`);
+      
+      // Sort by step number and build ordered steps
+      const orderedSteps = segments
+        .filter(seg => seg.stepNumber !== undefined)
+        .sort((a, b) => (a.stepNumber || 0) - (b.stepNumber || 0))
+        .slice(0, 12);  // Max 12 steps
+      
+      if (orderedSteps.length > 0) {
+        responseText += `\n\nHere's how to do it step by step:\n\n`;
+        responseText += orderedSteps.map((step, i) => {
+          const title = step.stepTitle || `Step ${step.stepNumber}`;
+          return `${i + 1}. ${title}: ${step.text}`;
+        }).join('\n\n');
+      }
+      
+      // NO video references for primary tutorials (can't link to these videos)
+      videos = [];
+      
+    } else if (segments.length > 0) {
+      // GENERAL TIPS: Show tips with video links
+      const verbatimTips = segments.slice(0, 5).map(seg => ({
+        tip: seg.text.trim(),
+        videoId: seg.videoId,
+        videoTitle: seg.videoTitle,
+        timestamp: seg.timestamp,
+        isPrimary: seg.isPrimary,
+      }));
+      
       // Add transition
       const transitionResult = await model.generateContent(COACH_TRANSITION_PROMPT);
       const transition = cleanResponse(transitionResult.response.text());
       
       responseText += `\n\n${transition}\n\n`;
       responseText += verbatimTips.map((t, i) => `${i + 1}. ${t.tip}`).join('\n\n');
+      
+      // Build video references - only for non-primary tips
+      const recentVideoIds = new Set(shownVideoIds.slice(-5));
+      const videoMap = new Map<string, typeof verbatimTips[0]>();
+      
+      for (const tip of verbatimTips) {
+        // Skip primary tutorial videos (can't link to them)
+        if (tip.isPrimary) continue;
+        
+        if (!videoMap.has(tip.videoId) && !recentVideoIds.has(tip.videoId)) {
+          videoMap.set(tip.videoId, tip);
+        }
+      }
+      
+      // If all videos were filtered out, allow repeats (but still skip primary)
+      if (videoMap.size === 0) {
+        for (const tip of verbatimTips) {
+          if (tip.isPrimary) continue;
+          if (!videoMap.has(tip.videoId)) {
+            videoMap.set(tip.videoId, tip);
+          }
+        }
+      }
+      
+      videos = Array.from(videoMap.values())
+        .slice(0, videoCount)
+        .map(tip => ({
+          videoId: tip.videoId,
+          videoTitle: tip.videoTitle,
+          timestamp: tip.timestamp,
+          url: `https://youtube.com/watch?v=${tip.videoId}&t=${Math.floor(tip.timestamp)}s`,
+          thumbnail: `https://img.youtube.com/vi/${tip.videoId}/maxresdefault.jpg`,
+        }));
+        
     } else {
       responseText += "\n\nHmm, I don't have specific tips for that in my videos yet. Try asking about a specific trick like backside 180s, frontside boardslides, or buttering!";
     }
     
     console.log('AI Response:', responseText.substring(0, 200) + '...');
-    
-    // Step 6: Build video references from the tips we used
-    // Only avoid videos shown in last 5 prompts
-    const recentVideoIds = new Set(shownVideoIds.slice(-5));
-    
-    // Dedupe videos by videoId, avoiding recent repeats
-    const videoMap = new Map<string, typeof verbatimTips[0]>();
-    for (const tip of verbatimTips) {
-      if (!videoMap.has(tip.videoId) && !recentVideoIds.has(tip.videoId)) {
-        videoMap.set(tip.videoId, tip);
-      }
-    }
-    
-    // If all videos were filtered out, allow repeats
-    if (videoMap.size === 0) {
-      for (const tip of verbatimTips) {
-        if (!videoMap.has(tip.videoId)) {
-          videoMap.set(tip.videoId, tip);
-        }
-      }
-    }
-    
-    // Return videos based on request (default 3, up to 10 if asked)
-    const videos: VideoReference[] = Array.from(videoMap.values())
-      .slice(0, videoCount)
-      .map(tip => ({
-        videoId: tip.videoId,
-        videoTitle: tip.videoTitle,
-        timestamp: tip.timestamp,
-        url: `https://youtube.com/watch?v=${tip.videoId}&t=${Math.floor(tip.timestamp)}s`,
-        thumbnail: `https://img.youtube.com/vi/${tip.videoId}/maxresdefault.jpg`,
-      }));
+    console.log(`Returning ${videos.length} video references (isPrimaryTutorial: ${isPrimaryTutorial})`);
     
     return res.status(200).json({
       response: responseText,
