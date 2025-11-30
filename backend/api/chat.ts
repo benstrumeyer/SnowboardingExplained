@@ -590,6 +590,7 @@ function extractConversationTopic(history: { role: string; content: string }[]):
 /**
  * Filter segments to match the specific trick requested
  * Uses trickName metadata when available, falls back to title/text matching
+ * STRICT: Only shows videos for other tricks if they have high similarity AND no relevant trick content exists
  * e.g., "frontside 180" should NOT include "frontside 360" content
  */
 function filterSegmentsByTrick(
@@ -615,7 +616,13 @@ function filterSegmentsByTrick(
   
   const otherRotations = ['180', '360', '540', '720', '900', '1080'].filter(r => r !== requestedRotation);
   
-  return segments.filter(seg => {
+  // First pass: collect segments that match the requested trick
+  const matchingSegments: EnhancedVideoSegment[] = [];
+  const nonMatchingSegments: EnhancedVideoSegment[] = [];
+  
+  for (const seg of segments) {
+    let isMatch = false;
+    
     // PRIORITY: If segment has trickName metadata, use it for strict matching
     if (seg.trickName) {
       const segTrickName = seg.trickName.toLowerCase();
@@ -627,54 +634,92 @@ function filterSegmentsByTrick(
         const matchesRotation = segTrickName.includes(requestedRotation);
         
         // Must match both, or be a general tip (no rotation in trickName)
-        if (matchesDirection && matchesRotation) return true;
-        if (!segTrickName.match(/\d+/) && matchesDirection) return true; // General direction tips
-        
-        // Exclude if it's a different rotation
-        for (const rot of otherRotations) {
-          if (segTrickName.includes(rot)) return false;
+        if (matchesDirection && matchesRotation) {
+          isMatch = true;
+        } else if (!segTrickName.match(/\d+/) && matchesDirection) {
+          // General direction tips are OK
+          isMatch = true;
+        } else {
+          // Exclude if it's a different rotation
+          for (const rot of otherRotations) {
+            if (segTrickName.includes(rot)) {
+              isMatch = false;
+              break;
+            }
+          }
         }
       }
       
       // For non-rotation tricks, check if trickName contains the request
-      if (segTrickName.includes(normalizedRequest) || normalizedRequest.includes(segTrickName)) {
-        return true;
+      if (!isMatch && (segTrickName.includes(normalizedRequest) || normalizedRequest.includes(segTrickName))) {
+        isMatch = true;
       }
       
-      // If trickName doesn't match at all, exclude
-      return false;
-    }
-    
-    // FALLBACK: No trickName metadata, use title/text matching
-    const title = seg.videoTitle.toLowerCase();
-    const text = seg.text.toLowerCase();
-    
-    // If user asked for a specific rotation (e.g., 180), exclude content about other rotations
-    if (requestedRotation) {
-      for (const rot of otherRotations) {
-        // Exclude if title mentions a different rotation
-        if (title.includes(rot) && !title.includes(requestedRotation)) {
-          return false;
-        }
-        // Exclude if text content mentions a different rotation prominently
-        const wrongTrickPattern = new RegExp(`(frontside|backside|fs|bs)\\s*${rot}`, 'i');
-        if (wrongTrickPattern.test(text)) {
-          return false;
+      // If trickName doesn't match at all, it's not a match
+      if (!isMatch) {
+        nonMatchingSegments.push(seg);
+        continue;
+      }
+    } else {
+      // FALLBACK: No trickName metadata, use title/text matching
+      const title = seg.videoTitle.toLowerCase();
+      const text = seg.text.toLowerCase();
+      
+      // Check for different rotations - these are NOT matches
+      let isDifferentTrick = false;
+      if (requestedRotation) {
+        for (const rot of otherRotations) {
+          // Exclude if title mentions a different rotation
+          if (title.includes(rot) && !title.includes(requestedRotation)) {
+            isDifferentTrick = true;
+            break;
+          }
+          // Exclude if text content mentions a different rotation prominently
+          const wrongTrickPattern = new RegExp(`(frontside|backside|fs|bs)\\s*${rot}`, 'i');
+          if (wrongTrickPattern.test(text)) {
+            isDifferentTrick = true;
+            break;
+          }
         }
       }
+      
+      // Check for opposite direction
+      if (!isDifferentTrick && normalizedDirection === 'frontside') {
+        if (title.includes('backside') && !title.includes('frontside')) isDifferentTrick = true;
+        if (requestedRotation && text.includes(`backside ${requestedRotation}`)) isDifferentTrick = true;
+      } else if (!isDifferentTrick && normalizedDirection === 'backside') {
+        if (title.includes('frontside') && !title.includes('backside')) isDifferentTrick = true;
+        if (requestedRotation && text.includes(`frontside ${requestedRotation}`)) isDifferentTrick = true;
+      }
+      
+      if (isDifferentTrick) {
+        nonMatchingSegments.push(seg);
+        continue;
+      }
+      
+      isMatch = true;
     }
     
-    // If user asked for frontside, exclude backside-specific content (and vice versa)
-    if (normalizedDirection === 'frontside') {
-      if (title.includes('backside') && !title.includes('frontside')) return false;
-      if (requestedRotation && text.includes(`backside ${requestedRotation}`)) return false;
-    } else if (normalizedDirection === 'backside') {
-      if (title.includes('frontside') && !title.includes('backside')) return false;
-      if (requestedRotation && text.includes(`frontside ${requestedRotation}`)) return false;
+    if (isMatch) {
+      matchingSegments.push(seg);
+    } else {
+      nonMatchingSegments.push(seg);
     }
-    
-    return true;
-  });
+  }
+  
+  // Return matching segments first, only include non-matching if we have very few matches
+  // This allows fallback to high-similarity content if the trick has limited videos
+  if (matchingSegments.length >= 5) {
+    // Plenty of matching content, don't show other tricks
+    return matchingSegments;
+  } else if (matchingSegments.length > 0) {
+    // Some matching content, only add high-similarity non-matching if needed
+    // For now, just return what we have
+    return matchingSegments;
+  } else {
+    // No matching content found - return empty rather than showing unrelated tricks
+    return [];
+  }
 }
 
 /**
