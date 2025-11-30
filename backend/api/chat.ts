@@ -519,8 +519,11 @@ export default async function handler(
       }
       
       // Log the response being sent
-      console.log('=== FINAL RESPONSE ===');
+      console.log('=== FINAL RESPONSE (Primary Tutorial) ===');
       console.log('Total trick videos available:', allTrickVideos.length);
+      if (allTrickVideos.length > 0) {
+        console.log('Videos:', allTrickVideos.map(v => v.videoId).join(', '));
+      }
       
       return res.status(200).json({
         messages,
@@ -573,6 +576,7 @@ export default async function handler(
       const allVideos: VideoReference[] = [];
       const seenIds = new Set<string>();
       
+      console.log(`Building allVideos from ${segments.length} segments`);
       for (const seg of segments) {
         if (seg.videoId && !seenIds.has(seg.videoId)) {
           allVideos.push({
@@ -586,6 +590,7 @@ export default async function handler(
           seenIds.add(seg.videoId);
         }
       }
+      console.log(`Built ${allVideos.length} unique videos from segments`);
       
       // Check if there are more tips available
       const hasMoreTips = availableTips.length > 3;
@@ -598,8 +603,11 @@ export default async function handler(
         });
       }
       
-      console.log('AI Response:', coachIntro.substring(0, 100) + '...');
+      console.log('=== FINAL RESPONSE (General Tips) ===');
       console.log(`Returning ${messages.length} messages, ${allVideos.length} videos (hasMoreTips: ${hasMoreTips})`);
+      if (allVideos.length > 0) {
+        console.log('Videos:', allVideos.map(v => v.videoId).join(', '));
+      }
       
       return res.status(200).json({
         messages,
