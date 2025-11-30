@@ -7,10 +7,17 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import type { ChatRequest, ChatResponse, VideoReference } from '../lib/types';
+import type { ChatRequest, VideoReference } from '../lib/types';
 import { generateEmbedding, generateCoachingResponse } from '../lib/gemini';
 import { searchVideoSegments } from '../lib/pinecone';
 import { getCachedResponse, cacheResponse } from '../lib/cache';
+import { initVideoDatabase, getVideosForTrick, type VideoInfo } from '../lib/video-search';
+
+// Video database - loaded from embedded data or fetched
+import videoData from '../data/video-database.json';
+
+// Initialize video database on module load
+initVideoDatabase(videoData as VideoInfo[]);
 
 export default async function handler(
   req: VercelRequest,
@@ -74,45 +81,46 @@ export default async function handler(
     console.log(`Found ${relevantSegments.length} relevant segments`);
     
     if (relevantSegments.length === 0) {
+      // Still try to find similar videos by title even without transcript matches
+      const fallbackVideos = getVideosForTrick(context.trick, 5).map(v => ({
+        videoId: v.videoId,
+        title: v.title,
+        url: v.url,
+        thumbnail: v.thumbnail,
+        similarity: v.similarity || 0,
+      }));
+      
       return res.status(200).json({
         response: "I don't have specific content about that yet, but I'd love to help! Can you describe your issue in more detail?",
+        tips: [],
         videos: [],
+        similarVideos: fallbackVideos,
         cached: false,
       });
     }
     
-    // Get top 5 unique videos with best matching segments
-    const videoMap = new Map<string, typeof relevantSegments[0]>();
-    for (const segment of relevantSegments) {
-      if (!videoMap.has(segment.videoId)) {
-        videoMap.set(segment.videoId, segment);
-      }
-    }
-    
-    const topVideos = Array.from(videoMap.values()).slice(0, 5); // Top 5 videos
-    console.log(`Grouped into ${topVideos.length} videos`);
-    
-    // Generate 5 actionable tips using AI - one per video
-    const tipsPrompt = `You are a snowboarding coach. Based on these video transcripts about "${context.trick}", generate exactly 5 specific, actionable tips.
+    // Generate 10 actionable tips using AI from all segments
+    const tipsPrompt = `You are a snowboarding coach. Based on these video transcripts about "${context.trick}", generate exactly 10 specific, actionable tips.
 
 Each tip should be:
 - 1-2 sentences max
 - Specific and actionable (not generic advice)
 - Based on the actual content from the transcripts
+- Unique (no duplicates)
 
 Transcripts:
-${topVideos.map((v, i) => `${i + 1}. [${v.videoTitle}]: "${v.text}"`).join('\n\n')}
+${relevantSegments.map((v, i) => `${i + 1}. [${v.videoTitle}]: "${v.text}"`).join('\n\n')}
 
 User's specific issue: ${context.issues || 'general help'}
 
-Return ONLY a JSON array of 5 tips, like this:
-["Tip 1 text here", "Tip 2 text here", "Tip 3 text here", "Tip 4 text here", "Tip 5 text here"]`;
+Return ONLY a JSON array of 10 tips, like this:
+["Tip 1", "Tip 2", "Tip 3", "Tip 4", "Tip 5", "Tip 6", "Tip 7", "Tip 8", "Tip 9", "Tip 10"]`;
 
     let tips: string[] = [];
     try {
       const tipsResult = await generateCoachingResponse(
         { trick: context.trick },
-        topVideos,
+        relevantSegments,
         tipsPrompt
       );
       
@@ -124,14 +132,22 @@ Return ONLY a JSON array of 5 tips, like this:
     } catch (e) {
       console.log('Failed to generate tips, using fallback');
       // Fallback: extract key sentences from transcripts
-      tips = topVideos.map(v => v.text.split('.')[0] + '.');
+      tips = relevantSegments.map(v => v.text.split('.')[0] + '.').slice(0, 10);
     }
     
-    // Ensure we have exactly 5 tips
-    while (tips.length < 5 && topVideos.length > tips.length) {
-      tips.push(topVideos[tips.length]?.text.split('.')[0] + '.' || 'Focus on your form and technique.');
+    // Ensure we have up to 10 tips
+    tips = tips.slice(0, 10);
+    console.log(`Generated ${tips.length} tips`);
+    
+    // Get unique videos for video references (top 5)
+    const videoMap = new Map<string, typeof relevantSegments[0]>();
+    for (const segment of relevantSegments) {
+      if (!videoMap.has(segment.videoId)) {
+        videoMap.set(segment.videoId, segment);
+      }
     }
-    tips = tips.slice(0, 5);
+    const topVideos = Array.from(videoMap.values()).slice(0, 5);
+    console.log(`Grouped into ${topVideos.length} unique videos`);
     
     // Generate overall coaching response
     const coachingResponse = await generateCoachingResponse(
@@ -140,19 +156,35 @@ Return ONLY a JSON array of 5 tips, like this:
       message
     );
     
-    // Format video references with tips - each video gets its corresponding tip
-    const videoReferences: VideoReference[] = topVideos.map((video, index) => ({
+    // Format video references from transcript search
+    const videoReferences: VideoReference[] = topVideos.map((video) => ({
       videoId: video.videoId,
       title: video.videoTitle,
       thumbnail: `https://img.youtube.com/vi/${video.videoId}/maxresdefault.jpg`,
       timestamp: video.timestamp,
-      quote: tips[index] || video.text.substring(0, 150) + '...',
+      quote: video.text.substring(0, 150) + '...',
       url: `https://youtube.com/watch?v=${video.videoId}&t=${Math.floor(video.timestamp)}s`,
     }));
     
-    const response: ChatResponse = {
+    // Get similar videos by title matching
+    const existingVideoIds = new Set(videoReferences.map(v => v.videoId));
+    const similarVideos = getVideosForTrick(context.trick, 10)
+      .filter(v => !existingVideoIds.has(v.videoId))  // Exclude already included videos
+      .slice(0, 5)
+      .map(v => ({
+        videoId: v.videoId,
+        title: v.title,
+        url: v.url,
+        thumbnail: v.thumbnail,
+        similarity: v.similarity || 0,
+      }));
+    console.log(`Found ${similarVideos.length} similar videos by title`);
+    
+    const response = {
       response: coachingResponse,
-      videos: videoReferences,
+      tips: tips,  // 10 AI-generated tips
+      videos: videoReferences,  // 5 videos from transcript search
+      similarVideos: similarVideos,  // 5 videos from title similarity
       cached: false,
     };
     

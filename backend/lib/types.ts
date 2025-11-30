@@ -28,9 +28,19 @@ export interface ChatRequest {
   sessionId: string;
 }
 
+export interface SimilarVideo {
+  videoId: string;
+  title: string;
+  url: string;
+  thumbnail: string;
+  similarity: number;
+}
+
 export interface ChatResponse {
   response: string;
-  videos: VideoReference[];
+  tips: string[];  // 10 AI-generated tips
+  videos: VideoReference[];  // 5 videos from transcript search
+  similarVideos: SimilarVideo[];  // 5 videos from title similarity search
   cached: boolean;
 }
 

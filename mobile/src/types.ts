@@ -22,11 +22,21 @@ export interface VideoReference {
   url: string;
 }
 
+export interface SimilarVideo {
+  videoId: string;
+  title: string;
+  url: string;
+  thumbnail: string;
+  similarity: number;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  videos?: VideoReference[];
+  tips?: string[];  // 10 AI-generated tips
+  videos?: VideoReference[];  // Videos from transcript search
+  similarVideos?: SimilarVideo[];  // Videos from title similarity
   timestamp: Date;
 }
 
