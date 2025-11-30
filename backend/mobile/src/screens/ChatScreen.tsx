@@ -194,9 +194,9 @@ export default function ChatScreen() {
       const combinedResponse = response.messages.map(m => m.content).join('\n');
       setChatHistory([...newHistory, { role: 'coach', content: combinedResponse }]);
       
-      // Track shown videos to avoid repeats for at least 5 prompts (keep last 15 = 5 prompts * 3 videos)
+      // Track shown videos to never repeat them
       const newVideoIds = response.videos?.map(v => v.videoId) || [];
-      setShownVideoIds(prev => [...prev.slice(-12), ...newVideoIds].slice(-15));
+      setShownVideoIds(prev => [...prev, ...newVideoIds]);
       
       // Track shown tips to never repeat them
       const newTipIds = response.tipIdsShown || [];
