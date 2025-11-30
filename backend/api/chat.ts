@@ -314,7 +314,30 @@ export default async function handler(
         }
       }
       
-      // Third pass: if still no videos from relevant segments, check for Taevis trick videos
+      // Third pass: if still no videos, search Taevis videos by trickName
+      if (uniqueVideos.length < 3) {
+        const trickName = segments[0]?.trickName || intent.trickId;
+        if (trickName) {
+          console.log(`Searching Taevis videos for trickName: ${trickName}`);
+          const taevisSegments = await searchByTrickName(queryEmbedding, trickName, 50);
+          for (const seg of taevisSegments) {
+            if (seg.videoId && !seenIds.has(seg.videoId)) {
+              uniqueVideos.push({
+                videoId: seg.videoId,
+                videoTitle: seg.videoTitle,
+                timestamp: seg.timestamp,
+                url: `https://youtube.com/watch?v=${seg.videoId}`,
+                thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
+                duration: seg.duration,
+              });
+              seenIds.add(seg.videoId);
+              if (uniqueVideos.length >= 3) break;
+            }
+          }
+        }
+      }
+      
+      // Fourth pass: if still no videos, check for Taevis trick videos mapping
       if (uniqueVideos.length === 0 && intent.intent === 'how-to-trick' && intent.trickId) {
         const taevisVideos = TAEVIS_TRICK_VIDEOS[intent.trickId];
         if (taevisVideos) {
