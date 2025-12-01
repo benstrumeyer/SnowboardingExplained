@@ -46,8 +46,23 @@ export function getTrickVideos(trickName: string): TrickVideo[] {
     return [];
   }
   
-  const normalized = trickName.toLowerCase();
-  return cache[normalized] || [];
+  // Normalize: remove spaces, convert to lowercase, try both with and without hyphens
+  const normalized = trickName.toLowerCase().replace(/\s+/g, '-');
+  
+  // Try exact match first
+  if (cache[normalized]) {
+    return cache[normalized];
+  }
+  
+  // Try without hyphens
+  const noHyphens = normalized.replace(/-/g, '');
+  for (const key in cache) {
+    if (key.replace(/-/g, '') === noHyphens) {
+      return cache[key];
+    }
+  }
+  
+  return [];
 }
 
 export function addTrickVideos(trickName: string, videos: TrickVideo[]): void {
