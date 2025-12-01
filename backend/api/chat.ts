@@ -15,6 +15,7 @@ import { generateEmbedding } from '../lib/gemini';
 import { searchVideoSegments, searchVideoSegmentsWithOptions, searchByTrickName, getTrickTutorialById, type EnhancedVideoSegment } from '../lib/pinecone';
 import { getEmbeddingCache, initializeEmbeddingCache } from '../lib/embedding-cache';
 import { getTrickVideos, initializeTrickVideosCache } from '../lib/trick-videos-cache';
+import { classifyQuestion, initializeDomainClassifier, getConceptDefinition, getProblemSolutions } from '../lib/domain-classifier';
 
 // Available trick tutorials (specific tricks only, not foundational techniques)
 const AVAILABLE_TRICKS = [
@@ -227,6 +228,7 @@ export default async function handler(
   if (!embeddingCacheInitialized) {
     await initializeEmbeddingCache();
     await initializeTrickVideosCache();
+    await initializeDomainClassifier();
     embeddingCacheInitialized = true;
   }
   
@@ -251,7 +253,16 @@ export default async function handler(
     
     const client = getGeminiClient();
     
-    // Step 1: Detect intent - is this a "how to do X trick" question?
+    // Step 1: Domain classification - extract snowboarding-specific concepts
+    const domainClassification = await classifyQuestion(message, client);
+    console.log('=== DOMAIN CLASSIFICATION ===');
+    console.log('Message:', message);
+    console.log('Trick:', domainClassification.trick);
+    console.log('Concepts:', domainClassification.concepts.join(', '));
+    console.log('Problem:', domainClassification.problem_category);
+    console.log('Intent:', domainClassification.intent);
+    
+    // Step 2: Detect intent - is this a "how to do X trick" question?
     const intent = await detectIntent(message, client);
     console.log('=== INTENT DETECTION ===');
     console.log('Message:', message);
