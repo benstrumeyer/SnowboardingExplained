@@ -1,0 +1,214 @@
+{
+  "version": "1.0",
+  "description": "Snowboarding domain ontology - bridges semantic gap between general LLM understanding and snowboarding-specific concepts",
+  
+  "concepts": {
+    "landing": {
+      "definition": "The moment when a rider's board makes contact with the snow after being airborne. Critical for trick success and injury prevention.",
+      "synonyms": ["touch down", "stick", "land", "catch", "plant"],
+      "related_problems": ["catching edge", "falling forward", "falling backward", "sliding out", "over-rotating"],
+      "techniques": ["blind landing", "switch landing", "fakie landing", "stomping"],
+      "common_mistakes": [
+        "landing with weight too far forward (nose)",
+        "landing with weight too far back (tail)",
+        "landing with board twisted (not aligned with body)",
+        "landing with legs too stiff (no absorption)",
+        "landing blind (can't see landing zone)"
+      ]
+    },
+    
+    "rotation": {
+      "definition": "Spinning motion around the vertical axis. Measured in degrees (180, 360, 540, etc.)",
+      "synonyms": ["spin", "turn", "twist", "rotate"],
+      "directions": ["frontside", "backside"],
+      "related_problems": ["under-rotating", "over-rotating", "losing rotation mid-air", "rotation not smooth"],
+      "techniques": ["counter-rotation", "pre-rotation", "spot landing", "constant spot"],
+      "common_mistakes": [
+        "using arms to rotate instead of core",
+        "rotating too early (before leaving ground)",
+        "rotating too late (mid-air correction)",
+        "not committing to full rotation",
+        "losing body position during rotation"
+      ]
+    },
+    
+    "pop": {
+      "definition": "Explosive extension of the legs to generate upward momentum. Foundation for all tricks.",
+      "synonyms": ["ollie", "spring", "jump", "launch"],
+      "related_problems": ["weak pop", "uneven pop", "late pop", "early pop"],
+      "techniques": ["timing pop with edge", "using ankle snap", "full leg extension"],
+      "common_mistakes": [
+        "bending knees too much before pop",
+        "not fully extending legs",
+        "popping with only one leg",
+        "popping too early (before edge engagement)"
+      ]
+    },
+    
+    "edge_control": {
+      "definition": "Using the board's edge (toe or heel) to control direction and speed. Fundamental for all riding.",
+      "synonyms": ["edging", "carving", "grip", "bite"],
+      "edge_types": ["toe edge", "heel edge", "flat base"],
+      "related_problems": ["catching edge", "losing edge", "edge too aggressive", "edge too light"],
+      "techniques": ["progressive edging", "edge pressure", "edge angle"],
+      "common_mistakes": [
+        "edge too sharp (catches and stops)",
+        "edge too light (slides out)",
+        "uneven edge pressure between feet",
+        "not matching edge to terrain"
+      ]
+    },
+    
+    "blind_landing": {
+      "definition": "Landing a trick where the rider cannot see the landing zone because they're facing away from it or rotated. Requires spatial awareness and commitment.",
+      "synonyms": ["landing blind", "blind spot landing", "landing switch"],
+      "difficulty": "advanced",
+      "related_tricks": ["backside spins", "cab tricks", "switch tricks"],
+      "techniques": ["spotting the landing", "feeling the landing", "committing to blind"],
+      "common_mistakes": [
+        "hesitating before landing",
+        "trying to look back (breaks body position)",
+        "not committing to the trick",
+        "landing too stiff (can't absorb impact)"
+      ]
+    },
+    
+    "switch_riding": {
+      "definition": "Riding with opposite stance (regular rider going backward, goofy rider going backward). Requires ambidextrous board control.",
+      "synonyms": ["riding switch", "fakie", "backward riding"],
+      "related_problems": ["switch feels awkward", "can't commit switch", "switch tricks unstable"],
+      "techniques": ["switch stance practice", "switch edge control", "switch pop"],
+      "common_mistakes": [
+        "not practicing switch enough",
+        "using different technique than regular",
+        "not committing to switch tricks",
+        "poor switch edge control"
+      ]
+    },
+    
+    "grab": {
+      "definition": "Holding the board with your hand during a trick. Adds style and helps with body control.",
+      "synonyms": ["grab", "grabbing", "grab the board"],
+      "grab_types": ["indy", "melon", "stalefish", "mute", "tail", "nose"],
+      "related_problems": ["late grab", "losing grab", "grab affecting rotation"],
+      "techniques": ["timing grab", "grab for balance", "grab for style"],
+      "common_mistakes": [
+        "grabbing too early (affects takeoff)",
+        "grabbing too late (affects landing)",
+        "grabbing too hard (affects body position)",
+        "wrong grab for trick"
+      ]
+    },
+    
+    "body_position": {
+      "definition": "How the rider's body is aligned and positioned during a trick. Critical for balance, rotation, and landing.",
+      "synonyms": ["stance", "posture", "alignment"],
+      "components": ["head position", "shoulder alignment", "hip position", "knee bend", "ankle position"],
+      "related_problems": ["twisted body", "head looking wrong direction", "hips not aligned", "knees too stiff"],
+      "techniques": ["spotting", "shoulder lead", "hip rotation", "core engagement"],
+      "common_mistakes": [
+        "looking down instead of forward",
+        "shoulders twisted wrong direction",
+        "hips not following shoulders",
+        "knees locked (can't absorb landing)"
+      ]
+    },
+    
+    "commitment": {
+      "definition": "Fully committing to a trick mentally and physically. Hesitation causes crashes.",
+      "synonyms": ["send it", "commit", "go for it", "full send"],
+      "related_problems": ["hesitation", "bailing early", "not fully rotating", "backing out mid-trick"],
+      "techniques": ["visualization", "progressive progression", "spotting landing"],
+      "common_mistakes": [
+        "second-guessing mid-trick",
+        "not fully rotating because of doubt",
+        "trying to bail out mid-air",
+        "not committing to blind landings"
+      ]
+    },
+    
+    "progression": {
+      "definition": "Building skills gradually from simple to complex tricks. Proper progression prevents injuries and builds confidence.",
+      "synonyms": ["progression", "progression path", "learning path"],
+      "progression_types": ["on-snow", "off-snow", "trampoline", "mental"],
+      "related_problems": ["progressing too fast", "skipping fundamentals", "not practicing enough"],
+      "techniques": ["break tricks into steps", "practice fundamentals", "build confidence gradually"],
+      "common_mistakes": [
+        "trying tricks too advanced",
+        "not practicing fundamentals enough",
+        "skipping progression steps",
+        "not practicing off-snow"
+      ]
+    }
+  },
+  
+  "relationships": {
+    "landing_depends_on": ["body_position", "edge_control", "commitment"],
+    "rotation_depends_on": ["pop", "body_position", "commitment"],
+    "blind_landing_depends_on": ["landing", "spatial_awareness", "commitment"],
+    "switch_riding_depends_on": ["edge_control", "body_position"],
+    "grab_affects": ["body_position", "rotation"],
+    "body_position_affects": ["landing", "rotation", "grab"],
+    "commitment_enables": ["blind_landing", "switch_tricks", "advanced_tricks"]
+  },
+  
+  "problem_categories": {
+    "falling_forward": {
+      "definition": "Rider falls over the nose of the board during landing",
+      "causes": ["weight too far forward", "not enough pop", "over-rotating"],
+      "solutions": ["shift weight back", "increase pop", "reduce rotation"]
+    },
+    "falling_backward": {
+      "definition": "Rider falls over the tail of the board during landing",
+      "causes": ["weight too far back", "under-rotating", "late pop"],
+      "solutions": ["shift weight forward", "complete rotation", "pop earlier"]
+    },
+    "catching_edge": {
+      "definition": "Board's edge catches snow unexpectedly, stopping the rider",
+      "causes": ["edge too sharp", "board twisted on landing", "uneven weight distribution"],
+      "solutions": ["soften edge pressure", "align board with body", "distribute weight evenly"]
+    },
+    "sliding_out": {
+      "definition": "Board slides out from under rider on landing",
+      "causes": ["edge too light", "not enough grip", "landing on flat base"],
+      "solutions": ["increase edge pressure", "engage edge", "land with edge engaged"]
+    },
+    "under_rotating": {
+      "definition": "Not completing full rotation before landing",
+      "causes": ["not enough pop", "hesitation", "weak rotation"],
+      "solutions": ["increase pop", "commit fully", "practice rotation"]
+    },
+    "over_rotating": {
+      "definition": "Rotating too much, landing past the intended direction",
+      "causes": ["too much rotation", "late landing", "over-committing"],
+      "solutions": ["reduce rotation", "land earlier", "spot landing better"]
+    }
+  },
+  
+  "trick_categories": {
+    "spins": {
+      "definition": "Tricks involving rotation around vertical axis",
+      "examples": ["180", "360", "540", "720"],
+      "key_concepts": ["rotation", "pop", "body_position", "landing"],
+      "progression": ["180", "360", "540", "720", "900", "1080"]
+    },
+    "rails": {
+      "definition": "Tricks on rails or boxes involving sliding",
+      "examples": ["boardslide", "lipslide", "50-50"],
+      "key_concepts": ["edge_control", "approach", "lock-in", "exit"],
+      "progression": ["50-50", "boardslide", "lipslide", "advanced combos"]
+    },
+    "grabs": {
+      "definition": "Tricks involving grabbing the board",
+      "examples": ["indy", "melon", "stalefish", "mute"],
+      "key_concepts": ["grab", "body_position", "timing"],
+      "progression": ["basic grabs", "grab combinations", "grab timing"]
+    },
+    "foundational": {
+      "definition": "Core techniques that enable all tricks",
+      "examples": ["pop", "edge_control", "body_position"],
+      "key_concepts": ["fundamentals", "progression"],
+      "progression": ["stance", "edge control", "pop", "carving"]
+    }
+  }
+}
