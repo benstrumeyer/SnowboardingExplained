@@ -158,7 +158,7 @@ export default function ChatScreen() {
   const [loading, setLoading] = useState(false);
   const [sessionId] = useState(`session-${Date.now()}`);
   const [chatHistory, setChatHistory] = useState<ChatHistoryItem[]>([]);
-  const [shownVideoIds, setShownVideoIds] = useState<string[]>([]);
+  const [shownVideoUrls, setShownVideoUrls] = useState<string[]>([]);
   const [shownTipIds, setShownTipIds] = useState<string[]>([]);
   const [currentTrick, setCurrentTrick] = useState<string | undefined>();
   const scrollViewRef = useRef<ScrollView>(null);
@@ -167,29 +167,29 @@ export default function ChatScreen() {
   useEffect(() => {
     const loadPersistedData = async () => {
       try {
-        const stored = await AsyncStorage.getItem('shownVideoIds');
+        const stored = await AsyncStorage.getItem('shownVideoUrls');
         if (stored) {
-          setShownVideoIds(JSON.parse(stored));
+          setShownVideoUrls(JSON.parse(stored));
         }
       } catch (error) {
-        console.error('Failed to load persisted video IDs:', error);
+        console.error('Failed to load persisted video URLs:', error);
       }
     };
     loadPersistedData();
   }, []);
 
-  // Persist video IDs whenever they change
+  // Persist video URLs whenever they change
   useEffect(() => {
     const persistData = async () => {
       try {
-        console.log('Persisting shown video IDs:', JSON.stringify(shownVideoIds));
-        await AsyncStorage.setItem('shownVideoIds', JSON.stringify(shownVideoIds));
+        console.log('Persisting shown video URLs:', JSON.stringify(shownVideoUrls));
+        await AsyncStorage.setItem('shownVideoUrls', JSON.stringify(shownVideoUrls));
       } catch (error) {
-        console.error('Failed to persist video IDs:', error);
+        console.error('Failed to persist video URLs:', error);
       }
     };
     persistData();
-  }, [shownVideoIds]);
+  }, [shownVideoUrls]);
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -218,7 +218,7 @@ export default function ChatScreen() {
     setLoading(true);
     
     try {
-      const response = await sendMessage(userMessage, sessionId, chatHistory, shownVideoIds, shownTipIds, currentTrick);
+      const response = await sendMessage(userMessage, sessionId, chatHistory, shownVideoUrls, shownTipIds, currentTrick);
       
       // Update history with combined coach response for context
       const combinedResponse = response.messages.map(m => m.content).join('\n');
@@ -229,15 +229,14 @@ export default function ChatScreen() {
       console.log('=== ChatScreen Video Processing ===');
       console.log('Videos received from API:', videosToShow.length);
       if (videosToShow.length > 0) {
-        console.log('Video IDs:', videosToShow.map(v => v.videoId).join(', '));
         console.log('Video URLs:', videosToShow.map(v => v.url).join(', '));
       }
       
-      // Track shown video IDs to avoid repeats
-      const newVideoIds = videosToShow.map(v => v.videoId);
-      setShownVideoIds(prev => {
-        const updated = [...prev, ...newVideoIds];
-        console.log('Updated shown video IDs:', JSON.stringify(updated));
+      // Track shown video URLs to avoid repeats
+      const newVideoUrls = videosToShow.map(v => v.url);
+      setShownVideoUrls(prev => {
+        const updated = [...prev, ...newVideoUrls];
+        console.log('Updated shown video URLs:', JSON.stringify(updated));
         return updated;
       });
       
