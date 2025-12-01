@@ -42,7 +42,7 @@ export async function sendMessage(
   message: string,
   sessionId: string,
   history: ChatHistoryItem[] = [],
-  shownVideoIds: string[] = [],
+  shownVideoUrls: string[] = [],
   shownTipIds: string[] = [],
   currentTrick?: string
 ): Promise<ChatResponse> {
@@ -52,8 +52,8 @@ export async function sendMessage(
     console.log('URL:', url);
     console.log('Message:', message);
     console.log('History length:', history.length);
-    console.log('Shown videos count:', shownVideoIds.length);
-    console.log('Shown videos IDs:', JSON.stringify(shownVideoIds));
+    console.log('Shown videos count:', shownVideoUrls.length);
+    console.log('Shown video URLs:', JSON.stringify(shownVideoUrls));
     console.log('Shown tips:', shownTipIds.length);
     console.log('Current trick:', currentTrick || 'none');
     
@@ -61,7 +61,7 @@ export async function sendMessage(
       message,
       sessionId,
       history,
-      shownVideoIds,
+      shownVideoUrls,
       shownTipIds,
       currentTrick,
     }, {
