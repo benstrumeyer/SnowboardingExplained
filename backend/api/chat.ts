@@ -153,7 +153,7 @@ interface ChatRequest {
   message: string;
   sessionId: string;
   history?: { role: 'user' | 'coach'; content: string }[];
-  shownVideoIds?: string[];  // Track videos already shown to avoid repeats
+  shownVideoUrls?: string[];  // Track video URLs already shown to avoid repeats
   shownTipIds?: string[];    // Track tips already shown to never repeat
   currentTrick?: string;     // Track the current trick being discussed
 }
@@ -231,7 +231,7 @@ export default async function handler(
   }
   
   try {
-    const { message, sessionId, history = [], shownVideoIds = [], shownTipIds = [], currentTrick: passedTrick }: ChatRequest = req.body;
+    const { message, sessionId, history = [], shownVideoUrls = [], shownTipIds = [], currentTrick: passedTrick }: ChatRequest = req.body;
     
     // If no message, return greeting
     if (!message || !message.trim()) {
@@ -245,8 +245,8 @@ export default async function handler(
     console.log('Session ID:', sessionId);
     console.log('Message:', message);
     console.log('History length:', history.length);
-    console.log('Client shown videos count:', shownVideoIds?.length || 0);
-    console.log('Client shown videos:', JSON.stringify(shownVideoIds));
+    console.log('Client shown videos count:', shownVideoUrls?.length || 0);
+    console.log('Shown video URLs:', JSON.stringify(shownVideoUrls));
     console.log('Passed trick:', passedTrick || 'none');
     
     const client = getGeminiClient();
@@ -430,25 +430,35 @@ export default async function handler(
         tipIdsShown.push(tip.id);
       }
       
-      // Get all unique videos from segments
+      // Get 1-3 unique videos from segments, excluding already shown ones
       const allVideos: VideoReference[] = [];
+      const seenUrls = new Set(shownVideoUrls);
       const seenIds = new Set<string>();
       
-      console.log(`Building allVideos from ${segments.length} segments`);
+      console.log(`Building videos from ${segments.length} segments`);
+      console.log(`Filtering out ${seenUrls.size} already shown videos`);
       for (const seg of segments) {
-        if (seg.videoId && !seenIds.has(seg.videoId)) {
+        if (seg.videoId && !seenIds.has(seg.videoId) && allVideos.length < 3) {
+          const videoUrl = `https://youtube.com/watch?v=${seg.videoId}`;
+          
+          // Skip if already shown
+          if (seenUrls.has(videoUrl)) {
+            console.log(`  SKIP: ${videoUrl} (already shown)`);
+            continue;
+          }
+          
           allVideos.push({
             videoId: seg.videoId,
             videoTitle: seg.videoTitle,
             timestamp: seg.timestamp,
-            url: `https://youtube.com/watch?v=${seg.videoId}`,
+            url: videoUrl,
             thumbnail: `https://img.youtube.com/vi/${seg.videoId}/hqdefault.jpg`,
             duration: seg.duration,
           });
           seenIds.add(seg.videoId);
         }
       }
-      console.log(`Built ${allVideos.length} unique videos from segments`);
+      console.log(`Built ${allVideos.length} videos from segments (max 3, after filtering shown)`);
       
       // Check if there are more tips available
       const hasMoreTips = availableTips.length > 3;
