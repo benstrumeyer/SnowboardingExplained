@@ -213,6 +213,7 @@
   - Ensure all tests pass, ask the user if questions arise.
 
 
+
 - [ ] 14. Performance testing and optimization
   - Load test with 10,000+ tricks
   - Measure query response times

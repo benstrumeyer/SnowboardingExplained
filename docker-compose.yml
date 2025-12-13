@@ -1,0 +1,32 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7
+    container_name: snowboarding-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password
+    volumes:
+      - mongodb_data:/data/db
+
+  mcp-server:
+    build:
+      context: ./backend/mcp-server
+      dockerfile: Dockerfile
+    container_name: snowboarding-mcp-server
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: development
+      MONGODB_URI: mongodb://root:password@mongodb:27017/snowboarding-coach?authSource=admin
+      MONGODB_DB: snowboarding-coach
+    depends_on:
+      - mongodb
+    volumes:
+      - ./backend/mcp-server/src:/app/src
+
+volumes:
+  mongodb_data:

@@ -4,7 +4,7 @@
  * Swipe from left edge to open drawer
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import {
   View,
@@ -19,10 +19,12 @@ import {
 import { Provider } from 'react-redux';
 import tw from 'twrnc';
 import { store } from './src/store/store';
+import { VideoCoachScreen } from './src/screens/VideoCoachScreen';
 import ChatScreen from './src/screens/ChatScreen';
 import VideoLibraryScreen from './src/screens/VideoLibraryScreen';
+import { getApiUrl, checkHealth } from './src/services/api';
 
-type Screen = 'chat' | 'videos';
+type Screen = 'video-coach' | 'chat' | 'videos';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.75;
@@ -30,9 +32,25 @@ const EDGE_WIDTH = 30; // Width of left edge that triggers swipe
 
 export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [currentScreen, setCurrentScreen] = useState<Screen>('chat');
+  const [currentScreen, setCurrentScreen] = useState<Screen>('video-coach');
+  const [healthStatus, setHealthStatus] = useState<{ ok: boolean; message: string } | null>(null);
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Log startup info and check health
+  useEffect(() => {
+    console.log('🚀 App starting...');
+    console.log('📍 API URL:', getApiUrl());
+    
+    // Check backend health
+    checkHealth().then((status) => {
+      console.log('🏥 Health check result:', status);
+      setHealthStatus(status);
+    }).catch((err) => {
+      console.error('❌ Health check failed:', err);
+      setHealthStatus({ ok: false, message: 'Health check failed' });
+    });
+  }, []);
 
   const openDrawer = () => {
     setDrawerOpen(true);
@@ -132,6 +150,15 @@ export default function App() {
       <View style={tw`flex-1 bg-[#0D0D0D]`} {...openPanResponder.panHandlers}>
       <StatusBar style="light" />
 
+      {/* Health Status Banner */}
+      {healthStatus && (
+        <View style={tw`${healthStatus.ok ? 'bg-green-900' : 'bg-red-900'} px-4 py-2`}>
+          <Text style={tw`text-white text-xs`}>
+            {healthStatus.ok ? '✅' : '❌'} {healthStatus.message}
+          </Text>
+        </View>
+      )}
+
       {/* Main Content */}
       <View style={tw`flex-1`}>
         {/* Hamburger Menu Button */}
@@ -143,6 +170,7 @@ export default function App() {
         </TouchableOpacity>
 
         {/* Screen Content */}
+        {currentScreen === 'video-coach' && <VideoCoachScreen />}
         {currentScreen === 'chat' && <ChatScreen />}
         {currentScreen === 'videos' && <VideoLibraryScreen />}
       </View>
@@ -179,6 +207,23 @@ export default function App() {
         </View>
 
         <ScrollView style={tw`flex-1`}>
+          {/* Video Coach - Main Feature */}
+          <TouchableOpacity
+            style={tw`flex-row items-center py-3 px-4 rounded-lg mb-2 ${
+              currentScreen === 'video-coach' ? 'bg-[#0066CC]/20' : ''
+            }`}
+            onPress={() => navigateTo('video-coach')}
+          >
+            <Text style={tw`text-xl mr-3`}>🎥</Text>
+            <Text
+              style={tw`${
+                currentScreen === 'video-coach' ? 'text-[#4DA6FF]' : 'text-white'
+              } text-base font-bold`}
+            >
+              Video Coach
+            </Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={tw`flex-row items-center py-3 px-4 rounded-lg mb-2 ${
               currentScreen === 'chat' ? 'bg-[#0066CC]/20' : ''

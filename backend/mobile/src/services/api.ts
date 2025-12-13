@@ -4,7 +4,51 @@
  */
 
 import axios from 'axios';
-import { config } from '../config';
+import { config, DEBUG } from '../config';
+
+// Create axios instance with logging
+const apiClient = axios.create({
+  baseURL: config.apiUrl,
+  timeout: config.timeout,
+});
+
+// Add request interceptor
+apiClient.interceptors.request.use(
+  (request) => {
+    if (DEBUG) {
+      console.log(`[API] ${request.method?.toUpperCase()} ${request.url}`);
+      console.log('[API] Headers:', request.headers);
+      if (request.data) {
+        console.log('[API] Body:', JSON.stringify(request.data, null, 2));
+      }
+    }
+    return request;
+  },
+  (error) => {
+    console.error('[API] Request error:', error);
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor
+apiClient.interceptors.response.use(
+  (response) => {
+    if (DEBUG) {
+      console.log(`[API] Response ${response.status}:`, response.data);
+    }
+    return response;
+  },
+  (error) => {
+    console.error('[API] Response error:', error.message);
+    if (error.response) {
+      console.error('[API] Status:', error.response.status);
+      console.error('[API] Data:', error.response.data);
+    } else if (error.request) {
+      console.error('[API] No response received:', error.request);
+    }
+    return Promise.reject(error);
+  }
+);
 
 export interface VideoReference {
   videoId: string;
@@ -47,53 +91,60 @@ export async function sendMessage(
   currentTrick?: string
 ): Promise<ChatResponse> {
   try {
-    const url = `${config.apiUrl}/api/chat`;
-    console.log('=== API Request ===');
-    console.log('URL:', url);
-    console.log('Message:', message);
-    console.log('History length:', history.length);
-    console.log('Shown videos count:', shownVideoUrls.length);
-    console.log('Shown video URLs:', JSON.stringify(shownVideoUrls));
-    console.log('Shown tips:', shownTipIds.length);
-    console.log('Current trick:', currentTrick || 'none');
-    
-    const response = await axios.post(url, {
+    const response = await apiClient.post('/api/chat', {
       message,
       sessionId,
       history,
       shownVideoUrls,
       shownTipIds,
       currentTrick,
-    }, {
-      timeout: 60000, // 60s for AI response
-      headers: {
-        'Content-Type': 'application/json',
-      },
     });
-    
-    console.log('=== API Response ===');
-    console.log('Messages:', response.data.messages?.length);
-    console.log('Has more tips:', response.data.hasMoreTips);
-    console.log('Videos count:', response.data.videos ? response.data.videos.length : 'undefined');
-    if (response.data.videos && response.data.videos.length > 0) {
-      console.log('Video IDs received:', response.data.videos.map((v: any) => v.videoId).join(', '));
-    }
     
     return response.data;
   } catch (error: any) {
-    console.error('=== API Error ===');
-    console.error('Error:', error.message);
-    console.error('Response:', error.response?.data);
-    
     throw new Error(error.response?.data?.message || error.message || 'Failed to get response');
   }
 }
 
-export async function checkHealth(): Promise<boolean> {
+export async function checkHealth(): Promise<{ ok: boolean; message: string; uptime?: number }> {
   try {
-    const response = await axios.get(`${config.apiUrl}/api/health`);
-    return response.data.status === 'ok';
-  } catch (error) {
-    return false;
+    console.log('[Health Check] 🔍 Connecting to:', config.apiUrl);
+    console.log('[Health Check] ⏱️ Timeout: 5000ms');
+    
+    const startTime = Date.now();
+    const response = await apiClient.get('/api/health', { timeout: 5000 });
+    const duration = Date.now() - startTime;
+    
+    console.log('[Health Check] ✅ Backend is healthy (took', duration, 'ms)');
+    console.log('[Health Check] Response:', response.data);
+    
+    return {
+      ok: true,
+      message: 'Backend is running',
+      uptime: response.data.data?.uptime
+    };
+  } catch (error: any) {
+    console.error('[Health Check] ❌ Backend is unreachable');
+    console.error('[Health Check] Error type:', error.code || error.name);
+    console.error('[Health Check] Error message:', error.message);
+    
+    if (error.response) {
+      console.error('[Health Check] Response status:', error.response.status);
+      console.error('[Health Check] Response data:', error.response.data);
+    } else if (error.request) {
+      console.error('[Health Check] Request made but no response received');
+      console.error('[Health Check] Request:', error.request);
+    } else {
+      console.error('[Health Check] Error during request setup:', error);
+    }
+    
+    return {
+      ok: false,
+      message: error.message || 'Backend is unreachable'
+    };
   }
+}
+
+export function getApiUrl(): string {
+  return config.apiUrl;
 }

@@ -1,6 +1,9 @@
 # Implementation Plan: LLM-Powered Video Coaching System
 
-- [ ] 1. Set up Node.js backend infrastructure and load phase-based knowledge base
+- [x] 1. Set up Node.js backend infrastructure and load phase-based knowledge base
+
+
+
   - Create Express.js server with TypeScript configuration
   - Set up environment variables for LLM API keys, storage paths, cache settings
   - Configure multer for video file uploads with size limits and format validation
@@ -13,6 +16,7 @@
   - Test environment variable loading
   - Test error handling middleware
   - _Requirements: 1.1_
+
 
 - [ ] 2. Implement video frame extraction service
   - Create FFmpeg wrapper to extract frames at 4 FPS from uploaded videos
@@ -32,6 +36,7 @@
   - Test cache hit/miss behavior
   - _Requirements: 1.2, 1.3, 1.4_
 
+
 - [ ] 3. Implement pose estimation service
   - Integrate MediaPipe or MoveNet for skeletal keypoint detection
   - Create service to run pose estimation on extracted frames
@@ -39,12 +44,14 @@
   - Handle frames where pose detection fails gracefully
   - _Requirements: 2.1, 2.2, 2.3_
 
+
 - [ ] 3.5 Implement phase detection service
-  - Create service to identify trick phases from frame sequences
+  - Create service to identify trick phases from frame sequences (setup carve, windup/snap, grab, landing)
   - Implement phase boundary detection using pose keypoints and motion analysis
   - Create phase-to-frame mapping for the video
   - Integrate with LLM for phase transition identification when boundaries are unclear
-  - _Requirements: 1.5, 1.4_
+  - Implement continuous spotting evaluation (head gaze tracking throughout trick)
+  - _Requirements: 1.5, 1.4, 1.5.5_
 
 - [ ]* 3.6 Write property test for phase detection accuracy
   - **Property 5: Phase Detection Accuracy**
@@ -64,10 +71,12 @@
   - Test pose detection on synthetic frames with known poses
   - Test keypoint confidence scores
   - Test graceful degradation when pose detection fails
+
   - Test cache behavior for pose data
   - _Requirements: 2.1, 2.2, 2.3_
 
-- [ ] 4. Implement comprehensive snowboarding-specific feature extraction
+- [x] 4. Implement comprehensive snowboarding-specific feature extraction
+
   - Create head gaze detection (direction and angle tracking, where is the head looking at all points in the trick? Before lip of jump, should be looking at the jump takeoff. After the takeoff of the jump, should be spotting for the trick or landing)
   - Create stance detection (regular vs goofy)
   - Create upper/lower body rotation detection (leading, following, aligned. Calculate with degrees of separation)
@@ -83,14 +92,14 @@
   - Create momentum transfer detection (true transfer vs momentum loss)
   - Create arm momentum detection for rotation consistency
   - Create arm trajectory tracking (before and after takeoff)
-  - Create spot position detection for rotation timing
-  - Create takeoff openness. (It is bad if they are going into the jump with the chest faced towards the jump for a prolonged period of time. Is person taking off with a clean snap with the arms carrying momentum before and after the lip of the takeoff? O)
+  - Create spin axis detection (vertical, forward lean, backward lean, sideways lean with alignment score)
+  - Create takeoff openness detection (assess if rider is winding up for prolonged period right before takeoff, we need a clean snap with arm momentum)
   - Create spin control detection (counter-rotation on landing)
   - Create approach speed estimation
   - Create setup carve arc analysis
   - Create stability metric calculation across frame sequences
-  - Create snap timing calculation. Does the snap carry momentum through the lip?
-  - Create compromised position detection. For spins, is the person wound up for too long? Should only be 4 frames or so. 
+  - Create snap timing calculation (does snap carry momentum through lip?)
+  - Create compromised position detection (for spins, is person wound up for too long? Should only be ~4 frames)
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.9, 12.10_
 
 - [ ]* 4.1 Write property test for feature extraction validity
@@ -116,7 +125,9 @@
   - Test stability calculation across frame sequences
   - _Requirements: 3.1, 3.2, 3.3, 3.4, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.7, 12.8, 12.9, 12.10_
 
-- [ ] 5. Implement phase-based knowledge base loading and RAG
+- [x] 5. Implement phase-based knowledge base loading and RAG
+
+
   - Load phase-based knowledge base (tricks, phases, requirements, problems, fixes)
   - Create embeddings for knowledge base entries using OpenAI embeddings API
   - Set up vector storage (in-memory or Pinecone) for semantic search
@@ -130,6 +141,7 @@
   - Test RAG retrieval accuracy
   - Test knowledge base update propagation
   - _Requirements: 5.1, 5.2, 5.3_
+
 
 - [ ] 6. Implement phase-based LLM orchestration and analysis
   - Create system prompt for LLM coaching persona with phase-based analysis framework
@@ -150,6 +162,7 @@
   - Test token usage calculation
   - _Requirements: 4.1, 4.2, 4.3, 4.4_
 
+
 - [ ] 7. Implement phase-specific knowledge base context injection
   - Create function to retrieve phase-specific requirements for each phase
   - Create function to retrieve common problems and fixes for each phase
@@ -165,6 +178,7 @@
   - Test context retrieval for various video types
   - Test context formatting for LLM consumption
   - Test knowledge base reference tracking
+
   - _Requirements: 5.1, 5.2, 5.3_
 
 - [ ] 8. Implement phase-based coaching feedback generation
@@ -182,21 +196,28 @@
   - Test response parsing from LLM
   - Test frame reference validation
   - Test timestamp accuracy
+
   - Test feedback formatting
   - _Requirements: 6.1, 6.2, 6.3, 6.4_
 
 - [ ] 9. Implement multi-frame motion reasoning
-  - Create frame sequence grouping by trick phase (setup, windup, throw, lip timing, takeoff)
+  - Create frame sequence grouping by trick phase (setup carve, windup/snap, grab, landing)
   - Implement LLM prompting for motion analysis across frame sequences
   - Create motion inference validation against pose keypoint trajectories
+  - Implement continuous spotting evaluation across all phases
   - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
 - [ ]* 9.1 Write property test for phase-aware multi-frame reasoning consistency
   - **Property 8: Phase-Aware Multi-Frame Reasoning Consistency**
   - **Validates: Requirements 7.1, 7.2, 7.3, 7.4**
 
+- [ ]* 9.1.1 Write property test for continuous spotting evaluation
+  - **Property 8.1: Continuous Spotting Evaluation**
+  - **Validates: Requirements 1.5.5, 6.8**
+
 - [ ]* 9.2 Write unit tests for motion reasoning
   - Test frame sequence grouping
+
   - Test motion inference accuracy
   - Test consistency with pose trajectories
   - _Requirements: 7.1, 7.2, 7.3, 7.4_
@@ -212,7 +233,8 @@
   - **Property 9: Cost Optimization Effectiveness**
   - **Validates: Requirements 8.1, 8.2, 8.3**
 
-- [ ]* 10.2 Write unit tests for cost optimization
+- [x]* 10.2 Write unit tests for cost optimization
+
   - Test frame sampling strategies
   - Test token usage calculation
   - Test cost estimation accuracy
@@ -236,7 +258,8 @@
   - Test timeout handling
   - _Requirements: 9.1, 9.2, 9.3, 9.4_
 
-- [ ] 12. Implement caching layer
+- [x] 12. Implement caching layer
+
   - Create Redis or in-memory cache for frames, pose data, and analysis results
   - Implement 24-hour TTL for frame and pose caches
   - Implement 7-day TTL for analysis results
@@ -254,7 +277,9 @@
   - Test cache key generation
   - _Requirements: 10.1, 10.2, 10.3, 10.4_
 
-- [ ] 13. Implement chat interface and session management
+- [x] 13. Implement chat interface and session management
+
+
   - Create chat session storage (in-memory or database)
   - Implement message history tracking
   - Create follow-up question handler that references video analysis
@@ -267,6 +292,8 @@
   - Test follow-up question context preservation
   - Test frame-specific queries
   - _Requirements: 11.1, 11.2, 11.3, 11.4_
+
+
 
 - [ ] 14. Implement chat API endpoints
   - Create POST /api/chat/upload endpoint for video upload
@@ -284,6 +311,7 @@
   - Test follow-up question flow
   - Test session persistence
   - Test frame retrieval
+
   - _Requirements: 11.1, 11.2, 11.3, 11.4_
 
 - [ ] 15. Implement performance monitoring and SLA tracking
@@ -300,12 +328,15 @@
   - Test frame extraction timing for various video lengths
   - Test pose estimation timing for different frame counts
   - Test biomechanical metric extraction timing
+
+
   - Test end-to-end latency
   - _Requirements: 13.1, 13.2, 13.3, 13.4_
 
 - [ ] 16. Integrate with React Native mobile app
   - Update mobile app to support video upload from device camera or gallery
   - Implement video upload progress tracking
+
   - Create chat UI for coaching feedback display
   - Implement frame viewer for detailed analysis
   - _Requirements: 11.1, 11.2, 11.3, 11.4_
@@ -329,15 +360,19 @@
   - Test detection badge rendering with metrics
   - _Requirements: 11.1, 11.2, 11.3, 11.4_
 
-- [ ]* 16.3 Write integration tests for mobile app
+- [x]* 16.3 Write integration tests for mobile app
+
   - Test video upload from mobile
   - Test chat message display
+
   - Test frame viewer functionality
   - Test visualization overlay rendering during playback
   - _Requirements: 11.1, 11.2, 11.3, 11.4_
 
 - [ ] 17. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
+
+
 
 - [ ] 18. Performance testing and optimization
   - Load test with 100+ concurrent video uploads

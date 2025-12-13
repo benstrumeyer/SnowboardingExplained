@@ -1,0 +1,2 @@
+aws_region   = "us-east-1"
+mongodb_uri  = "mongodb+srv://user:password@cluster.mongodb.net/snowboarding-coach?retryWrites=true&w=majority"

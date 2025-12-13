@@ -2,11 +2,16 @@
 
 ## Introduction
 
-The LLM-Powered Phase-Based Video Coaching System analyzes user-uploaded snowboarding videos using multimodal LLMs to provide real-time, personalized coaching feedback. The system combines phase-based trick structure (setup, windup, throw, lip timing, takeoff) with LLM video analysis. Rather than relying on pre-trained classifiers, the system uses an LLM to extract structured text descriptions from video frames, reason about body position and motion within each phase, and compare observations against a phase-specific knowledge base of snowboarding techniques. The system provides phase-by-phase analysis with frame-level timestamps, identifies technical issues at each phase, and recommends specific corrections grounded in the user's actual performance.
+The LLM-Powered Phase-Based Video Coaching System analyzes user-uploaded snowboarding videos using multimodal LLMs to provide real-time, personalized coaching feedback. The system combines phase-based trick structure (setup carve, windup/snap, grab, landing) with LLM video analysis. Rather than relying on pre-trained classifiers, the system uses an LLM to extract structured text descriptions from video frames, reason about body position and motion within each phase, and compare observations against a phase-specific knowledge base of snowboarding techniques. The system provides phase-by-phase analysis with frame-level timestamps, identifies technical issues at each phase, and recommends specific corrections grounded in the user's actual performance. Spotting (tracking the landing) occurs asynchronously throughout the trick and is evaluated continuously.
 
 ## Glossary
 
-- **Trick Phase**: A distinct stage in trick execution (setup carve, windup, throw, lip timing, momentum/body position off takeoff)
+- **Trick Phase**: A distinct stage in trick execution (setup carve, windup/snap, grab, landing)
+- **Setup Carve**: The approach phase where the rider initiates edge control and prepares for takeoff. For backside tricks: transitions from heelside to toeside and takes off toeside. For frontside tricks: starts toeside and takes off heelside. Evaluated on form, path shape, and weight balance (slightly shifted toward back foot)
+- **Windup/Snap**: The phase where the rider loads the board and executes the rotation snap/throw
+- **Grab** (Optional): The phase where the rider grabs the board during the trick for style and control
+- **Landing**: The phase where the rider counter-rotates to control the spin or lands blind depending on the trick
+- **Spotting**: The continuous process of tracking the landing zone throughout the trick (asynchronous, occurs during windup/snap, grab, and landing phases). Evaluated through head gaze and visual focus.
 - **Phase Requirement**: A specific technical requirement that must be executed correctly during a phase (e.g., upper body lead, toeside edge, stacked position)
 - **Video Frame**: A single image extracted from the uploaded video at regular intervals
 - **Pose Estimation**: Detection of skeletal keypoints (joints) in a frame using lightweight models like MediaPipe or MoveNet
@@ -37,10 +42,11 @@ The LLM-Powered Phase-Based Video Coaching System analyzes user-uploaded snowboa
 
 #### Acceptance Criteria
 
-1. WHEN a user uploads a video THEN the system SHALL ask the user to specify the trick being attempted
-2. WHEN the trick is specified THEN the system SHALL load phase requirements for that trick (setup, windup, throw, lip timing, takeoff)
+1. WHEN a user uploads a video THEN the system SHALL ask the user to specify the trick being attempted and its rotation direction (frontside or backside)
+2. WHEN the trick is specified THEN the system SHALL load phase requirements for that trick (setup carve, windup/snap, grab, landing)
 3. WHEN analyzing frames THEN the system SHALL estimate which phase the rider is in at each frame
 4. WHEN phase boundaries are unclear THEN the system SHALL ask the LLM to identify phase transitions based on body position and motion
+5. WHEN analyzing the video THEN the system SHALL continuously evaluate spotting (head gaze and visual focus on landing zone) throughout the trick
 
 ### Requirement 2: Pose and Motion Extraction
 
@@ -93,11 +99,14 @@ The LLM-Powered Phase-Based Video Coaching System analyzes user-uploaded snowboa
 
 #### Acceptance Criteria
 
-1. WHEN video analysis completes THEN the system SHALL return coaching feedback organized by phase (setup, windup, throw, lip timing, takeoff)
+1. WHEN video analysis completes THEN the system SHALL return coaching feedback organized by phase (setup carve, windup/snap, grab, landing)
 2. WHEN returning feedback for a phase THEN the system SHALL identify which phase requirements were met and which were not
 3. WHEN a phase requirement is not met THEN the system SHALL identify the root cause and provide a specific correction
 4. WHEN returning feedback THEN the system SHALL include frame timestamps showing where each issue occurs within the phase
 5. WHEN returning feedback THEN the system SHALL provide specific corrections with reasoning grounded in the rider's actual performance
+6. WHEN analyzing setup carve THEN the system SHALL evaluate form, path shape, and weight balance (should be slightly shifted toward back foot)
+7. WHEN analyzing setup carve THEN the system SHALL verify the correct edge transitions for the trick direction (backside: heelside→toeside→takeoff toeside; frontside: toeside→takeoff heelside)
+8. WHEN analyzing the video THEN the system SHALL provide feedback on spotting quality (head gaze tracking, visual focus on landing zone) throughout the trick
 
 ### Requirement 7: Multi-Frame Reasoning
 
@@ -105,10 +114,10 @@ The LLM-Powered Phase-Based Video Coaching System analyzes user-uploaded snowboa
 
 #### Acceptance Criteria
 
-1. WHEN analyzing a video THEN the system SHALL provide the LLM with frame sequences (e.g., frames 10-50 for the takeoff phase)
+1. WHEN analyzing a video THEN the system SHALL provide the LLM with frame sequences for each phase (setup carve, windup/snap, grab, landing)
 2. WHEN the LLM reasons about motion THEN it SHALL compare body position across frames to infer rotation speed, edge control consistency, and timing
 3. WHEN the LLM identifies a timing issue THEN it SHALL explain which frames show the correct timing and which show the error
-4. WHEN the LLM analyzes a trick THEN it SHALL break down the analysis by phase (setup, windup, throw, lip timing, takeoff)
+4. WHEN the LLM analyzes a trick THEN it SHALL break down the analysis by phase (setup carve, windup/snap, grab, landing) and evaluate spotting continuously
 
 ### Requirement 8: Cost Optimization
 
