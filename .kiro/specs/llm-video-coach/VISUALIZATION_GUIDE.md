@@ -108,7 +108,35 @@ interface DetectionIndicator {
 - Value: 11px colored text (bold)
 - Spacing: 35px between indicators
 
-### 5. Phase Label (Top-Left)
+### 5. Head Gaze Arrow
+- **Position:** Starts from head keypoint, extends in gaze direction
+- **Style:** Arrow pointing in direction of head gaze
+- **Size:** 40px length, 3px stroke width
+- **Color:** Cyan (#00CED1) with 0.8 opacity
+- **Arrow Head:** 8px triangle at end
+- **Phase-Specific Behavior:**
+  - **Setup Phase:** Arrow should point toward jump lip (downslope)
+  - **Windup/Throw Phase:** Arrow should point under arms (toward spot)
+  - **Blind Landing:** Arrow tracks knuckle as rider passes it, then points up the hill at landing
+  - **Takeoff Phase:** Arrow points in rotation direction (forward for backside, backward for frontside)
+- **Detection Logic:**
+  - Green (#00FF00): Correct gaze direction for phase
+  - Yellow (#FFFF00): Suboptimal gaze (slightly off)
+  - Red (#FF6B6B): Incorrect gaze direction for phase
+
+```typescript
+interface HeadGazeArrow {
+  startX: number; // head keypoint x
+  startY: number; // head keypoint y
+  direction: number; // angle in degrees (0-360)
+  length: number; // 40px
+  color: string; // cyan, yellow, or red based on correctness
+  phase: string; // current phase
+  isCorrect: boolean; // matches phase expectations
+}
+```
+
+### 6. Phase Label (Top-Left)
 - **Position:** Top-left corner (x: 10, y: 10)
 - **Style:** Semi-transparent black box
 - **Size:** 100x40px
@@ -122,7 +150,7 @@ interface DetectionIndicator {
   - Lip Timing: #00CED1
   - Takeoff: #00FF00
 
-### 6. Detection Info Badges (Bottom Panel)
+### 7. Detection Info Badges (Bottom Panel)
 - **Position:** Below video
 - **Style:** Horizontal scrollable row of badges
 - **Badge Style:**
@@ -168,7 +196,12 @@ interface FrameDetectionData {
   pathTrail: PathPoint[];
   
   metrics: {
-    headGaze: { direction: string; angle: number };
+    headGaze: { 
+      direction: string; 
+      angle: number;
+      isCorrectForPhase: boolean;
+      expectedDirection: string; // "lip", "under_arms", "knuckle", "up_hill"
+    };
     bodyStack: { isStacked: boolean; weightDistribution: string };
     legBend: { averageBend: number; isStraightLegs: boolean };
     upperBodyRotation: { rotation: string; degreesSeparation: number };
@@ -230,6 +263,13 @@ export const VideoPlayer = ({ videoUri, analysisData }) => {
 - [ ] Snowboard outline renders at correct position and angle
 - [ ] Path trail shows correct phase colors
 - [ ] Pose skeleton keypoints render with correct confidence colors
+- [ ] Head gaze arrow renders from head keypoint in correct direction
+- [ ] Head gaze arrow is green when looking at correct target for phase
+- [ ] Head gaze arrow is yellow when slightly off target
+- [ ] Head gaze arrow is red when looking wrong direction
+- [ ] Setup phase: arrow points toward jump lip
+- [ ] Windup/throw phase: arrow points under arms (toward spot)
+- [ ] Blind landing: arrow tracks knuckle, then points up hill
 - [ ] Detection indicators update in real-time
 - [ ] Phase label shows correct phase and color
 - [ ] Detection badges display all metrics
