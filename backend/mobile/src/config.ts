@@ -15,3 +15,7 @@ export const config = {
 };
 
 export const DEBUG = true;
+
+// Testing mode - disable Gemini calls to avoid rate limits
+export const TESTING_MODE = true;
+export const MOCK_RESPONSES = true;
