@@ -11,6 +11,10 @@ import { LLMTrickDetectionService } from './services/llmTrickDetection';
 import { ChatService } from './services/chatService';
 import { KnowledgeBaseService } from './services/knowledgeBase';
 import { ApiResponse } from './types';
+// New imports for Python pose service
+import { detectPose, detectPoseParallel, checkPoseServiceHealth, PoseFrame } from './services/pythonPoseService';
+import { visualizePose, visualizePoseSequence } from './services/poseVisualizationSharp';
+import { AnalysisLogBuilder, analyzeFrame, AnalysisLog, FrameAnalysis } from './services/analysisLogService';
 
 // Load environment variables from .env.local
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
@@ -406,6 +410,330 @@ app.post('/api/chat/message', (req: Request, res: Response) => {
       timestamp: new Date().toISOString()
     } as ApiResponse<null>);
   }
+});
+
+// TESTING MODE: Single frame pose visualization (no LLM calls)
+app.post('/api/video/test-pose', upload.single('video'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No video file provided',
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+
+    const videoId = Date.now().toString();
+    const videoPath = req.file.path;
+    const frameIndex = parseInt(req.body.frameIndex) || -1; // -1 = middle frame
+
+    logger.info(`[TEST MODE] Video uploaded: ${req.file.originalname}`, {
+      videoId,
+      filename: req.file.originalname,
+      size: req.file.size,
+      requestedFrame: frameIndex
+    });
+
+    // Extract frames
+    const frameResult = await FrameExtractionService.extractFrames(videoPath, videoId);
+    const actualFrameCount = frameResult.frames.length;
+    logger.info(`[TEST MODE] Extracted ${actualFrameCount} actual frames (frameCount reported: ${frameResult.frameCount})`);
+
+    if (actualFrameCount === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No frames could be extracted from video',
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+
+    // Select target frame (middle frame if not specified) - use actual frame count
+    const targetFrameIndex = frameIndex >= 0 ? Math.min(frameIndex, actualFrameCount - 1) : Math.floor(actualFrameCount / 2);
+    const targetFrame = frameResult.frames[targetFrameIndex];
+
+    if (!targetFrame) {
+      return res.status(400).json({
+        success: false,
+        error: `Frame ${targetFrameIndex} not found. Only ${actualFrameCount} frames available.`,
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+
+    logger.info(`[TEST MODE] Analyzing frame ${targetFrameIndex} of ${actualFrameCount}`, {
+      framePath: targetFrame.imagePath,
+      frameExists: fs.existsSync(targetFrame.imagePath)
+    });
+
+    // Run pose estimation on single frame (LOCAL - no LLM)
+    const poseResult = await PoseEstimationService.estimatePose(
+      targetFrame.imagePath,
+      targetFrame.frameNumber,
+      targetFrame.timestamp
+    );
+
+    logger.info(`[TEST MODE] Pose estimation complete`, {
+      keypointCount: poseResult.keypoints.length,
+      confidence: poseResult.confidence
+    });
+
+    // Draw pose visualization on frame using sharp
+    const sharp = require('sharp');
+    
+    // Get image dimensions
+    const imageMetadata = await sharp(targetFrame.imagePath).metadata();
+    const imgWidth = imageMetadata.width || 640;
+    const imgHeight = imageMetadata.height || 480;
+
+    // Skeleton connections (MediaPipe indices)
+    const connections = [
+      [11, 12], // shoulders
+      [11, 13], [13, 15], // left arm
+      [12, 14], [14, 16], // right arm
+      [11, 23], [12, 24], // torso
+      [23, 24], // hips
+      [23, 25], [25, 27], // left leg
+      [24, 26], [26, 28], // right leg
+      [27, 29], [29, 31], // left foot
+      [28, 30], [30, 32], // right foot
+    ];
+
+    // Build SVG overlay with skeleton lines and keypoints
+    let svgLines = '';
+    for (const [start, end] of connections) {
+      const startKp = poseResult.keypoints[start];
+      const endKp = poseResult.keypoints[end];
+      if (startKp && endKp && startKp.confidence > 0.3 && endKp.confidence > 0.3) {
+        svgLines += `<line x1="${startKp.x}" y1="${startKp.y}" x2="${endKp.x}" y2="${endKp.y}" stroke="#FF00FF" stroke-width="3"/>`;
+      }
+    }
+
+    // Draw keypoints as circles
+    let svgCircles = '';
+    for (const kp of poseResult.keypoints) {
+      if (kp.confidence > 0.3) {
+        svgCircles += `<circle cx="${kp.x}" cy="${kp.y}" r="5" fill="#00FF00"/>`;
+      }
+    }
+
+    // Draw labels for key joints
+    const labeledJoints = [11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28];
+    const jointNames = ['L.Shoulder', 'R.Shoulder', 'L.Elbow', 'R.Elbow', 'L.Wrist', 'R.Wrist', 'L.Hip', 'R.Hip', 'L.Knee', 'R.Knee', 'L.Ankle', 'R.Ankle'];
+    let svgLabels = '';
+    labeledJoints.forEach((idx, i) => {
+      const kp = poseResult.keypoints[idx];
+      if (kp && kp.confidence > 0.3) {
+        svgLabels += `<text x="${kp.x + 8}" y="${kp.y - 5}" fill="white" font-size="12" font-family="Arial">${jointNames[i]}</text>`;
+      }
+    });
+
+    const svgOverlay = `<svg width="${imgWidth}" height="${imgHeight}">
+      ${svgLines}
+      ${svgCircles}
+      ${svgLabels}
+    </svg>`;
+
+    // Composite SVG overlay on top of original image
+    const visualizationBuffer = await sharp(targetFrame.imagePath)
+      .composite([{
+        input: Buffer.from(svgOverlay),
+        top: 0,
+        left: 0
+      }])
+      .png()
+      .toBuffer();
+
+    const visualizationBase64 = visualizationBuffer.toString('base64');
+
+    // Return results
+    res.json({
+      success: true,
+      data: {
+        videoId,
+        frameIndex: targetFrameIndex,
+        totalFrames: actualFrameCount,
+        timestamp: targetFrame.timestamp,
+        poseConfidence: poseResult.confidence,
+        keypointsDetected: poseResult.keypoints.filter(k => k.confidence > 0.3).length,
+        totalKeypoints: poseResult.keypoints.length,
+        visualization: `data:image/png;base64,${visualizationBase64}`,
+        keypoints: poseResult.keypoints.map(k => ({
+          name: k.name,
+          x: Math.round(k.x),
+          y: Math.round(k.y),
+          confidence: Math.round(k.confidence * 100) / 100
+        }))
+      },
+      timestamp: new Date().toISOString()
+    } as ApiResponse<any>);
+
+  } catch (err: any) {
+    logger.error(`[TEST MODE] Error: ${err.message}`, { error: err });
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to process video',
+      timestamp: new Date().toISOString()
+    } as ApiResponse<null>);
+  }
+});
+
+// NEW: Full pose analysis with Python MediaPipe service
+app.post('/api/video/analyze-pose', upload.single('video'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No video file provided',
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+
+    const videoId = Date.now().toString();
+    const videoPath = req.file.path;
+    const fps = parseInt(req.body.fps) || 4; // Default 4 FPS
+
+    logger.info(`[POSE ANALYSIS] Video uploaded: ${req.file.originalname}`, {
+      videoId,
+      filename: req.file.originalname,
+      size: req.file.size,
+      fps
+    });
+
+    // Check if Python pose service is running
+    const poseServiceHealthy = await checkPoseServiceHealth();
+    if (!poseServiceHealthy) {
+      return res.status(503).json({
+        success: false,
+        error: 'Pose service not available. Start it with: cd backend/pose-service && python app.py',
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+
+    // Extract frames
+    const frameResult = await FrameExtractionService.extractFrames(videoPath, videoId, fps);
+    const actualFrameCount = frameResult.frames.length;
+    logger.info(`[POSE ANALYSIS] Extracted ${actualFrameCount} frames`);
+
+    if (actualFrameCount === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No frames could be extracted from video',
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+
+    // Limit to 10 frames for analysis
+    const framesToAnalyze = frameResult.frames.slice(0, 10);
+    
+    // Read frames as base64
+    const framesWithBase64 = framesToAnalyze.map(f => ({
+      imageBase64: fs.readFileSync(f.imagePath).toString('base64'),
+      frameNumber: f.frameNumber,
+      timestamp: f.timestamp
+    }));
+
+    // Call Python pose service for all frames in parallel
+    logger.info(`[POSE ANALYSIS] Sending ${framesWithBase64.length} frames to Python pose service`);
+    const poseFrames = await detectPoseParallel(
+      framesWithBase64.map(f => ({
+        imageBase64: f.imageBase64,
+        frameNumber: f.frameNumber
+      }))
+    );
+
+    // Run MCP tool analysis on each frame
+    const analysisLog = new AnalysisLogBuilder();
+    const frameAnalyses: FrameAnalysis[] = [];
+    
+    for (let i = 0; i < poseFrames.length; i++) {
+      const poseFrame = poseFrames[i];
+      const timestamp = framesWithBase64[i].timestamp;
+      
+      if (!poseFrame.error && poseFrame.keypoints.length > 0) {
+        const analysis = analyzeFrame(poseFrame, timestamp, analysisLog);
+        frameAnalyses.push(analysis);
+      } else {
+        frameAnalyses.push({
+          frameNumber: poseFrame.frameNumber,
+          timestamp,
+          phase: 'unknown',
+          toolResults: { error: poseFrame.error || 'No keypoints detected' },
+          confidence: 0
+        });
+      }
+    }
+
+    // Generate visualizations for all frames
+    logger.info(`[POSE ANALYSIS] Generating visualizations`);
+    const visualizations = await visualizePoseSequence(
+      framesWithBase64.map((f, i) => ({
+        imageBase64: f.imageBase64,
+        poseFrame: poseFrames[i],
+        timestamp: f.timestamp
+      }))
+    );
+
+    // Build final analysis log
+    const finalLog = analysisLog.build();
+
+    logger.info(`[POSE ANALYSIS] Complete`, {
+      videoId,
+      framesAnalyzed: poseFrames.length,
+      toolCalls: finalLog.mcpToolCalls.length,
+      totalTimeMs: finalLog.totalProcessingTimeMs
+    });
+
+    // Return results
+    res.json({
+      success: true,
+      data: {
+        videoId,
+        totalFrames: actualFrameCount,
+        analyzedFrames: poseFrames.length,
+        duration: frameResult.videoDuration,
+        visualizations: visualizations.map(v => ({
+          frameNumber: v.frameNumber,
+          timestamp: v.timestamp,
+          imageBase64: `data:image/png;base64,${v.annotatedImageBase64}`
+        })),
+        frameAnalyses,
+        analysisLog: finalLog,
+        poseData: poseFrames.map(pf => ({
+          frameNumber: pf.frameNumber,
+          keypointCount: pf.keypointCount,
+          processingTimeMs: pf.processingTimeMs,
+          error: pf.error,
+          keypoints: pf.keypoints.map(kp => ({
+            name: kp.name,
+            x: Math.round(kp.x),
+            y: Math.round(kp.y),
+            confidence: Math.round(kp.confidence * 100) / 100
+          }))
+        }))
+      },
+      timestamp: new Date().toISOString()
+    } as ApiResponse<any>);
+
+  } catch (err: any) {
+    logger.error(`[POSE ANALYSIS] Error: ${err.message}`, { error: err });
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to analyze video',
+      timestamp: new Date().toISOString()
+    } as ApiResponse<null>);
+  }
+});
+
+// Pose service health check endpoint
+app.get('/api/pose-service/health', async (req: Request, res: Response) => {
+  const healthy = await checkPoseServiceHealth();
+  res.json({
+    success: true,
+    data: {
+      poseServiceHealthy: healthy,
+      poseServiceUrl: process.env.POSE_SERVICE_URL || 'http://localhost:5000'
+    },
+    timestamp: new Date().toISOString()
+  } as ApiResponse<any>);
 });
 
 // Knowledge base endpoints

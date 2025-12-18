@@ -28,13 +28,14 @@ export class FrameExtractionService {
   /**
    * Extract frames from video at specified FPS
    */
-  static async extractFrames(videoPath: string, videoId: string): Promise<FrameExtractionResult> {
+  static async extractFrames(videoPath: string, videoId: string, fps: number = FRAMES_PER_SECOND): Promise<FrameExtractionResult> {
     return new Promise((resolve, reject) => {
       const outputDir = path.join(TEMP_DIR, videoId);
+      const framesPerSecond = fps || FRAMES_PER_SECOND;
       
       console.log(`[FRAME_EXTRACTION] 🎬 Starting extraction for ${videoId}`);
       console.log(`[FRAME_EXTRACTION] 📁 Output dir: ${outputDir}`);
-      console.log(`[FRAME_EXTRACTION] 📊 FPS: ${FRAMES_PER_SECOND}`);
+      console.log(`[FRAME_EXTRACTION] 📊 FPS: ${framesPerSecond}`);
       
       if (!fs.existsSync(outputDir)) {
         fs.mkdirSync(outputDir, { recursive: true });
@@ -44,7 +45,7 @@ export class FrameExtractionService {
       logger.info(`Starting frame extraction for video: ${videoId}`, {
         videoPath,
         outputDir,
-        fps: FRAMES_PER_SECOND
+        fps: framesPerSecond
       });
 
       ffmpeg(videoPath)
@@ -70,13 +71,13 @@ export class FrameExtractionService {
             }
 
             const duration = metadata.format.duration || 0;
-            const frameCount = Math.floor(duration * FRAMES_PER_SECOND);
+            const frameCount = Math.floor(duration * framesPerSecond);
             
             // Read extracted frames
             const files = fs.readdirSync(outputDir).sort();
             const frames = files.map((file, index) => ({
               frameNumber: index,
-              timestamp: index / FRAMES_PER_SECOND,
+              timestamp: index / framesPerSecond,
               imagePath: path.join(outputDir, file)
             }));
 
@@ -95,7 +96,7 @@ export class FrameExtractionService {
           });
         })
         .screenshots({
-          count: FRAMES_PER_SECOND,
+          count: framesPerSecond,
           folder: outputDir,
           filename: 'frame-%i.png'
         });
