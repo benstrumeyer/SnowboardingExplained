@@ -61,3 +61,14 @@ secrets.json
 
 # Vercel
 .vercel
+
+# Temp files and uploads
+backend/temp/
+backend/uploads/
+backend/logs/
+
+# Python
+__pycache__/
+*.pyc
+venv/
+*.task
