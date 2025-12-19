@@ -1,5 +1,7 @@
 @echo off
 title Backend API (Port 3001)
+REM Add Node.js to PATH
+set PATH=%PATH%;C:\Program Files\nodejs
 cd /d "%~dp0backend"
 
 echo.
