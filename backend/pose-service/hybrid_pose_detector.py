@@ -583,6 +583,12 @@ class HybridPoseDetector:
                     logger.info("[VIZ] cam_t_full: %s", cam_t_full)
                     logger.info("[VIZ] scaled_focal: %.1f", scaled_focal)
                     
+                    # Extract 2D keypoints for body bounds alignment
+                    keypoints_2d = None
+                    if result.get('keypoints') and len(result['keypoints']) > 0:
+                        keypoints_2d = np.array([[kp['x'], kp['y']] for kp in result['keypoints']], dtype=np.float32)
+                        logger.info("[VIZ] Using %d keypoints for body bounds alignment", len(keypoints_2d))
+                    
                     # Use exact 4D-Humans renderer
                     renderer = SMPLMeshRenderer(focal_length=scaled_focal, img_size=256)
                     image_bgr = renderer.render_mesh_overlay(
@@ -591,6 +597,7 @@ class HybridPoseDetector:
                         faces,
                         cam_t_full,
                         focal_length=scaled_focal,
+                        keypoints_2d=keypoints_2d,
                     )
                     
                     mesh_rendered = True

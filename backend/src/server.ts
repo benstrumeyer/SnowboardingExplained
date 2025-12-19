@@ -5,7 +5,6 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 import logger from './logger';
 import { FrameExtractionService } from './services/frameExtraction';
-import { PoseEstimationService } from './services/poseEstimation';
 import { TrickDetectionService } from './services/trickDetection';
 import { LLMTrickDetectionService } from './services/llmTrickDetection';
 import { ChatService } from './services/chatService';
@@ -13,10 +12,7 @@ import { KnowledgeBaseService } from './services/knowledgeBase';
 import { ApiResponse } from './types';
 // New imports for Python pose service
 import { detectPose, detectPoseParallel, detectPoseHybrid, detectPoseHybridBatch, checkPoseServiceHealth, PoseFrame, HybridPoseFrame } from './services/pythonPoseService';
-import { visualizePose, visualizePoseSequence } from './services/poseVisualizationSharp';
 import { AnalysisLogBuilder, analyzeFrame, AnalysisLog, FrameAnalysis } from './services/analysisLogService';
-import { meshVisualizationService } from './services/meshVisualizationService';
-import { meshAutoFixer } from './services/meshAutoFixer';
 
 // Load environment variables from .env.local
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
@@ -29,6 +25,41 @@ const PORT = process.env.PORT || 3001;
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// CORS configuration for ngrok tunnel and local development
+app.use((req: Request, res: Response, next: NextFunction) => {
+  const origin = req.headers.origin || '';
+  
+  // Allow ngrok tunnel, localhost, and local IPs
+  const allowedOrigins = [
+    'https://uncongenial-nonobstetrically-norene.ngrok-free.dev',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:8081',
+    /^http:\/\/192\.168\./,
+    /^http:\/\/127\./,
+  ];
+  
+  const isAllowed = allowedOrigins.some(allowed => {
+    if (typeof allowed === 'string') {
+      return origin === allowed;
+    }
+    return allowed.test(origin);
+  });
+  
+  if (isAllowed || !origin) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
+  
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  
+  next();
+});
 
 // Configure multer for video uploads
 const uploadDir = path.join(__dirname, '../uploads');
@@ -179,7 +210,8 @@ app.get('/api/health', (req: Request, res: Response) => {
   } as ApiResponse<any>);
 });
 
-// Video upload and analysis endpoint
+// Video upload and analysis endpoint (DEPRECATED - use /api/video/analyze-pose instead)
+/*
 app.post('/api/video/upload', upload.single('video'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
@@ -210,21 +242,7 @@ app.post('/api/video/upload', upload.single('video'), async (req: Request, res: 
       duration: frameResult.videoDuration
     });
 
-    // Estimate poses for key frames (sample every 10 frames for speed)
-    logger.info(`Starting pose estimation for ${frameResult.frames.length} frames`);
-    const sampleFrames = frameResult.frames.filter((_, i) => i % 10 === 0);
-    const poseResults = await PoseEstimationService.estimatePoseBatch(
-      sampleFrames.map(f => ({
-        path: f.imagePath,
-        frameNumber: f.frameNumber,
-        timestamp: f.timestamp
-      }))
-    );
-
-    logger.info(`Pose estimation completed: ${poseResults.length} frames analyzed`, {
-      videoId,
-      framesAnalyzed: poseResults.length
-    });
+    // Pose estimation is now done by Python service on demand
 
     // Get frame data for LLM analysis
     logger.info(`Preparing frames for LLM analysis`);
@@ -304,6 +322,7 @@ app.post('/api/video/upload', upload.single('video'), async (req: Request, res: 
     } as ApiResponse<null>);
   }
 });
+*/
 
 // Get video frames endpoint
 app.get('/api/video/:videoId/frames', (req: Request, res: Response) => {
@@ -526,7 +545,8 @@ app.post('/api/chat/message', (req: Request, res: Response) => {
   }
 });
 
-// TESTING MODE: Single frame pose visualization (no LLM calls)
+// TESTING MODE: Single frame pose visualization (no LLM calls) - DEPRECATED
+/*
 app.post('/api/video/test-pose', upload.single('video'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
@@ -578,12 +598,8 @@ app.post('/api/video/test-pose', upload.single('video'), async (req: Request, re
       frameExists: fs.existsSync(targetFrame.imagePath)
     });
 
-    // Run pose estimation on single frame (LOCAL - no LLM)
-    const poseResult = await PoseEstimationService.estimatePose(
-      targetFrame.imagePath,
-      targetFrame.frameNumber,
-      targetFrame.timestamp
-    );
+    // Pose estimation is now done by Python service
+    // This endpoint is deprecated - use /api/video/analyze-pose instead
 
     logger.info(`[TEST MODE] Pose estimation complete`, {
       keypointCount: poseResult.keypoints.length,
@@ -667,10 +683,10 @@ app.post('/api/video/test-pose', upload.single('video'), async (req: Request, re
         totalFrames: actualFrameCount,
         timestamp: targetFrame.timestamp,
         poseConfidence: poseResult.confidence,
-        keypointsDetected: poseResult.keypoints.filter(k => k.confidence > 0.3).length,
+        keypointsDetected: poseResult.keypoints.filter((k: any) => k.confidence > 0.3).length,
         totalKeypoints: poseResult.keypoints.length,
         visualization: `data:image/png;base64,${visualizationBase64}`,
-        keypoints: poseResult.keypoints.map(k => ({
+        keypoints: poseResult.keypoints.map((k: any) => ({
           name: k.name,
           x: Math.round(k.x),
           y: Math.round(k.y),
@@ -689,8 +705,10 @@ app.post('/api/video/test-pose', upload.single('video'), async (req: Request, re
     } as ApiResponse<null>);
   }
 });
+*/
 
-// NEW: Full pose analysis with Python MediaPipe service
+// NEW: Full pose analysis with Python MediaPipe service - DEPRECATED
+/*
 app.post('/api/video/analyze-pose', upload.single('video'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
@@ -804,7 +822,7 @@ app.post('/api/video/analyze-pose', upload.single('video'), async (req: Request,
         totalFrames: actualFrameCount,
         analyzedFrames: poseFrames.length,
         duration: frameResult.videoDuration,
-        visualizations: visualizations.map(v => ({
+        visualizations: visualizations.map((v: any) => ({
           frameNumber: v.frameNumber,
           timestamp: v.timestamp,
           imageBase64: `data:image/png;base64,${v.annotatedImageBase64}`
@@ -836,8 +854,9 @@ app.post('/api/video/analyze-pose', upload.single('video'), async (req: Request,
     } as ApiResponse<null>);
   }
 });
+*/
 
-// Pose service health check endpoint
+// Pose service health check endpoint (simple)
 app.get('/api/pose-service/health', async (req: Request, res: Response) => {
   const healthy = await checkPoseServiceHealth();
   res.json({
@@ -848,6 +867,43 @@ app.get('/api/pose-service/health', async (req: Request, res: Response) => {
     },
     timestamp: new Date().toISOString()
   } as ApiResponse<any>);
+});
+
+// Pose service full status endpoint (for mobile app)
+app.get('/api/pose/health', async (req: Request, res: Response) => {
+  const { getPoseServiceStatus } = await import('./services/pythonPoseService');
+  const status = await getPoseServiceStatus();
+  res.json(status);
+});
+
+// Pose service warmup endpoint (proxy to WSL pose service)
+app.post('/api/pose/warmup', async (req: Request, res: Response) => {
+  try {
+    const axios = (await import('axios')).default;
+    const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
+    const response = await axios.get(`${poseServiceUrl}/warmup`, { timeout: 120000 });
+    res.json(response.data);
+  } catch (error: any) {
+    res.status(500).json({ 
+      status: 'error', 
+      error: error.message || 'Failed to warmup pose service' 
+    });
+  }
+});
+
+// Pose service reload endpoint (hot-reload code without reloading models)
+app.post('/api/pose/reload', async (req: Request, res: Response) => {
+  try {
+    const axios = (await import('axios')).default;
+    const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
+    const response = await axios.post(`${poseServiceUrl}/reload`, {}, { timeout: 10000 });
+    res.json(response.data);
+  } catch (error: any) {
+    res.status(500).json({ 
+      status: 'error', 
+      error: error.message || 'Failed to reload pose service' 
+    });
+  }
 });
 
 // 4D-Humans (HMR2) 3D pose analysis endpoint
@@ -1178,55 +1234,16 @@ app.post('/api/video/:videoId/auto-fix-mesh', async (req: Request, res: Response
   try {
     const { videoId } = req.params;
     
-    logger.info(`[AUTO-FIX] Starting mesh auto-fix for video ${videoId}`);
-    
-    // Get cached frames for this video
-    const cachedFrames = FrameExtractionService.getCachedFrames(videoId);
-    
-    if (!cachedFrames || cachedFrames.frames.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Video not found or no frames extracted',
-        timestamp: new Date().toISOString()
-      } as ApiResponse<null>);
-    }
-    
-    // Prepare frame data for auto-fixer
-    const frameData = cachedFrames.frames.slice(0, 5).map(f => ({
-      frameNumber: f.frameNumber,
-      imageBase64: fs.readFileSync(f.imagePath).toString('base64'),
-      timestamp: f.timestamp
-    }));
-    
-    logger.info(`[AUTO-FIX] Running auto-fixer on ${frameData.length} frames`);
-    
-    // Run auto-fixer
-    const fixResult = await meshAutoFixer.fixMeshForVideo(videoId, frameData);
-    
-    // Save report
-    const reportPath = await meshAutoFixer.saveFixReport(fixResult);
-    
-    // Generate summary
-    const summary = await meshAutoFixer.generateFixSummary(fixResult);
-    
-    logger.info(`[AUTO-FIX] Auto-fix complete:\n${summary}`);
-    
-    res.json({
-      success: true,
-      data: {
-        videoId,
-        fixResult,
-        reportPath,
-        summary
-      },
+    // DEPRECATED - mesh auto-fixer not available
+    res.status(501).json({
+      success: false,
+      error: 'Mesh auto-fixer endpoint deprecated',
       timestamp: new Date().toISOString()
-    } as ApiResponse<any>);
-    
+    } as ApiResponse<null>);
   } catch (err: any) {
-    logger.error(`[AUTO-FIX] Error: ${err.message}`, { error: err });
     res.status(500).json({
       success: false,
-      error: err.message || 'Auto-fix failed',
+      error: 'Endpoint deprecated',
       timestamp: new Date().toISOString()
     } as ApiResponse<null>);
   }
@@ -1296,21 +1313,23 @@ async function startServer() {
     // Initialize knowledge base
     await KnowledgeBaseService.initialize();
 
-    app.listen(PORT, () => {
+    app.listen(Number(PORT), '0.0.0.0', () => {
       logger.info(`🚀 Video Coaching API running on port ${PORT}`, {
         port: PORT,
-        environment: process.env.NODE_ENV || 'development'
+        environment: process.env.NODE_ENV || 'development',
+        bindAddress: '0.0.0.0',
+        accessibleAt: 'http://192.168.1.153:3001'
       });
       logger.info('Available endpoints:', {
-        health: `GET http://localhost:${PORT}/api/health`,
-        upload: `POST http://localhost:${PORT}/api/video/upload`,
-        frames: `GET http://localhost:${PORT}/api/video/:videoId/frames`,
-        frame: `GET http://localhost:${PORT}/api/video/:videoId/frame/:frameNumber`,
-        chatSession: `POST http://localhost:${PORT}/api/chat/session`,
-        getMessage: `GET http://localhost:${PORT}/api/chat/session/:sessionId`,
-        addMessage: `POST http://localhost:${PORT}/api/chat/message`,
-        knowledge: `GET http://localhost:${PORT}/api/knowledge/phase/:phase`,
-        search: `GET http://localhost:${PORT}/api/knowledge/search?q=query`
+        health: `GET http://0.0.0.0:${PORT}/api/health`,
+        upload: `POST http://0.0.0.0:${PORT}/api/video/upload`,
+        frames: `GET http://0.0.0.0:${PORT}/api/video/:videoId/frames`,
+        frame: `GET http://0.0.0.0:${PORT}/api/video/:videoId/frame/:frameNumber`,
+        chatSession: `POST http://0.0.0.0:${PORT}/api/chat/session`,
+        getMessage: `GET http://0.0.0.0:${PORT}/api/chat/session/:sessionId`,
+        addMessage: `POST http://0.0.0.0:${PORT}/api/chat/message`,
+        knowledge: `GET http://0.0.0.0:${PORT}/api/knowledge/phase/:phase`,
+        search: `GET http://0.0.0.0:${PORT}/api/knowledge/search?q=query`
       });
     });
   } catch (err) {

@@ -29,17 +29,57 @@ export interface PoseFrame {
 }
 
 /**
- * Check if the pose service is healthy
+ * Pose service status response
+ */
+export interface PoseServiceStatus {
+  status: 'ready' | 'warming_up' | 'not_ready' | 'offline';
+  models: {
+    hmr2: 'loaded' | 'not_loaded';
+    vitdet: 'loaded' | 'not_loaded';
+  };
+  ready: boolean;
+}
+
+/**
+ * Check if the pose service is healthy (simple boolean)
  */
 export async function checkPoseServiceHealth(): Promise<boolean> {
   try {
     const response = await axios.get(`${POSE_SERVICE_URL}/health`, {
       timeout: 5000
     });
-    return response.data?.status === 'healthy';
+    return response.data?.status === 'ready' || response.data?.status === 'healthy';
   } catch (error) {
     logger.warn('[POSE SERVICE] Health check failed', { error });
     return false;
+  }
+}
+
+/**
+ * Get full pose service status including model loading state
+ */
+export async function getPoseServiceStatus(): Promise<PoseServiceStatus> {
+  try {
+    const response = await axios.get(`${POSE_SERVICE_URL}/health`, {
+      timeout: 5000
+    });
+    
+    const data = response.data;
+    return {
+      status: data.status || (data.ready ? 'ready' : 'not_ready'),
+      models: data.models || {
+        hmr2: 'not_loaded',
+        vitdet: 'not_loaded'
+      },
+      ready: data.ready || false
+    };
+  } catch (error) {
+    logger.warn('[POSE SERVICE] Status check failed', { error });
+    return {
+      status: 'offline',
+      models: { hmr2: 'not_loaded', vitdet: 'not_loaded' },
+      ready: false
+    };
   }
 }
 

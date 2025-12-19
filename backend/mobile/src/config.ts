@@ -2,8 +2,10 @@
  * App Configuration
  */
 
-// Development - Using ngrok tunnel
-export const API_URL = 'https://uncongenial-nonobstetrically-norene.ngrok-free.dev';  // Replace with your ngrok URL from step 2
+// Backend running through ngrok tunnel
+// Get the ngrok URL from environment or use fallback
+const ngrokUrl = process.env.NGROK_URL || 'https://uncongenial-nonobstetrically-norene.ngrok-free.dev';
+export const API_URL = ngrokUrl;
 
 // Production (uncomment when deploying)
 // export const API_URL = 'https://snowboarding-explained.vercel.app';

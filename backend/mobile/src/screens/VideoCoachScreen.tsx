@@ -102,6 +102,16 @@ interface FullPoseAnalysisResult {
   }>;
 }
 
+// Pose service status
+interface PoseServiceStatus {
+  status: 'ready' | 'warming_up' | 'not_ready' | 'offline';
+  models: {
+    hmr2: 'loaded' | 'not_loaded';
+    vitdet: 'loaded' | 'not_loaded';
+  };
+  ready: boolean;
+}
+
 export const VideoCoachScreen: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -111,6 +121,53 @@ export const VideoCoachScreen: React.FC = () => {
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [selectedFrame, setSelectedFrame] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [poseServiceStatus, setPoseServiceStatus] = useState<PoseServiceStatus | null>(null);
+  const [checkingStatus, setCheckingStatus] = useState(true);
+
+  // Check pose service status on mount and periodically
+  React.useEffect(() => {
+    const checkPoseService = async () => {
+      try {
+        // Use the pose service URL directly (WSL)
+        const response = await fetch(`${config.apiUrl}/api/pose/health`, {
+          method: 'GET',
+          headers: { 'Accept': 'application/json' },
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setPoseServiceStatus(data);
+        } else {
+          setPoseServiceStatus({
+            status: 'offline',
+            models: { hmr2: 'not_loaded', vitdet: 'not_loaded' },
+            ready: false
+          });
+        }
+      } catch (err) {
+        console.log('[VideoCoach] Pose service check failed:', err);
+        setPoseServiceStatus({
+          status: 'offline',
+          models: { hmr2: 'not_loaded', vitdet: 'not_loaded' },
+          ready: false
+        });
+      } finally {
+        setCheckingStatus(false);
+      }
+    };
+
+    // Check immediately
+    checkPoseService();
+
+    // Poll every 5 seconds while not ready
+    const interval = setInterval(() => {
+      if (!poseServiceStatus?.ready) {
+        checkPoseService();
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [poseServiceStatus?.ready]);
 
   const pickVideo = async () => {
     try {
@@ -184,6 +241,8 @@ export const VideoCoachScreen: React.FC = () => {
 
       if (result.success) {
         console.log('[VideoCoach] Analysis successful:', result.data);
+        console.log('[VideoCoach] Visualizations:', result.data?.visualizations);
+        console.log('[VideoCoach] First viz:', result.data?.visualizations?.[0]);
         setAnalysis(result.data);
         setSelectedFrame(0);
       } else {
@@ -343,6 +402,81 @@ export const VideoCoachScreen: React.FC = () => {
     setCurrentFrameIndex(frameIndex);
   };
 
+  // 4D-Humans analysis
+  const analyze4DHumans = async () => {
+    try {
+      console.log('[VideoCoach] Opening picker for 4D-Humans analysis...');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'],
+        allowsEditing: false,
+        quality: 1
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        console.log('[VideoCoach] Video selected for 4D-Humans:', result.assets[0].uri);
+        await uploadFor4DHumans(result.assets[0].uri);
+      }
+    } catch (err: any) {
+      console.error('[VideoCoach] 4D-Humans picker error:', err);
+      setError(`Failed to pick video: ${err.message || err}`);
+    }
+  };
+
+  const uploadFor4DHumans = async (videoUri: string) => {
+    try {
+      console.log('[VideoCoach] Starting 4D-Humans upload...');
+      setLoading(true);
+      setError(null);
+      setPoseTest(null);
+      setAnalysis(null);
+      setFullPoseAnalysis(null);
+      set4DHumansResult(null);
+      setCurrentFrameIndex(0);
+
+      const formData = new FormData();
+      const videoFile = {
+        uri: videoUri,
+        type: 'video/mp4',
+        name: 'trick-video.mp4'
+      };
+      formData.append('video', videoFile as any);
+      formData.append('fps', '2'); // 2 FPS for 4D-Humans
+
+      const uploadUrl = `${config.apiUrl}/api/video/analyze-4d`;
+      console.log('[VideoCoach] Sending to 4D-Humans endpoint:', uploadUrl);
+      
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        body: formData,
+        headers: { 'Accept': 'application/json' }
+      });
+
+      console.log('[VideoCoach] 4D-Humans response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`4D-Humans analysis failed: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('[VideoCoach] 4D-Humans result:', result);
+      console.log('[VideoCoach] 4D-Humans visualizations:', result.data?.visualizations);
+      console.log('[VideoCoach] 4D-Humans first viz:', result.data?.visualizations?.[0]);
+
+      if (result.success) {
+        set4DHumansResult(result.data);
+        setCurrentFrameIndex(0);
+      } else {
+        setError(result.error || '4D-Humans analysis failed');
+      }
+    } catch (err: any) {
+      console.error('[VideoCoach] 4D-Humans error:', err);
+      setError(`4D-Humans error: ${err.message || err}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={styles.container}>
@@ -368,6 +502,10 @@ export const VideoCoachScreen: React.FC = () => {
     const currentPose = fourDHumansResult.poseData[currentFrameIndex];
     const currentViz = fourDHumansResult.visualizations[currentFrameIndex];
     
+    console.log('[VideoCoach] 4D-Humans render - currentViz keys:', currentViz ? Object.keys(currentViz) : 'null');
+    console.log('[VideoCoach] 4D-Humans render - imageBase64 length:', currentViz?.imageBase64?.length || 0);
+    console.log('[VideoCoach] 4D-Humans render - visualizations count:', fourDHumansResult.visualizations.length);
+    
     return (
       <ScrollView style={styles.darkContainer}>
         <View style={styles.header}>
@@ -382,12 +520,28 @@ export const VideoCoachScreen: React.FC = () => {
           <Text style={styles.frameTitle}>
             Frame {currentFrameIndex + 1} of {fourDHumansResult.analyzedFrames}
           </Text>
-          {currentViz && (
-            <Image
-              source={{ uri: currentViz.imageBase64 }}
-              style={styles.frameImage}
-              resizeMode="contain"
-            />
+          {currentViz ? (
+            <>
+              <Text style={{ color: '#888', fontSize: 12, marginBottom: 8 }}>
+                Image size: {currentViz.imageBase64?.length || 0} bytes
+              </Text>
+              {currentViz.imageBase64 ? (
+                <Image
+                  source={{ uri: currentViz.imageBase64 }}
+                  style={styles.frameImage}
+                  resizeMode="contain"
+                  onLoad={() => console.log('[VideoCoach] Image loaded successfully')}
+                  onError={(err) => {
+                    console.log('[VideoCoach] Image load error:', err);
+                    console.log('[VideoCoach] Image URI starts with:', currentViz.imageBase64?.substring(0, 100));
+                  }}
+                />
+              ) : (
+                <Text style={{ color: '#f00', padding: 16 }}>imageBase64 is empty</Text>
+              )}
+            </>
+          ) : (
+            <Text style={{ color: '#f00', padding: 16 }}>No visualization available</Text>
           )}
         </View>
 
@@ -560,93 +714,85 @@ export const VideoCoachScreen: React.FC = () => {
     );
   }
 
-  // 4D-Humans analysis
-  const analyze4DHumans = async () => {
-    try {
-      console.log('[VideoCoach] Opening picker for 4D-Humans analysis...');
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['videos'],
-        allowsEditing: false,
-        quality: 1
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        console.log('[VideoCoach] Video selected for 4D-Humans:', result.assets[0].uri);
-        await uploadFor4DHumans(result.assets[0].uri);
-      }
-    } catch (err: any) {
-      console.error('[VideoCoach] 4D-Humans picker error:', err);
-      setError(`Failed to pick video: ${err.message || err}`);
+  // Render pose service status indicator
+  const renderPoseServiceStatus = () => {
+    if (checkingStatus) {
+      return (
+        <View style={styles.statusContainer}>
+          <ActivityIndicator size="small" color="#888" />
+          <Text style={styles.statusText}>Checking pose service...</Text>
+        </View>
+      );
     }
-  };
 
-  const uploadFor4DHumans = async (videoUri: string) => {
-    try {
-      console.log('[VideoCoach] Starting 4D-Humans upload...');
-      setLoading(true);
-      setError(null);
-      setPoseTest(null);
-      setAnalysis(null);
-      setFullPoseAnalysis(null);
-      set4DHumansResult(null);
-      setCurrentFrameIndex(0);
-
-      const formData = new FormData();
-      const videoFile = {
-        uri: videoUri,
-        type: 'video/mp4',
-        name: 'trick-video.mp4'
-      };
-      formData.append('video', videoFile as any);
-      formData.append('fps', '2'); // 2 FPS for 4D-Humans
-
-      const uploadUrl = `${config.apiUrl}/api/video/analyze-4d`;
-      console.log('[VideoCoach] Sending to 4D-Humans endpoint:', uploadUrl);
-      
-      const response = await fetch(uploadUrl, {
-        method: 'POST',
-        body: formData,
-        headers: { 'Accept': 'application/json' }
-      });
-
-      console.log('[VideoCoach] 4D-Humans response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`4D-Humans analysis failed: ${response.status} - ${errorText}`);
-      }
-
-      const result = await response.json();
-      console.log('[VideoCoach] 4D-Humans result:', result);
-
-      if (result.success) {
-        // Store full 4D-Humans data with all frames
-        set4DHumansResult(result.data);
-        setCurrentFrameIndex(0);
-      } else {
-        setError(result.error || '4D-Humans analysis failed');
-      }
-    } catch (err: any) {
-      console.error('[VideoCoach] 4D-Humans error:', err);
-      setError(`4D-Humans error: ${err.message || err}`);
-    } finally {
-      setLoading(false);
+    if (!poseServiceStatus) {
+      return null;
     }
+
+    const { status, models, ready } = poseServiceStatus;
+    
+    let statusColor = '#F44336'; // red
+    let statusIcon = '❌';
+    let statusMessage = 'Pose service offline';
+    
+    if (status === 'ready' && ready) {
+      statusColor = '#4CAF50'; // green
+      statusIcon = '✅';
+      statusMessage = 'Ready for video analysis';
+    } else if (status === 'warming_up') {
+      statusColor = '#FF9800'; // orange
+      statusIcon = '⏳';
+      statusMessage = 'Loading models...';
+    } else if (status === 'not_ready') {
+      statusColor = '#FF9800'; // orange
+      statusIcon = '⚠️';
+      statusMessage = 'Models not loaded';
+    }
+
+    return (
+      <View style={[styles.statusContainer, { borderColor: statusColor }]}>
+        <Text style={styles.statusIcon}>{statusIcon}</Text>
+        <View style={styles.statusTextContainer}>
+          <Text style={[styles.statusMessage, { color: statusColor }]}>{statusMessage}</Text>
+          <Text style={styles.statusDetails}>
+            HMR2: {models.hmr2 === 'loaded' ? '✓' : '○'} | ViTDet: {models.vitdet === 'loaded' ? '✓' : '○'}
+          </Text>
+        </View>
+        {status === 'warming_up' && (
+          <ActivityIndicator size="small" color={statusColor} style={{ marginLeft: 8 }} />
+        )}
+      </View>
+    );
   };
 
   if (!analysis) {
+    const canAnalyze = poseServiceStatus?.ready === true;
+    
     return (
       <View style={styles.darkContainer}>
         <Text style={styles.darkTitle}>🎿 Video Trick Coach</Text>
         <Text style={styles.darkSubtitle}>Upload a snowboarding video to analyze your trick</Text>
         
-        <TouchableOpacity style={styles.fourDButton} onPress={analyze4DHumans}>
+        {/* Pose Service Status */}
+        {renderPoseServiceStatus()}
+        
+        <TouchableOpacity 
+          style={[styles.fourDButton, !canAnalyze && styles.buttonDisabled]} 
+          onPress={analyze4DHumans}
+          disabled={!canAnalyze}
+        >
           <Text style={styles.buttonText}>🧍 4D-Humans 3D Pose (HMR2)</Text>
         </TouchableOpacity>
         
         <TouchableOpacity style={styles.analyzeButton} onPress={analyzePose}>
           <Text style={styles.buttonText}>🔬 MediaPipe Pose Analysis</Text>
         </TouchableOpacity>
+        
+        {!canAnalyze && poseServiceStatus?.status !== 'offline' && (
+          <Text style={styles.waitingText}>
+            Please wait for models to load before using 4D-Humans...
+          </Text>
+        )}
       </View>
     );
   }
@@ -943,5 +1089,46 @@ const styles = StyleSheet.create({
     fontSize: 13,
     width: '48%',
     marginBottom: 5
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#1a1a2e',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 20,
+    borderWidth: 2,
+    borderColor: '#333'
+  },
+  statusIcon: {
+    fontSize: 24,
+    marginRight: 12
+  },
+  statusTextContainer: {
+    flex: 1
+  },
+  statusMessage: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 2
+  },
+  statusDetails: {
+    fontSize: 12,
+    color: '#888'
+  },
+  statusText: {
+    color: '#888',
+    fontSize: 14,
+    marginLeft: 10
+  },
+  buttonDisabled: {
+    opacity: 0.5
+  },
+  waitingText: {
+    color: '#FF9800',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 10,
+    fontStyle: 'italic'
   }
 });

@@ -109,6 +109,14 @@ class SMPLMeshRenderer:
         h, w = image.shape[:2]
         logger.debug(f"[RENDER] Image: {w}x{h}, Vertices: {len(vertices)}, Faces: {len(faces)}")
         logger.debug(f"[RENDER] Camera: {camera_translation}, Focal: {focal_length}")
+        
+        # Debug: Check mesh bounds
+        v_min = vertices.min(axis=0)
+        v_max = vertices.max(axis=0)
+        v_center = (v_min + v_max) / 2
+        logger.info(f"[RENDER] Mesh bounds: min={v_min}, max={v_max}, center={v_center}")
+        logger.info(f"[RENDER] Camera position (before flip): {camera_translation}")
+        logger.info(f"[RENDER] Camera depth (tz): {camera_translation[2]}")
 
         # Create pyrender renderer
         renderer = pyrender.OffscreenRenderer(
@@ -137,8 +145,13 @@ class SMPLMeshRenderer:
         scene.add(mesh, "mesh")
 
         # Setup camera - EXACT as 4D-Humans
+        # CRITICAL: Flip X component of camera translation - this is in the original renderer.py
+        camera_translation_adjusted = camera_translation.copy()
+        camera_translation_adjusted[0] *= -1.0
+        logger.info(f"[RENDER] Camera position (after flip): {camera_translation_adjusted}")
+        
         camera_pose = np.eye(4)
-        camera_pose[:3, 3] = camera_translation
+        camera_pose[:3, 3] = camera_translation_adjusted
 
         # Camera center in image coordinates
         camera_center = [w / 2.0, h / 2.0]
@@ -168,6 +181,9 @@ class SMPLMeshRenderer:
 
         # Blend with original image
         valid_mask = color[:, :, 3:4]  # Alpha channel
+        mesh_pixels = np.sum(valid_mask)
+        logger.info(f"[RENDER] Rendered mesh pixels: {mesh_pixels:.0f} / {h*w} ({100*mesh_pixels/(h*w):.1f}%)")
+        
         output = color[:, :, :3] * valid_mask + (1 - valid_mask) * image
 
         return output.astype(np.float32)
@@ -180,6 +196,7 @@ class SMPLMeshRenderer:
         camera_translation: np.ndarray,
         focal_length: float = None,
         mesh_color=LIGHT_BLUE,
+        keypoints_2d: np.ndarray = None,
     ) -> np.ndarray:
         """
         Render mesh overlay on BGR image (OpenCV format)
@@ -191,6 +208,7 @@ class SMPLMeshRenderer:
             camera_translation: (3,) camera translation
             focal_length: Focal length
             mesh_color: RGB color tuple
+            keypoints_2d: (K, 2) 2D keypoints to compute body bounds
         
         Returns:
             (H, W, 3) BGR image with mesh overlay
@@ -198,7 +216,7 @@ class SMPLMeshRenderer:
         # Convert BGR to RGB and normalize
         image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
 
-        # Render mesh
+        # Render mesh with original camera translation
         rendered_rgb = self.render_mesh_on_image(
             image_rgb,
             vertices,
@@ -252,8 +270,12 @@ class SMPLMeshRenderer:
         scene = pyrender.Scene(bg_color=[0, 0, 0, 0], ambient_light=(0.3, 0.3, 0.3))
         scene.add(mesh, "mesh")
 
+        # CRITICAL: Flip X component of camera translation - EXACT as 4D-Humans renderer.py
+        camera_translation_adjusted = camera_translation.copy()
+        camera_translation_adjusted[0] *= -1.0
+        
         camera_pose = np.eye(4)
-        camera_pose[:3, 3] = camera_translation
+        camera_pose[:3, 3] = camera_translation_adjusted
 
         if focal_length is None:
             focal_length = self.focal_length
