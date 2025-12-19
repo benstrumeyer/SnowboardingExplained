@@ -15,11 +15,12 @@ def _patched_torch_load(*args, **kwargs):
 torch.load = _patched_torch_load
 print("[PATCH] torch.load patched for weights_only=False")
 
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import time
 import sys
 import os
+import base64
 
 # Add 4D-Humans to path so we can import the official Renderer
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '4D-Humans'))
@@ -40,12 +41,35 @@ except ImportError as e:
     print(f"[WARN] Official Renderer not available: {e}")
     HAS_RENDERER = False
 
+# Import video processor
+try:
+    from video_processor import VideoMeshProcessor
+    HAS_VIDEO_PROCESSOR = True
+except ImportError as e:
+    print(f"[WARN] Video processor not available: {e}")
+    HAS_VIDEO_PROCESSOR = False
+
+# Import mesh renderer
+try:
+    from mesh_renderer import SMPLMeshRenderer
+    HAS_MESH_RENDERER = True
+except ImportError as e:
+    print(f"[WARN] Mesh renderer not available: {e}")
+    HAS_MESH_RENDERER = False
+
 app = Flask(__name__)
 CORS(app)
 
 # Track model readiness
 _models_ready = False
 _warmup_in_progress = False
+
+
+@app.route('/', methods=['GET'])
+def index():
+    """Serve video upload UI"""
+    html_path = os.path.join(os.path.dirname(__file__), 'video_upload.html')
+    return send_file(html_path, mimetype='text/html')
 
 
 @app.route('/health', methods=['GET'])
@@ -300,6 +324,94 @@ def detect_pose_with_visualization():
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 
+@app.route('/process_video', methods=['POST'])
+def process_video():
+    """
+    Process full video with mesh overlay on every frame
+    
+    Request body (multipart/form-data):
+    {
+        "video": <video file>,
+        "output_format": "base64" or "file_path" (default: "file_path")
+    }
+    
+    Returns:
+    {
+        "status": "success",
+        "output_path": "/path/to/output.mp4",
+        "output_base64": "base64 encoded video (if requested)",
+        "total_frames": 300,
+        "processed_frames": 300,
+        "fps": 30,
+        "resolution": [1920, 1080],
+        "processing_time_seconds": 45.2,
+        "output_size_mb": 125.5
+    }
+    """
+    if not HAS_HYBRID or not HAS_VIDEO_PROCESSOR or not HAS_MESH_RENDERER:
+        missing = []
+        if not HAS_HYBRID:
+            missing.append('HMR2 detector')
+        if not HAS_VIDEO_PROCESSOR:
+            missing.append('video processor')
+        if not HAS_MESH_RENDERER:
+            missing.append('mesh renderer')
+        return jsonify({'error': f'Not available: {", ".join(missing)}'}), 501
+    
+    try:
+        # Check if video file is provided
+        if 'video' not in request.files:
+            return jsonify({'error': 'video file is required'}), 400
+        
+        video_file = request.files['video']
+        if video_file.filename == '':
+            return jsonify({'error': 'No video file selected'}), 400
+        
+        output_format = request.form.get('output_format', 'file_path')
+        
+        # Save uploaded video to temp file
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        input_path = os.path.join(temp_dir, f"upload_{int(time.time())}.mp4")
+        output_path = os.path.join(temp_dir, f"mesh_overlay_{int(time.time())}.mp4")
+        
+        video_file.save(input_path)
+        
+        try:
+            # Create processor
+            detector = get_hybrid_detector()
+            mesh_renderer = SMPLMeshRenderer()
+            processor = VideoMeshProcessor(detector, mesh_renderer)
+            
+            # Process video
+            result = processor.process_video(input_path, output_path)
+            
+            # Add status
+            result['status'] = 'success'
+            
+            # Optionally encode output to base64
+            if output_format == 'base64':
+                with open(output_path, 'rb') as f:
+                    video_data = f.read()
+                    result['output_base64'] = base64.b64encode(video_data).decode('utf-8')
+                    result['output_base64_size_mb'] = round(len(result['output_base64']) / (1024 * 1024), 2)
+            
+            return jsonify(result)
+        
+        finally:
+            # Clean up input file
+            if os.path.exists(input_path):
+                try:
+                    os.remove(input_path)
+                except:
+                    pass
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+
 if __name__ == '__main__':
     import threading
     import os
@@ -312,7 +424,10 @@ if __name__ == '__main__':
     print("  GET  /warmup                        - Pre-load models")
     print("  POST /pose/hybrid                   - HMR2 3D pose detection")
     print("  POST /detect_pose_with_visualization - Pose with mesh overlay")
+    print("  POST /process_video                 - Full video mesh overlay processing")
     print(f"HMR2 detector: {'available' if HAS_HYBRID else 'NOT available'}")
+    print(f"Video processor: {'available' if HAS_VIDEO_PROCESSOR else 'NOT available'}")
+    print(f"Mesh renderer: {'available' if HAS_MESH_RENDERER else 'NOT available'}")
     
     if HAS_HYBRID:
         try:

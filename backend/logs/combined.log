@@ -2211,3 +2211,8 @@
 {"level":"info","message":"[4D-HUMANS] Sending 2 frames to 4D-Humans with visualization","service":"video-coach-api","timestamp":"2025-12-19 06:33:34"}
 {"level":"info","message":"[4D-HUMANS] Processing 2 frames","service":"video-coach-api","timestamp":"2025-12-19 06:33:34","visualize":true}
 {"level":"info","message":"[4D-HUMANS] Detecting 3D pose for frame 0","service":"video-coach-api","timestamp":"2025-12-19 06:33:34","visualize":true}
+{"has3d":true,"hasVisualization":true,"keypointCount":24,"level":"info","message":"[4D-HUMANS] Frame 0 completed","processingTimeMs":5966.7,"service":"video-coach-api","timestamp":"2025-12-19 06:33:46","totalTimeMs":12355}
+{"level":"info","message":"[4D-HUMANS] Detecting 3D pose for frame 1","service":"video-coach-api","timestamp":"2025-12-19 06:33:46","visualize":true}
+{"has3d":true,"hasVisualization":true,"keypointCount":24,"level":"info","message":"[4D-HUMANS] Frame 1 completed","processingTimeMs":2369.34,"service":"video-coach-api","timestamp":"2025-12-19 06:33:49","totalTimeMs":2702}
+{"has3dCount":2,"level":"info","message":"[4D-HUMANS] Batch complete","service":"video-coach-api","successCount":2,"timestamp":"2025-12-19 06:33:49","totalFrames":2,"totalTimeMs":15057,"visualizationsGenerated":2}
+{"framesAnalyzed":2,"has3dCount":2,"level":"info","message":"[4D-HUMANS] Analysis complete","service":"video-coach-api","successCount":2,"timestamp":"2025-12-19 06:33:49","videoId":"1766144014237"}
