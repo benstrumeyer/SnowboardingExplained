@@ -123,6 +123,9 @@ export const VideoCoachScreen: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [poseServiceStatus, setPoseServiceStatus] = useState<PoseServiceStatus | null>(null);
   const [checkingStatus, setCheckingStatus] = useState(true);
+  const [videoProcessing, setVideoProcessing] = useState(false);
+  const [processedVideoPath, setProcessedVideoPath] = useState<string | null>(null);
+  const [processedVideoInfo, setProcessedVideoInfo] = useState<any>(null);
 
   // Check pose service status on mount and periodically
   React.useEffect(() => {
@@ -419,6 +422,75 @@ export const VideoCoachScreen: React.FC = () => {
     } catch (err: any) {
       console.error('[VideoCoach] 4D-Humans picker error:', err);
       setError(`Failed to pick video: ${err.message || err}`);
+    }
+  };
+
+  // Full video mesh overlay processing
+  const processFullVideo = async () => {
+    try {
+      console.log('[VideoCoach] Opening picker for full video processing...');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'],
+        allowsEditing: false,
+        quality: 1
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        console.log('[VideoCoach] Video selected for full processing:', result.assets[0].uri);
+        await uploadForFullVideoProcessing(result.assets[0].uri);
+      }
+    } catch (err: any) {
+      console.error('[VideoCoach] Full video picker error:', err);
+      setError(`Failed to pick video: ${err.message || err}`);
+    }
+  };
+
+  const uploadForFullVideoProcessing = async (videoUri: string) => {
+    try {
+      console.log('[VideoCoach] Starting full video processing...');
+      setVideoProcessing(true);
+      setError(null);
+      setProcessedVideoPath(null);
+      setProcessedVideoInfo(null);
+
+      const formData = new FormData();
+      const videoFile = {
+        uri: videoUri,
+        type: 'video/mp4',
+        name: 'trick-video.mp4'
+      };
+      formData.append('video', videoFile as any);
+
+      const uploadUrl = `${config.apiUrl}/process_video`;
+      console.log('[VideoCoach] Sending to full video endpoint:', uploadUrl);
+      
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        body: formData,
+        headers: { 'Accept': 'application/json' }
+      });
+
+      console.log('[VideoCoach] Full video response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Full video processing failed: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('[VideoCoach] Full video result:', result);
+
+      if (result.status === 'success') {
+        setProcessedVideoPath(result.output_path);
+        setProcessedVideoInfo(result);
+      } else {
+        setError(result.error || 'Full video processing failed');
+      }
+    } catch (err: any) {
+      console.error('[VideoCoach] Full video processing error:', err);
+      setError(`Full video processing error: ${err.message || err}`);
+    } finally {
+      setVideoProcessing(false);
     }
   };
 
@@ -765,6 +837,75 @@ export const VideoCoachScreen: React.FC = () => {
     );
   };
 
+  // Show processed video results
+  if (processedVideoPath && processedVideoInfo) {
+    return (
+      <ScrollView style={styles.darkContainer}>
+        <View style={styles.header}>
+          <Text style={styles.darkTitle}>✅ Video Processed</Text>
+          <Text style={styles.darkSubtitle}>Mesh overlay applied to all frames</Text>
+        </View>
+
+        {/* Video Player */}
+        <View style={styles.frameContainer}>
+          <Text style={styles.frameTitle}>Processed Video</Text>
+          <View style={styles.videoPlayerPlaceholder}>
+            <Text style={styles.videoPlayerText}>📹</Text>
+            <Text style={styles.videoPlayerLabel}>Video ready to play</Text>
+            <Text style={styles.videoPlayerPath}>{processedVideoInfo.output_path}</Text>
+          </View>
+        </View>
+
+        {/* Processing Stats */}
+        <View style={styles.darkStatsContainer}>
+          <View style={styles.stat}>
+            <Text style={styles.darkStatLabel}>Total Frames</Text>
+            <Text style={styles.darkStatValue}>{processedVideoInfo.total_frames}</Text>
+          </View>
+          <View style={styles.stat}>
+            <Text style={styles.darkStatLabel}>Processed</Text>
+            <Text style={styles.darkStatValue}>{processedVideoInfo.processed_frames}</Text>
+          </View>
+          <View style={styles.stat}>
+            <Text style={styles.darkStatLabel}>FPS</Text>
+            <Text style={styles.darkStatValue}>{processedVideoInfo.fps}</Text>
+          </View>
+        </View>
+
+        {/* Detailed Info */}
+        <View style={styles.anglesContainer}>
+          <Text style={styles.anglesTitle}>Processing Details</Text>
+          <View style={styles.detailsGrid}>
+            <Text style={styles.detailText}>Resolution: {processedVideoInfo.resolution[0]}x{processedVideoInfo.resolution[1]}</Text>
+            <Text style={styles.detailText}>Processing Time: {processedVideoInfo.processing_time_seconds}s</Text>
+            <Text style={styles.detailText}>Output Size: {processedVideoInfo.output_size_mb} MB</Text>
+            <Text style={styles.detailText}>Success Rate: {((processedVideoInfo.processed_frames / processedVideoInfo.total_frames) * 100).toFixed(1)}%</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity style={styles.fourDButton} onPress={processFullVideo}>
+          <Text style={styles.buttonText}>Process Another Video</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.backButton} onPress={() => {
+          setProcessedVideoPath(null);
+          setProcessedVideoInfo(null);
+        }}>
+          <Text style={styles.buttonText}>Back to Main</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    );
+  }
+
+  if (videoProcessing) {
+    return (
+      <View style={styles.darkContainer}>
+        <ActivityIndicator size="large" color="#9C27B0" />
+        <Text style={styles.loadingText}>Processing full video with mesh overlay...</Text>
+        <Text style={styles.loadingText}>This may take a few minutes depending on video length</Text>
+      </View>
+    );
+  }
+
   if (!analysis) {
     const canAnalyze = poseServiceStatus?.ready === true;
     
@@ -786,6 +927,14 @@ export const VideoCoachScreen: React.FC = () => {
         
         <TouchableOpacity style={styles.analyzeButton} onPress={analyzePose}>
           <Text style={styles.buttonText}>🔬 MediaPipe Pose Analysis</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity 
+          style={[styles.fullVideoButton, !canAnalyze && styles.buttonDisabled]} 
+          onPress={processFullVideo}
+          disabled={!canAnalyze}
+        >
+          <Text style={styles.buttonText}>🎬 Full Video Mesh Overlay</Text>
         </TouchableOpacity>
         
         {!canAnalyze && poseServiceStatus?.status !== 'offline' && (
@@ -1130,5 +1279,45 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 10,
     fontStyle: 'italic'
+  },
+  fullVideoButton: {
+    backgroundColor: '#FF6B35',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 12
+  },
+  videoPlayerPlaceholder: {
+    width: '100%',
+    height: 300,
+    backgroundColor: '#000',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 8
+  },
+  videoPlayerText: {
+    fontSize: 64,
+    marginBottom: 10
+  },
+  videoPlayerLabel: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 5
+  },
+  videoPlayerPath: {
+    color: '#888',
+    fontSize: 11,
+    marginTop: 10,
+    textAlign: 'center',
+    paddingHorizontal: 10
+  },
+  detailsGrid: {
+    flexDirection: 'column'
+  },
+  detailText: {
+    color: 'white',
+    fontSize: 13,
+    marginBottom: 8
   }
 });
