@@ -348,6 +348,11 @@ def process_video():
         "output_size_mb": 125.5
     }
     """
+    logger.info("[PROCESS_VIDEO] Request received")
+    logger.info(f"[PROCESS_VIDEO] request.files keys: {list(request.files.keys())}")
+    logger.info(f"[PROCESS_VIDEO] request.form keys: {list(request.form.keys())}")
+    logger.info(f"[PROCESS_VIDEO] Content-Type: {request.content_type}")
+    
     if not HAS_HYBRID or not HAS_VIDEO_PROCESSOR or not HAS_MESH_RENDERER:
         missing = []
         if not HAS_HYBRID:
@@ -361,6 +366,7 @@ def process_video():
     try:
         # Check if video file is provided
         if 'video' not in request.files:
+            logger.error(f"[PROCESS_VIDEO] 'video' not in request.files. Available: {list(request.files.keys())}")
             return jsonify({'error': 'video file is required'}), 400
         
         video_file = request.files['video']

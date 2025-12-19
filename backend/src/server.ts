@@ -1311,7 +1311,13 @@ app.post('/api/debug/test-capture', async (req: Request, res: Response) => {
 // Full video mesh overlay processing endpoint
 app.post('/api/video/process_video', upload.single('video'), async (req: Request, res: Response) => {
   try {
+    logger.info(`[PROCESS_VIDEO] Request received`);
+    logger.info(`[PROCESS_VIDEO] req.file exists: ${!!req.file}`);
+    logger.info(`[PROCESS_VIDEO] req.files: ${JSON.stringify(Object.keys(req.files || {}))}`);
+    logger.info(`[PROCESS_VIDEO] req.body: ${JSON.stringify(req.body)}`);
+    
     if (!req.file) {
+      logger.error(`[PROCESS_VIDEO] No file in req.file`);
       return res.status(400).json({
         error: 'No video file provided',
         status: 'error'
@@ -1321,6 +1327,7 @@ app.post('/api/video/process_video', upload.single('video'), async (req: Request
     const videoPath = req.file.path;
     logger.info(`[PROCESS_VIDEO] Starting full video processing: ${videoPath}`);
     logger.info(`[PROCESS_VIDEO] File size: ${req.file.size} bytes`);
+    logger.info(`[PROCESS_VIDEO] File originalname: ${req.file.originalname}`);
 
     // Call the pose service to process the video
     const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
@@ -1333,7 +1340,8 @@ app.post('/api/video/process_video', upload.single('video'), async (req: Request
     form.append('video', videoBuffer, req.file.originalname);
     form.append('output_format', 'file_path');
 
-    logger.info(`[PROCESS_VIDEO] Sending to pose service: ${poseServiceUrl}/process_video`);
+    logger.info(`[PROCESS_VIDEO] FormData prepared, sending to: ${poseServiceUrl}/process_video`);
+    logger.info(`[PROCESS_VIDEO] FormData headers:`, form.getHeaders());
 
     const response = await fetch(`${poseServiceUrl}/process_video`, {
       method: 'POST',
@@ -1368,6 +1376,7 @@ app.post('/api/video/process_video', upload.single('video'), async (req: Request
 
   } catch (err: any) {
     logger.error(`[PROCESS_VIDEO] Error: ${err.message}`, { error: err });
+    logger.error(`[PROCESS_VIDEO] Stack:`, err.stack);
     
     // Clean up on error
     if (req.file) {
