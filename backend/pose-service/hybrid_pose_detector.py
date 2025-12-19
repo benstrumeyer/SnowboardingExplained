@@ -121,7 +121,7 @@ class HybridPoseDetector:
         self.vitdet_detector = None  # Cache ViTDet detector
         self.vitdet_loaded = False
         
-        self.use_3d = HAS_TORCH and HAS_HMR2 and self.device == 'cuda'
+        self.use_3d = HAS_TORCH and HAS_HMR2  # Works on CPU or CUDA
         self.model_version = "4d-humans-hmr2-demo" if self.use_3d else "disabled"
         
         print(f"[POSE] Initializing 4D-Humans detector (demo implementation)")
@@ -213,6 +213,9 @@ class HybridPoseDetector:
         3. Run HMR2 model
         4. Use cam_crop_to_full() for camera conversion
         """
+        logger.info("[HMR2] _run_hmr2_demo_style called: use_3d=%s, HAS_TORCH=%s, HAS_HMR2=%s, device=%s", 
+                   self.use_3d, HAS_TORCH, HAS_HMR2, self.device)
+        
         if not self.use_3d or not HMR2_MODULES:
             logger.warning("[HMR2] Skipped: use_3d=%s, HMR2_MODULES=%s", self.use_3d, HMR2_MODULES is not None)
             return None
@@ -358,38 +361,47 @@ class HybridPoseDetector:
         """
         Project 3D vertices to 2D using perspective projection.
         
-        EXACT implementation from 4D-Humans/hmr2/utils/renderer.py
-        This ensures mesh and keypoints use identical projection.
+        Uses the official 4D-Humans projection formula from demo.py.
+        The camera translation cam_t_full = [tx, ty, tz] where:
+        - tz is the depth (distance from camera)
+        - tx, ty are camera center offsets
         
         Args:
-            vertices: (N, 3) 3D vertices in world space
-            cam_t_full: (3,) camera translation [tx, ty, tz] in full image space
-            focal_length: scaled focal length (already scaled for full image)
+            vertices: (N, 3) 3D vertices in SMPL space
+            cam_t_full: (3,) camera translation [tx, ty, tz]
+            focal_length: scaled focal length
             img_size: (2,) [width, height]
         
         Returns:
             (N, 2) 2D projected points in image pixels
         """
-        # EXACT from renderer.py: camera_translation[0] *= -1
-        camera_translation = cam_t_full.copy()
-        camera_translation[0] *= -1.
+        # Use the official projection from 4D-Humans
+        # This matches the Renderer class in hmr2/utils/renderer.py
         
-        # Transform vertices to camera space
-        vertices_cam = vertices + camera_translation
-        
-        # Perspective projection (EXACT from renderer.py)
-        # The focal length is already scaled for the full image
         fx = fy = focal_length
         cx = img_size[0] / 2.0
         cy = img_size[1] / 2.0
         
-        # Project: x_2d = fx * X / Z + cx
-        z = vertices_cam[:, 2]
-        # Clamp z to avoid division by zero (points behind camera)
-        z = np.maximum(z, 0.01)
+        # Camera translation
+        tx, ty, tz = cam_t_full[0], cam_t_full[1], cam_t_full[2]
         
-        x_2d = fx * vertices_cam[:, 0] / z + cx
-        y_2d = fy * vertices_cam[:, 1] / z + cy
+        # Vertices in SMPL space
+        x = vertices[:, 0]
+        y = vertices[:, 1]
+        z = vertices[:, 2]
+        
+        # Apply camera translation (shift vertices by camera position)
+        # Then apply 180-degree rotation around X-axis (flip Y and Z)
+        x_cam = x - tx
+        y_cam = -(y - ty)  # Flip Y
+        z_cam = -(z)       # Flip Z
+        
+        # Clamp z to avoid division by zero
+        z_cam = np.maximum(z_cam, 0.01)
+        
+        # Perspective projection
+        x_2d = fx * x_cam / z_cam + cx
+        y_2d = fy * y_cam / z_cam + cy
         
         return np.stack([x_2d, y_2d], axis=1)
     
@@ -517,11 +529,17 @@ class HybridPoseDetector:
         """
         Detect pose and render visualization with mesh overlay.
         
-        Uses the exact projection from 4D-Humans demo.py:
+        Uses the exact rendering from 4D-Humans demo.py:
+        - pyrender for proper 3D mesh rendering
         - cam_crop_to_full() for camera conversion
         - Perspective projection with scaled focal length
         """
         import cv2
+        try:
+            from mesh_renderer import SMPLMeshRenderer
+        except ImportError as e:
+            logger.error("[VIZ] Failed to import SMPLMeshRenderer: %s", str(e))
+            SMPLMeshRenderer = None
         
         logger.info("[VIZ] ===== VISUALIZATION (demo-style) frame %d =====", frame_number)
         
@@ -543,8 +561,12 @@ class HybridPoseDetector:
         h, w = image_bgr.shape[:2]
         mesh_rendered = False
         
-        # Render mesh using demo-style projection
-        if result.get('has_3d') and hasattr(self, '_last_hmr2_result') and self._last_hmr2_result:
+        # Render mesh using exact 4D-Humans pyrender approach
+        logger.info("[VIZ] Mesh rendering check: SMPLMeshRenderer=%s, has_3d=%s, _last_hmr2_result=%s", 
+                   SMPLMeshRenderer is not None, result.get('has_3d'), 
+                   hasattr(self, '_last_hmr2_result') and self._last_hmr2_result is not None)
+        
+        if SMPLMeshRenderer and result.get('has_3d') and hasattr(self, '_last_hmr2_result') and self._last_hmr2_result:
             hmr2_result = self._last_hmr2_result
             
             try:
@@ -552,50 +574,38 @@ class HybridPoseDetector:
                 faces = hmr2_result.get('faces')
                 cam_t_full = hmr2_result.get('cam_t_full')
                 scaled_focal = hmr2_result.get('scaled_focal_length')
-                img_size = hmr2_result.get('img_size')
+                
+                logger.info("[VIZ] Mesh data check: vertices=%s, faces=%s, cam_t_full=%s, scaled_focal=%s",
+                           vertices is not None, faces is not None, cam_t_full is not None, scaled_focal is not None)
                 
                 if vertices is not None and faces is not None and cam_t_full is not None:
-                    logger.info("[VIZ] Projecting %d vertices with demo-style projection", len(vertices))
+                    logger.info("[VIZ] Rendering %d vertices with pyrender (exact 4D-Humans)", len(vertices))
                     logger.info("[VIZ] cam_t_full: %s", cam_t_full)
                     logger.info("[VIZ] scaled_focal: %.1f", scaled_focal)
                     
-                    # Project vertices to 2D
-                    vertices_2d = self._project_vertices_to_2d(
-                        vertices, cam_t_full, scaled_focal, img_size
+                    # Use exact 4D-Humans renderer
+                    renderer = SMPLMeshRenderer(focal_length=scaled_focal, img_size=256)
+                    image_bgr = renderer.render_mesh_overlay(
+                        image_bgr,
+                        vertices,
+                        faces,
+                        cam_t_full,
+                        focal_length=scaled_focal,
                     )
                     
-                    logger.info("[VIZ] Projected vertices bounds: x=[%.1f, %.1f], y=[%.1f, %.1f]",
-                               vertices_2d[:, 0].min(), vertices_2d[:, 0].max(),
-                               vertices_2d[:, 1].min(), vertices_2d[:, 1].max())
-                    
-                    # Draw mesh wireframe
-                    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-                    
-                    # Draw mesh edges (green wireframe)
-                    edge_count = 0
-                    for face in faces:
-                        for i in range(3):
-                            v1_idx = face[i]
-                            v2_idx = face[(i + 1) % 3]
-                            
-                            p1 = vertices_2d[v1_idx]
-                            p2 = vertices_2d[v2_idx]
-                            
-                            # Only draw if within image bounds
-                            if (0 <= p1[0] < w and 0 <= p1[1] < h and
-                                0 <= p2[0] < w and 0 <= p2[1] < h):
-                                cv2.line(image_rgb, 
-                                       (int(p1[0]), int(p1[1])),
-                                       (int(p2[0]), int(p2[1])),
-                                       (0, 255, 0), 1, cv2.LINE_AA)
-                                edge_count += 1
-                    
-                    image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
                     mesh_rendered = True
-                    logger.info("[VIZ] ✓ Mesh rendered: %d edges drawn", edge_count)
+                    logger.info("[VIZ] ✓ Mesh rendered with pyrender")
+                else:
+                    logger.warning("[VIZ] Missing mesh data: vertices=%s, faces=%s, cam_t_full=%s",
+                                  vertices is not None, faces is not None, cam_t_full is not None)
                     
             except Exception as e:
                 logger.error("[VIZ] Mesh rendering failed: %s", str(e), exc_info=True)
+        elif not SMPLMeshRenderer:
+            logger.warning("[VIZ] SMPLMeshRenderer not available, skipping mesh rendering")
+        else:
+            logger.warning("[VIZ] Mesh rendering skipped: has_3d=%s, _last_hmr2_result=%s",
+                          result.get('has_3d'), hasattr(self, '_last_hmr2_result') and self._last_hmr2_result is not None)
         
         result['mesh_rendered'] = mesh_rendered
         
