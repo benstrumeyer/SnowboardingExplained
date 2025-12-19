@@ -1,0 +1,11 @@
+{
+  "test": true,
+  "frameNumber": 1,
+  "timestamp": "2025-12-19T01:25:00Z",
+  "keypoints": 23,
+  "meshVertices": 6890,
+  "meshFaces": 13776,
+  "processingTime": 245,
+  "model": "HMR2/ViTDet",
+  "message": "This is a test frame. Upload a real video to see actual pose data."
+}
