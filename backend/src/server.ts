@@ -1328,25 +1328,30 @@ app.post('/process_video', upload.single('video'), async (req: Request, res: Res
     // Read the video file and append it
     const videoStream = fs.createReadStream(videoPath);
     form.append('video', videoStream, req.file.originalname);
+    form.append('output_format', 'file_path');
 
     logger.info(`[PROCESS_VIDEO] Sending to pose service: ${poseServiceUrl}/process_video`);
+    logger.info(`[PROCESS_VIDEO] FormData headers:`, form.getHeaders());
 
     const response = await fetch(`${poseServiceUrl}/process_video`, {
       method: 'POST',
-      body: form as any,
+      body: form,
       headers: form.getHeaders()
     });
+
+    logger.info(`[PROCESS_VIDEO] Response status: ${response.status}`);
 
     if (!response.ok) {
       const errorText = await response.text();
       logger.error(`[PROCESS_VIDEO] Pose service error: ${response.status} - ${errorText}`);
       return res.status(response.status).json({
         error: `Pose service error: ${response.status}`,
+        details: errorText,
         status: 'error'
       });
     }
 
-    const result = await response.json();
+    const result: any = await response.json();
     logger.info(`[PROCESS_VIDEO] Processing complete:`, result);
 
     // Clean up uploaded file
@@ -1356,7 +1361,7 @@ app.post('/process_video', upload.single('video'), async (req: Request, res: Res
 
     res.json({
       status: 'success',
-      ...result
+      data: result
     });
 
   } catch (err: any) {
