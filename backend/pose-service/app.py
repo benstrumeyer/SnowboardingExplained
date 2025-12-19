@@ -42,6 +42,81 @@ def health_check():
     })
 
 
+@app.route('/warmup', methods=['GET', 'POST'])
+def warmup():
+    """
+    Pre-load HMR2 and ViTDet models to avoid cold start delays.
+    
+    Call this endpoint once after server starts to warm up the models.
+    Models are cached on disk after first download (~500MB HMR2, ~2.7GB ViTDet).
+    Subsequent warmups just load from disk cache.
+    
+    Returns timing info for each model load.
+    """
+    if not HAS_HYBRID:
+        return jsonify({
+            'status': 'error',
+            'error': 'HMR2 detector not available'
+        }), 501
+    
+    results = {
+        'status': 'warming up',
+        'hmr2': {'status': 'pending'},
+        'vitdet': {'status': 'pending'}
+    }
+    
+    try:
+        detector = get_hybrid_detector()
+        
+        # Load HMR2
+        hmr2_start = time.time()
+        try:
+            detector._load_hmr2()
+            hmr2_time = time.time() - hmr2_start
+            results['hmr2'] = {
+                'status': 'loaded' if detector.model_loaded else 'failed',
+                'load_time_seconds': round(hmr2_time, 2)
+            }
+        except Exception as e:
+            results['hmr2'] = {'status': 'error', 'error': str(e)}
+        
+        # Load ViTDet
+        vitdet_start = time.time()
+        try:
+            vitdet = detector._load_vitdet()
+            vitdet_time = time.time() - vitdet_start
+            results['vitdet'] = {
+                'status': 'loaded' if vitdet is not None else 'failed',
+                'load_time_seconds': round(vitdet_time, 2)
+            }
+        except Exception as e:
+            results['vitdet'] = {'status': 'error', 'error': str(e)}
+        
+        # Overall status
+        hmr2_ok = results['hmr2'].get('status') == 'loaded'
+        vitdet_ok = results['vitdet'].get('status') == 'loaded'
+        
+        if hmr2_ok and vitdet_ok:
+            results['status'] = 'ready'
+            results['message'] = 'All models loaded and ready'
+        elif hmr2_ok:
+            results['status'] = 'partial'
+            results['message'] = 'HMR2 loaded, ViTDet failed (will use full-image fallback)'
+        else:
+            results['status'] = 'error'
+            results['message'] = 'Model loading failed'
+        
+        return jsonify(results)
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'error': str(e)
+        }), 500
+
+
 @app.route('/pose/hybrid', methods=['POST'])
 def detect_pose_hybrid():
     """
@@ -128,9 +203,13 @@ if __name__ == '__main__':
     print("=" * 60)
     print("Endpoints:")
     print("  GET  /health                        - Health check")
+    print("  GET  /warmup                        - Pre-load models (call once after start)")
     print("  POST /pose/hybrid                   - HMR2 3D pose detection")
     print("  POST /detect_pose_with_visualization - Pose with mesh overlay")
     print(f"HMR2 detector: {'available' if HAS_HYBRID else 'NOT available'}")
+    print("")
+    print("TIP: Call /warmup after server starts to pre-load models (~30s)")
+    print("     Models are cached on disk after first download.")
     
     if HAS_HYBRID:
         try:
