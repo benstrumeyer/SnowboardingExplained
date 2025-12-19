@@ -78,3 +78,4 @@
 {"error":"timeout of 30000ms exceeded","frameNumber":0,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-19 02:16:41"}
 {"error":"timeout of 30000ms exceeded","frameNumber":0,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-19 03:18:20"}
 {"error":"timeout of 30000ms exceeded","frameNumber":1,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-19 03:18:51"}
+{"level":"error","message":"[PROCESS_VIDEO] Pose service error: 400 - {\"error\":\"video file is required\"}\n","service":"video-coach-api","timestamp":"2025-12-19 06:45:15"}

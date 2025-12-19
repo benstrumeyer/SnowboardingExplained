@@ -1320,18 +1320,20 @@ app.post('/process_video', upload.single('video'), async (req: Request, res: Res
 
     const videoPath = req.file.path;
     logger.info(`[PROCESS_VIDEO] Starting full video processing: ${videoPath}`);
+    logger.info(`[PROCESS_VIDEO] File size: ${req.file.size} bytes`);
 
     // Call the pose service to process the video
     const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
-    const form = new FormData();
     
-    // Read the video file and append it
-    const videoStream = fs.createReadStream(videoPath);
-    form.append('video', videoStream, req.file.originalname);
+    // Read file into buffer (more reliable than stream for cross-platform)
+    const videoBuffer = fs.readFileSync(videoPath);
+    logger.info(`[PROCESS_VIDEO] Read video buffer: ${videoBuffer.length} bytes`);
+    
+    const form = new FormData();
+    form.append('video', videoBuffer, req.file.originalname);
     form.append('output_format', 'file_path');
 
     logger.info(`[PROCESS_VIDEO] Sending to pose service: ${poseServiceUrl}/process_video`);
-    logger.info(`[PROCESS_VIDEO] FormData headers:`, form.getHeaders());
 
     const response = await fetch(`${poseServiceUrl}/process_video`, {
       method: 'POST',
