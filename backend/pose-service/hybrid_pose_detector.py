@@ -1,0 +1,590 @@
+"""
+4D-Humans (HMR2) Pose Detector - Exact Demo Implementation
+
+This implementation exactly follows the 4D-Humans demo.py:
+1. ViTDet detection for person bounding boxes
+2. HMR2 inference on cropped regions
+3. cam_crop_to_full() to convert camera params to full image space
+4. Proper perspective projection for mesh rendering
+
+Reference: https://github.com/shubham-goel/4D-Humans/blob/main/demo.py
+
+VERSION: 2024-12-19-v2 (demo-style implementation)
+"""
+
+import base64
+import io
+import time
+import numpy as np
+from PIL import Image
+import os
+import torch
+import logging
+import json
+import sys
+
+# Setup logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(asctime)s] [%(levelname)s] %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Print version info on import
+print("=" * 60)
+print("[HYBRID_POSE_DETECTOR] VERSION: 2024-12-19-v2 (demo-style)")
+print(f"[HYBRID_POSE_DETECTOR] File: {__file__}")
+print(f"[HYBRID_POSE_DETECTOR] Python: {sys.executable}")
+print("=" * 60)
+
+# Config flags
+USE_HMR2 = True
+
+# Check for torch
+try:
+    import torch
+    HAS_TORCH = True
+    print(f"[POSE] PyTorch {torch.__version__}, CUDA: {torch.cuda.is_available()}")
+except ImportError:
+    HAS_TORCH = False
+    print("[POSE] PyTorch not installed")
+
+# Check for HMR2 using our custom loader
+HAS_HMR2 = False
+HMR2_MODULES = None
+if HAS_TORCH and USE_HMR2:
+    try:
+        from hmr2_loader import get_hmr2_modules
+        HMR2_MODULES = get_hmr2_modules()
+        if HMR2_MODULES:
+            HAS_HMR2 = True
+            print("[POSE] HMR2 (4D-Humans) available")
+        else:
+            print("[POSE] HMR2 loader returned None")
+    except Exception as e:
+        print(f"[POSE] HMR2 not available: {e}")
+
+# SMPL joint names (24 joints from 4D-Humans)
+SMPL_JOINT_NAMES = [
+    'pelvis', 'left_hip', 'right_hip', 'spine1',
+    'left_knee', 'right_knee', 'spine2', 'left_ankle',
+    'right_ankle', 'spine3', 'left_foot', 'right_foot',
+    'neck', 'left_collar', 'right_collar', 'head',
+    'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
+    'left_wrist', 'right_wrist', 'left_hand', 'right_hand'
+]
+
+
+def cam_crop_to_full(cam_bbox, box_center, box_size, img_size, focal_length=5000.):
+    """
+    Convert camera parameters from crop space to full image space.
+    
+    This is the EXACT function from 4D-Humans/hmr2/utils/renderer.py
+    
+    Args:
+        cam_bbox: (B, 3) tensor with [s, tx, ty] in crop space
+        box_center: (B, 2) tensor with crop center in image pixels
+        box_size: (B,) tensor with crop size in pixels
+        img_size: (B, 2) tensor with [width, height] of full image
+        focal_length: focal length for perspective projection
+    
+    Returns:
+        (B, 3) tensor with [tx, ty, tz] camera translation in full image space
+    """
+    img_w, img_h = img_size[:, 0], img_size[:, 1]
+    cx, cy, b = box_center[:, 0], box_center[:, 1], box_size
+    w_2, h_2 = img_w / 2., img_h / 2.
+    bs = b * cam_bbox[:, 0] + 1e-9
+    tz = 2 * focal_length / bs
+    tx = (2 * (cx - w_2) / bs) + cam_bbox[:, 1]
+    ty = (2 * (cy - h_2) / bs) + cam_bbox[:, 2]
+    full_cam = torch.stack([tx, ty, tz], dim=-1)
+    return full_cam
+
+
+class HybridPoseDetector:
+    """
+    4D-Humans pose detector using HMR2 - Exact Demo Implementation
+    
+    Follows the exact flow from demo.py:
+    1. ViTDet detection
+    2. ViTDetDataset for preprocessing
+    3. HMR2 inference
+    4. cam_crop_to_full() for camera conversion
+    """
+    
+    def __init__(self, use_gpu=True):
+        self.device = 'cuda' if use_gpu and HAS_TORCH and torch.cuda.is_available() else 'cpu'
+        self.hmr2_model = None
+        self.hmr2_cfg = None
+        self.model_loaded = False
+        
+        self.use_3d = HAS_TORCH and HAS_HMR2 and self.device == 'cuda'
+        self.model_version = "4d-humans-hmr2-demo" if self.use_3d else "disabled"
+        
+        print(f"[POSE] Initializing 4D-Humans detector (demo implementation)")
+        print(f"[POSE] Device: {self.device}")
+        print(f"[POSE] HMR2 enabled: {self.use_3d}")
+    
+    def _load_hmr2(self):
+        """Lazy load HMR2 model - exactly as in demo.py"""
+        if self.model_loaded or not self.use_3d or not HMR2_MODULES:
+            return
+        
+        print("[POSE] Loading HMR2 model (first run downloads ~500MB)...")
+        start = time.time()
+        
+        try:
+            download_models = HMR2_MODULES['download_models']
+            load_hmr2 = HMR2_MODULES['load_hmr2']
+            CACHE_DIR_4DHUMANS = HMR2_MODULES['CACHE_DIR_4DHUMANS']
+            DEFAULT_CHECKPOINT = HMR2_MODULES['DEFAULT_CHECKPOINT']
+            
+            # Exactly as in demo.py
+            download_models(CACHE_DIR_4DHUMANS)
+            self.hmr2_model, self.hmr2_cfg = load_hmr2(DEFAULT_CHECKPOINT)
+            self.hmr2_model = self.hmr2_model.to(self.device)
+            self.hmr2_model.eval()
+            self.model_loaded = True
+            print(f"[POSE] HMR2 loaded in {(time.time() - start):.1f}s")
+        except Exception as e:
+            print(f"[POSE] Failed to load HMR2: {e}")
+            import traceback
+            traceback.print_exc()
+            self.use_3d = False
+    
+    def _decode_image(self, image_base64: str):
+        """Decode base64 image"""
+        image_data = base64.b64decode(image_base64)
+        pil_image = Image.open(io.BytesIO(image_data))
+        if pil_image.mode != 'RGB':
+            pil_image = pil_image.convert('RGB')
+        return pil_image, np.array(pil_image)
+    
+    def _run_hmr2_demo_style(self, image_np):
+        """
+        Run HMR2 exactly as in demo.py
+        
+        Key steps from demo.py:
+        1. Detect humans with ViTDet
+        2. Create ViTDetDataset with detected boxes
+        3. Run HMR2 model
+        4. Use cam_crop_to_full() for camera conversion
+        """
+        if not self.use_3d or not HMR2_MODULES:
+            logger.warning("[HMR2] Skipped: use_3d=%s, HMR2_MODULES=%s", self.use_3d, HMR2_MODULES is not None)
+            return None
+        
+        logger.info("[HMR2] Starting HMR2 detection (demo-style)")
+        self._load_hmr2()
+        if not self.model_loaded:
+            logger.error("[HMR2] Model failed to load")
+            return None
+        
+        try:
+            import cv2
+            import sys
+            hmr2_path = os.path.join(os.path.dirname(__file__), '4D-Humans')
+            if hmr2_path not in sys.path:
+                sys.path.insert(0, hmr2_path)
+            from hmr2.datasets.vitdet_dataset import ViTDetDataset
+            recursive_to = HMR2_MODULES['recursive_to']
+            
+            h, w = image_np.shape[:2]
+            logger.info("[HMR2] Image shape: %dx%d", w, h)
+            
+            # Step 1: Use full image as bounding box (ViTDet not available on Windows)
+            # In demo.py, ViTDet provides boxes, but we use full image as fallback
+            logger.info("[HMR2] Using full image as bounding box (ViTDet not available)")
+            boxes = np.array([[0, 0, w, h]], dtype=np.float32)
+            
+            # Step 2: Create ViTDetDataset - exactly as in demo.py
+            logger.info("[HMR2] Creating ViTDetDataset")
+            dataset = ViTDetDataset(self.hmr2_cfg, image_np, boxes)
+            dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
+            
+            # Step 3: Run HMR2 model - exactly as in demo.py
+            logger.info("[HMR2] Running HMR2 model inference...")
+            
+            with torch.no_grad():
+                for batch in dataloader:
+                    batch = recursive_to(batch, self.device)
+                    output = self.hmr2_model(batch)
+                    
+                    # Step 4: Extract predictions - exactly as in demo.py
+                    pred_cam = output['pred_cam']  # (B, 3) - [s, tx, ty] in crop space
+                    box_center = batch["box_center"].float()  # (B, 2)
+                    box_size = batch["box_size"].float()  # (B,)
+                    img_size = batch["img_size"].float()  # (B, 2)
+                    
+                    # Step 5: Compute scaled focal length - exactly as in demo.py
+                    scaled_focal_length = self.hmr2_cfg.EXTRA.FOCAL_LENGTH / self.hmr2_cfg.MODEL.IMAGE_SIZE * img_size.max()
+                    
+                    # Step 6: Convert camera to full image space - THE KEY FUNCTION
+                    pred_cam_t_full = cam_crop_to_full(
+                        pred_cam, 
+                        box_center, 
+                        box_size, 
+                        img_size, 
+                        scaled_focal_length
+                    ).detach().cpu().numpy()
+                    
+                    logger.info("[HMR2] ===== CAMERA CONVERSION (demo-style) =====")
+                    logger.info("[HMR2] pred_cam (crop space): %s", pred_cam[0].cpu().numpy())
+                    logger.info("[HMR2] box_center: %s", box_center[0].cpu().numpy())
+                    logger.info("[HMR2] box_size: %.1f", box_size[0].cpu().numpy())
+                    logger.info("[HMR2] img_size: %s", img_size[0].cpu().numpy())
+                    logger.info("[HMR2] scaled_focal_length: %.1f", scaled_focal_length.cpu().numpy())
+                    logger.info("[HMR2] pred_cam_t_full: %s", pred_cam_t_full[0])
+                    
+                    # Extract all outputs
+                    pred_vertices = output['pred_vertices'][0].cpu().numpy()
+                    pred_cam_t = output['pred_cam_t'][0].cpu().numpy()  # Original crop-space cam_t
+                    
+                    # Get 3D joints
+                    joints_3d = None
+                    if 'pred_keypoints_3d' in output:
+                        joints_3d = output['pred_keypoints_3d'][0].cpu().numpy()
+                    
+                    # Get SMPL faces
+                    smpl_faces = None
+                    if hasattr(self.hmr2_model, 'smpl'):
+                        smpl_faces = self.hmr2_model.smpl.faces.astype(np.int32)
+                    
+                    logger.info("[HMR2] ✓ Detection complete")
+                    logger.info("[HMR2] Vertices: %s", pred_vertices.shape)
+                    logger.info("[HMR2] Joints 3D: %s", joints_3d.shape if joints_3d is not None else None)
+                    
+                    return {
+                        'vertices': pred_vertices,
+                        'cam_t_full': pred_cam_t_full[0],  # Full image camera translation
+                        'cam_t_crop': pred_cam_t,  # Crop space camera translation
+                        'pred_cam': pred_cam[0].cpu().numpy(),  # Raw [s, tx, ty]
+                        'joints_3d': joints_3d,
+                        'faces': smpl_faces,
+                        'box_center': box_center[0].cpu().numpy(),
+                        'box_size': float(box_size[0].cpu().numpy()),
+                        'img_size': img_size[0].cpu().numpy(),
+                        'scaled_focal_length': float(scaled_focal_length.cpu().numpy()),
+                        'focal_length': float(self.hmr2_cfg.EXTRA.FOCAL_LENGTH),
+                        'model_image_size': int(self.hmr2_cfg.MODEL.IMAGE_SIZE),
+                    }
+            
+            return None
+            
+        except Exception as e:
+            logger.error("[HMR2] Error: %s", str(e), exc_info=True)
+            return None
+
+    def _project_vertices_to_2d(self, vertices, cam_t_full, focal_length, img_size):
+        """
+        Project 3D vertices to 2D using perspective projection.
+        
+        This follows the rendering approach from 4D-Humans renderer.py:
+        - camera_translation[0] *= -1 (flip x)
+        - Use focal length for perspective projection
+        - Center at image center
+        
+        Args:
+            vertices: (N, 3) 3D vertices
+            cam_t_full: (3,) camera translation [tx, ty, tz] in full image space
+            focal_length: scaled focal length
+            img_size: (2,) [width, height]
+        
+        Returns:
+            (N, 2) 2D projected points in image pixels
+        """
+        # Copy camera translation and flip x (as in renderer.py)
+        camera_translation = cam_t_full.copy()
+        camera_translation[0] *= -1.
+        
+        # Add camera translation to vertices
+        vertices_cam = vertices + camera_translation
+        
+        # Perspective projection
+        # x_2d = fx * X / Z + cx
+        # y_2d = fy * Y / Z + cy
+        fx = fy = focal_length
+        cx = img_size[0] / 2.0
+        cy = img_size[1] / 2.0
+        
+        # Avoid division by zero
+        z = vertices_cam[:, 2]
+        z = np.where(np.abs(z) < 0.01, 0.01, z)
+        
+        x_2d = fx * vertices_cam[:, 0] / z + cx
+        y_2d = fy * vertices_cam[:, 1] / z + cy
+        
+        return np.stack([x_2d, y_2d], axis=1)
+    
+    def _compute_angles_from_3d(self, joints_3d):
+        """Compute joint angles from 3D positions"""
+        if joints_3d is None:
+            return {}
+        
+        angles = {}
+        
+        def angle_3d(p1, p2, p3):
+            """Angle at p2 in 3D space"""
+            v1 = p1 - p2
+            v2 = p3 - p2
+            cos_angle = np.dot(v1, v2) / (np.linalg.norm(v1) * np.linalg.norm(v2) + 1e-6)
+            return float(np.degrees(np.arccos(np.clip(cos_angle, -1, 1))))
+        
+        try:
+            # SMPL joint indices
+            angles['left_knee'] = angle_3d(joints_3d[1], joints_3d[4], joints_3d[7])
+            angles['right_knee'] = angle_3d(joints_3d[2], joints_3d[5], joints_3d[8])
+            angles['left_hip'] = angle_3d(joints_3d[3], joints_3d[1], joints_3d[4])
+            angles['right_hip'] = angle_3d(joints_3d[3], joints_3d[2], joints_3d[5])
+            angles['left_elbow'] = angle_3d(joints_3d[16], joints_3d[18], joints_3d[20])
+            angles['right_elbow'] = angle_3d(joints_3d[17], joints_3d[19], joints_3d[21])
+            angles['left_shoulder'] = angle_3d(joints_3d[12], joints_3d[16], joints_3d[18])
+            angles['right_shoulder'] = angle_3d(joints_3d[12], joints_3d[17], joints_3d[19])
+            angles['spine'] = angle_3d(joints_3d[0], joints_3d[6], joints_3d[12])
+        except Exception as e:
+            print(f"[POSE] Angle computation error: {e}")
+        
+        return angles
+    
+    def detect_pose(self, image_base64: str, frame_number: int = 0) -> dict:
+        """Detect pose using 4D-Humans (demo-style implementation)"""
+        logger.info("=" * 80)
+        logger.info("=== DETECT_POSE START (frame %d) ===", frame_number)
+        logger.info("=" * 80)
+        start_time = time.time()
+        
+        try:
+            pil_image, image_np = self._decode_image(image_base64)
+            h, w = image_np.shape[:2]
+            logger.info("✓ Image decoded: %dx%d", w, h)
+        except Exception as e:
+            logger.error("✗ Failed to decode image: %s", str(e))
+            return {'error': f'Failed to decode image: {str(e)}', 'frame_number': frame_number}
+        
+        # Run HMR2 (demo-style)
+        hmr2_result = self._run_hmr2_demo_style(image_np)
+        self._last_hmr2_result = hmr2_result
+        
+        processing_time_ms = (time.time() - start_time) * 1000
+        
+        result = {
+            'frame_number': frame_number,
+            'frame_width': w,
+            'frame_height': h,
+            'processing_time_ms': round(processing_time_ms, 2),
+            'model_version': self.model_version,
+            'has_3d': hmr2_result is not None,
+        }
+        
+        if hmr2_result:
+            joints_3d = hmr2_result.get('joints_3d')
+            cam_t_full = hmr2_result.get('cam_t_full')
+            scaled_focal = hmr2_result.get('scaled_focal_length')
+            img_size = hmr2_result.get('img_size')
+            
+            # Project joints to 2D using the demo-style projection
+            keypoints = []
+            if joints_3d is not None and cam_t_full is not None:
+                joints_2d = self._project_vertices_to_2d(
+                    joints_3d, cam_t_full, scaled_focal, img_size
+                )
+                
+                for i, name in enumerate(SMPL_JOINT_NAMES):
+                    if i < len(joints_3d):
+                        keypoints.append({
+                            'name': name,
+                            'x': float(joints_2d[i, 0]),
+                            'y': float(joints_2d[i, 1]),
+                            'z': float(joints_3d[i, 2]),
+                            'x_3d': float(joints_3d[i, 0]),
+                            'y_3d': float(joints_3d[i, 1]),
+                            'z_3d': float(joints_3d[i, 2]),
+                            'confidence': 1.0
+                        })
+            
+            result['keypoints'] = keypoints
+            result['keypoint_count'] = len(keypoints)
+            result['joints_3d_raw'] = joints_3d.tolist() if joints_3d is not None else None
+            result['joint_angles_3d'] = self._compute_angles_from_3d(joints_3d)
+            result['camera_translation'] = cam_t_full.tolist() if cam_t_full is not None else None
+            result['scaled_focal_length'] = scaled_focal
+            
+            # Mesh data
+            vertices = hmr2_result.get('vertices')
+            faces = hmr2_result.get('faces')
+            if vertices is not None:
+                result['mesh_vertices'] = vertices.shape[0]
+                result['mesh_vertices_data'] = vertices.tolist()
+            if faces is not None:
+                result['mesh_faces_data'] = faces.tolist()
+        else:
+            result['keypoints'] = []
+            result['keypoint_count'] = 0
+            result['error'] = 'HMR2 detection failed'
+        
+        logger.info("=== DETECT_POSE END (frame %d) ===", frame_number)
+        logger.info("Keypoints: %d, Has 3D: %s, Time: %.0fms", 
+                   result.get('keypoint_count', 0), result.get('has_3d'), processing_time_ms)
+        
+        return result
+    
+    def detect_pose_with_visualization(self, image_base64: str, frame_number: int = 0) -> dict:
+        """
+        Detect pose and render visualization with mesh overlay.
+        
+        Uses the exact projection from 4D-Humans demo.py:
+        - cam_crop_to_full() for camera conversion
+        - Perspective projection with scaled focal length
+        """
+        import cv2
+        
+        logger.info("[VIZ] ===== VISUALIZATION (demo-style) frame %d =====", frame_number)
+        
+        # Get pose detection
+        result = self.detect_pose(image_base64, frame_number)
+        
+        # Decode image for visualization
+        try:
+            image_data = base64.b64decode(image_base64)
+            pil_image = Image.open(io.BytesIO(image_data))
+            if pil_image.mode != 'RGB':
+                pil_image = pil_image.convert('RGB')
+            image_np = np.array(pil_image)
+            image_bgr = cv2.cvtColor(image_np, cv2.COLOR_RGB2BGR)
+        except Exception as e:
+            result['visualization_error'] = str(e)
+            return result
+        
+        h, w = image_bgr.shape[:2]
+        mesh_rendered = False
+        
+        # Render mesh using demo-style projection
+        if result.get('has_3d') and hasattr(self, '_last_hmr2_result') and self._last_hmr2_result:
+            hmr2_result = self._last_hmr2_result
+            
+            try:
+                vertices = hmr2_result.get('vertices')
+                faces = hmr2_result.get('faces')
+                cam_t_full = hmr2_result.get('cam_t_full')
+                scaled_focal = hmr2_result.get('scaled_focal_length')
+                img_size = hmr2_result.get('img_size')
+                
+                if vertices is not None and faces is not None and cam_t_full is not None:
+                    logger.info("[VIZ] Projecting %d vertices with demo-style projection", len(vertices))
+                    logger.info("[VIZ] cam_t_full: %s", cam_t_full)
+                    logger.info("[VIZ] scaled_focal: %.1f", scaled_focal)
+                    
+                    # Project vertices to 2D
+                    vertices_2d = self._project_vertices_to_2d(
+                        vertices, cam_t_full, scaled_focal, img_size
+                    )
+                    
+                    logger.info("[VIZ] Projected vertices bounds: x=[%.1f, %.1f], y=[%.1f, %.1f]",
+                               vertices_2d[:, 0].min(), vertices_2d[:, 0].max(),
+                               vertices_2d[:, 1].min(), vertices_2d[:, 1].max())
+                    
+                    # Draw mesh wireframe
+                    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+                    
+                    # Draw mesh edges (green wireframe)
+                    edge_count = 0
+                    for face in faces:
+                        for i in range(3):
+                            v1_idx = face[i]
+                            v2_idx = face[(i + 1) % 3]
+                            
+                            p1 = vertices_2d[v1_idx]
+                            p2 = vertices_2d[v2_idx]
+                            
+                            # Only draw if within image bounds
+                            if (0 <= p1[0] < w and 0 <= p1[1] < h and
+                                0 <= p2[0] < w and 0 <= p2[1] < h):
+                                cv2.line(image_rgb, 
+                                       (int(p1[0]), int(p1[1])),
+                                       (int(p2[0]), int(p2[1])),
+                                       (0, 255, 0), 1, cv2.LINE_AA)
+                                edge_count += 1
+                    
+                    image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+                    mesh_rendered = True
+                    logger.info("[VIZ] ✓ Mesh rendered: %d edges drawn", edge_count)
+                    
+            except Exception as e:
+                logger.error("[VIZ] Mesh rendering failed: %s", str(e), exc_info=True)
+        
+        result['mesh_rendered'] = mesh_rendered
+        
+        # Draw skeleton
+        if result.get('keypoints') and len(result['keypoints']) > 0:
+            kp_dict = {kp['name']: kp for kp in result['keypoints']}
+            
+            skeleton = [
+                ('pelvis', 'spine1'), ('spine1', 'spine2'), ('spine2', 'spine3'), 
+                ('spine3', 'neck'), ('neck', 'head'),
+                ('spine3', 'left_collar'), ('left_collar', 'left_shoulder'),
+                ('left_shoulder', 'left_elbow'), ('left_elbow', 'left_wrist'), ('left_wrist', 'left_hand'),
+                ('spine3', 'right_collar'), ('right_collar', 'right_shoulder'),
+                ('right_shoulder', 'right_elbow'), ('right_elbow', 'right_wrist'), ('right_wrist', 'right_hand'),
+                ('pelvis', 'left_hip'), ('left_hip', 'left_knee'), 
+                ('left_knee', 'left_ankle'), ('left_ankle', 'left_foot'),
+                ('pelvis', 'right_hip'), ('right_hip', 'right_knee'),
+                ('right_knee', 'right_ankle'), ('right_ankle', 'right_foot'),
+            ]
+            
+            for start_name, end_name in skeleton:
+                if start_name in kp_dict and end_name in kp_dict:
+                    start = kp_dict[start_name]
+                    end = kp_dict[end_name]
+                    pt1 = (int(start['x']), int(start['y']))
+                    pt2 = (int(end['x']), int(end['y']))
+                    cv2.line(image_bgr, pt1, pt2, (0, 165, 255), 3, cv2.LINE_AA)
+            
+            for kp in result['keypoints']:
+                x, y = int(kp['x']), int(kp['y'])
+                cv2.circle(image_bgr, (x, y), 6, (0, 255, 255), -1, cv2.LINE_AA)
+                cv2.circle(image_bgr, (x, y), 6, (0, 165, 255), 2, cv2.LINE_AA)
+        
+        # Info overlay
+        cv2.rectangle(image_bgr, (10, 10), (350, 80), (0, 0, 0), -1)
+        cv2.putText(image_bgr, "4D-Humans HMR2 (demo-style)", (20, 35), 
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (180, 100, 255), 2)
+        cv2.putText(image_bgr, f"Frame {frame_number + 1} | {result.get('keypoint_count', 0)} joints", 
+                    (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        mesh_status = "MESH: YES" if mesh_rendered else "MESH: NO"
+        cv2.putText(image_bgr, mesh_status, (250, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 
+                    (0, 255, 0) if mesh_rendered else (0, 0, 255), 1)
+        
+        # Joint angles
+        angles = result.get('joint_angles_3d', {})
+        if angles:
+            cv2.rectangle(image_bgr, (w - 170, 10), (w - 10, 120), (0, 0, 0), -1)
+            cv2.putText(image_bgr, "Joint Angles", (w - 160, 30), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 191, 0), 1)
+            y_pos = 50
+            for name in ['left_knee', 'right_knee', 'spine']:
+                if name in angles:
+                    cv2.putText(image_bgr, f"{name}: {angles[name]:.0f}°", 
+                                (w - 160, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+                    y_pos += 20
+        
+        # Encode result
+        image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+        pil_result = Image.fromarray(image_rgb)
+        buffer = io.BytesIO()
+        pil_result.save(buffer, format='PNG')
+        viz_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        
+        result['visualization'] = f"data:image/png;base64,{viz_base64}"
+        
+        return result
+
+
+# Singleton
+_detector = None
+
+def get_hybrid_detector(use_gpu=True):
+    global _detector
+    if _detector is None:
+        _detector = HybridPoseDetector(use_gpu=use_gpu)
+    return _detector
