@@ -1309,7 +1309,7 @@ app.post('/api/debug/test-capture', async (req: Request, res: Response) => {
 });
 
 // Full video mesh overlay processing endpoint
-app.post('/process_video', upload.single('video'), async (req: Request, res: Response) => {
+app.post('/api/video/process_video', upload.single('video'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({

@@ -461,7 +461,7 @@ export const VideoCoachScreen: React.FC = () => {
       };
       formData.append('video', videoFile as any);
 
-      const uploadUrl = `${config.apiUrl}/process_video`;
+      const uploadUrl = `${config.apiUrl}/api/video/process_video`;
       console.log('[VideoCoach] Sending to full video endpoint:', uploadUrl);
       
       const response = await fetch(uploadUrl, {
