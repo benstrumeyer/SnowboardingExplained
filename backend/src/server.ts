@@ -12,9 +12,11 @@ import { ChatService } from './services/chatService';
 import { KnowledgeBaseService } from './services/knowledgeBase';
 import { ApiResponse } from './types';
 // New imports for Python pose service
-import { detectPose, detectPoseParallel, checkPoseServiceHealth, PoseFrame } from './services/pythonPoseService';
+import { detectPose, detectPoseParallel, detectPoseHybrid, detectPoseHybridBatch, checkPoseServiceHealth, PoseFrame, HybridPoseFrame } from './services/pythonPoseService';
 import { visualizePose, visualizePoseSequence } from './services/poseVisualizationSharp';
 import { AnalysisLogBuilder, analyzeFrame, AnalysisLog, FrameAnalysis } from './services/analysisLogService';
+import { meshVisualizationService } from './services/meshVisualizationService';
+import { meshAutoFixer } from './services/meshAutoFixer';
 
 // Load environment variables from .env.local
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
@@ -56,6 +58,102 @@ const upload = multer({
   },
   limits: { fileSize: 500 * 1024 * 1024 } // 500MB
 });
+
+// 4D-Humans SMPL skeleton connections (24 joints)
+const SMPL_SKELETON_CONNECTIONS: [string, string][] = [
+  // Spine
+  ['pelvis', 'spine1'], ['spine1', 'spine2'], ['spine2', 'spine3'], ['spine3', 'neck'], ['neck', 'head'],
+  // Left arm
+  ['spine3', 'left_collar'], ['left_collar', 'left_shoulder'], ['left_shoulder', 'left_elbow'], ['left_elbow', 'left_wrist'], ['left_wrist', 'left_hand'],
+  // Right arm
+  ['spine3', 'right_collar'], ['right_collar', 'right_shoulder'], ['right_shoulder', 'right_elbow'], ['right_elbow', 'right_wrist'], ['right_wrist', 'right_hand'],
+  // Left leg
+  ['pelvis', 'left_hip'], ['left_hip', 'left_knee'], ['left_knee', 'left_ankle'], ['left_ankle', 'left_foot'],
+  // Right leg
+  ['pelvis', 'right_hip'], ['right_hip', 'right_knee'], ['right_knee', 'right_ankle'], ['right_ankle', 'right_foot'],
+];
+
+import sharp from 'sharp';
+
+async function visualize4DHumansSkeleton(
+  imageBase64: string,
+  poseData: HybridPoseFrame,
+  frameIndex: number,
+  totalFrames: number
+): Promise<string> {
+  const imageBuffer = Buffer.from(imageBase64, 'base64');
+  const metadata = await sharp(imageBuffer).metadata();
+  const width = metadata.width || 640;
+  const height = metadata.height || 480;
+  
+  // Build keypoint lookup - keypoints are now in pixel coordinates from Python
+  const kpMap = new Map<string, { x: number; y: number; z?: number }>();
+  for (const kp of poseData.keypoints) {
+    // x, y are already in pixel coordinates from the Python service
+    kpMap.set(kp.name, { x: kp.x, y: kp.y, z: kp.z });
+  }
+  
+  // Generate SVG
+  const lines: string[] = [];
+  const circles: string[] = [];
+  
+  for (const [startName, endName] of SMPL_SKELETON_CONNECTIONS) {
+    const start = kpMap.get(startName);
+    const end = kpMap.get(endName);
+    if (start && end) {
+      // Bright orange/yellow color for visibility
+      lines.push(
+        `<line x1="${start.x}" y1="${start.y}" x2="${end.x}" y2="${end.y}" stroke="#FF6600" stroke-width="3" stroke-linecap="round"/>`
+      );
+    }
+  }
+  
+  // Draw joints - small circles
+  for (const [name, pos] of kpMap) {
+    circles.push(
+      `<circle cx="${pos.x}" cy="${pos.y}" r="5" fill="#FFFF00" stroke="#FF6600" stroke-width="2"/>`
+    );
+  }
+  
+  // Info overlay
+  const infoSvg = `
+    <rect x="10" y="10" width="280" height="70" fill="rgba(0,0,0,0.8)" rx="8"/>
+    <text x="20" y="35" fill="#9C27B0" font-size="16" font-family="Arial" font-weight="bold">4D-Humans HMR2</text>
+    <text x="20" y="55" fill="white" font-size="14" font-family="Arial">Frame ${frameIndex + 1}/${totalFrames} • ${poseData.keypointCount} joints</text>
+    <text x="20" y="72" fill="#888" font-size="11" font-family="Arial">3D: ${poseData.has3d ? 'YES' : 'NO'} • ${poseData.processingTimeMs}ms</text>
+  `;
+  
+  // Joint angles if available
+  let anglesSvg = '';
+  if (poseData.jointAngles3d) {
+    const angles = poseData.jointAngles3d;
+    anglesSvg = `
+      <rect x="${width - 160}" y="10" width="150" height="100" fill="rgba(0,0,0,0.8)" rx="8"/>
+      <text x="${width - 150}" y="30" fill="#00BFFF" font-size="12" font-family="Arial" font-weight="bold">Joint Angles</text>
+      <text x="${width - 150}" y="48" fill="white" font-size="11" font-family="Arial">L Knee: ${angles.left_knee?.toFixed(0) || '?'}°</text>
+      <text x="${width - 150}" y="63" fill="white" font-size="11" font-family="Arial">R Knee: ${angles.right_knee?.toFixed(0) || '?'}°</text>
+      <text x="${width - 150}" y="78" fill="white" font-size="11" font-family="Arial">L Hip: ${angles.left_hip?.toFixed(0) || '?'}°</text>
+      <text x="${width - 150}" y="93" fill="white" font-size="11" font-family="Arial">R Hip: ${angles.right_hip?.toFixed(0) || '?'}°</text>
+      <text x="${width - 150}" y="108" fill="white" font-size="11" font-family="Arial">Spine: ${angles.spine?.toFixed(0) || '?'}°</text>
+    `;
+  }
+  
+  const svg = `
+    <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+      ${lines.join('\n')}
+      ${circles.join('\n')}
+      ${infoSvg}
+      ${anglesSvg}
+    </svg>
+  `;
+  
+  const result = await sharp(imageBuffer)
+    .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
+    .png()
+    .toBuffer();
+  
+  return result.toString('base64');
+}
 
 // Error handling middleware
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -160,6 +258,22 @@ app.post('/api/video/upload', upload.single('video'), async (req: Request, res: 
       styleElements: trickDetection.styleElements
     });
 
+    // Add mesh overlays to preview frames
+    logger.info(`Adding mesh overlays to preview frames`);
+    const previewFrames = frameResult.frames.slice(0, 5);
+    const framePaths = previewFrames.map(f => f.imagePath);
+    const meshOverlays = await meshVisualizationService.addMeshOverlayToFrames(framePaths);
+
+    // Combine frame data with mesh overlays
+    const framesWithMesh = previewFrames.map((frame, index) => ({
+      frameNumber: frame.frameNumber,
+      timestamp: frame.timestamp,
+      imagePath: frame.imagePath,
+      meshOverlay: meshOverlays[index] // Base64-encoded PNG with mesh
+    }));
+
+    logger.info(`Mesh overlays completed for ${framesWithMesh.length} frames`);
+
     // Return analysis results
     res.json({
       success: true,
@@ -176,7 +290,7 @@ app.post('/api/video/upload', upload.single('video'), async (req: Request, res: 
           confidence: trickDetection.confidence,
           description: trickDetection.description
         },
-        frames: frameResult.frames.slice(0, 5) // Return first 5 frames for preview
+        frames: framesWithMesh // Return frames with mesh overlays
       },
       timestamp: new Date().toISOString()
     } as ApiResponse<any>);
@@ -736,6 +850,140 @@ app.get('/api/pose-service/health', async (req: Request, res: Response) => {
   } as ApiResponse<any>);
 });
 
+// 4D-Humans (HMR2) 3D pose analysis endpoint
+app.post('/api/video/analyze-4d', upload.single('video'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No video file provided',
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+
+    const videoId = Date.now().toString();
+    const videoPath = req.file.path;
+    const fps = parseInt(req.body.fps) || 2; // Lower FPS for 3D (slower)
+
+    logger.info(`[4D-HUMANS] Video uploaded: ${req.file.originalname}`, {
+      videoId,
+      filename: req.file.originalname,
+      size: req.file.size,
+      fps
+    });
+
+    // Check if Python pose service is running
+    const poseServiceHealthy = await checkPoseServiceHealth();
+    if (!poseServiceHealthy) {
+      return res.status(503).json({
+        success: false,
+        error: 'Pose service not available. Start it with: cd backend/pose-service && .\\venv\\Scripts\\python.exe app.py',
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+
+    // Extract frames
+    const frameResult = await FrameExtractionService.extractFrames(videoPath, videoId, fps);
+    const actualFrameCount = frameResult.frames.length;
+    logger.info(`[4D-HUMANS] Extracted ${actualFrameCount} frames`);
+
+    if (actualFrameCount === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'No frames could be extracted from video',
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+
+    // Limit to 5 frames for 4D-Humans (GPU intensive)
+    const framesToAnalyze = frameResult.frames.slice(0, 5);
+    
+    // Read frames as base64
+    const framesWithBase64 = framesToAnalyze.map(f => ({
+      imageBase64: fs.readFileSync(f.imagePath).toString('base64'),
+      frameNumber: f.frameNumber,
+      timestamp: f.timestamp
+    }));
+
+    // Call 4D-Humans hybrid endpoint with visualization enabled
+    logger.info(`[4D-HUMANS] Sending ${framesWithBase64.length} frames to 4D-Humans with visualization`);
+    const poseFrames = await detectPoseHybridBatch(
+      framesWithBase64.map(f => ({
+        imageBase64: f.imageBase64,
+        frameNumber: f.frameNumber
+      })),
+      true // Enable Python-side visualization with skeleton overlay
+    );
+
+    // Use Python-generated visualizations (skeleton drawn by OpenCV)
+    const visualizations = framesWithBase64.map((f, i) => {
+      const poseData = poseFrames[i];
+      // Use Python visualization if available, otherwise fall back to raw frame
+      if (poseData && poseData.visualization) {
+        return {
+          frameNumber: f.frameNumber,
+          timestamp: f.timestamp,
+          imageBase64: poseData.visualization // Already has data:image/png;base64, prefix
+        };
+      }
+      return {
+        frameNumber: f.frameNumber,
+        timestamp: f.timestamp,
+        imageBase64: `data:image/jpeg;base64,${f.imageBase64}`
+      };
+    });
+
+    const has3dCount = poseFrames.filter(p => p.has3d).length;
+    const successCount = poseFrames.filter(p => !p.error).length;
+
+    logger.info(`[4D-HUMANS] Analysis complete`, {
+      videoId,
+      framesAnalyzed: poseFrames.length,
+      has3dCount,
+      successCount
+    });
+
+    // Return results
+    res.json({
+      success: true,
+      data: {
+        videoId,
+        totalFrames: actualFrameCount,
+        analyzedFrames: poseFrames.length,
+        has3dFrames: has3dCount,
+        duration: frameResult.videoDuration,
+        visualizations,
+        poseData: poseFrames.map((pf, i) => ({
+          frameNumber: pf.frameNumber,
+          timestamp: framesWithBase64[i].timestamp,
+          keypointCount: pf.keypointCount,
+          processingTimeMs: pf.processingTimeMs,
+          modelVersion: pf.modelVersion,
+          has3d: pf.has3d,
+          jointAngles3d: pf.jointAngles3d,
+          error: pf.error,
+          keypoints: pf.keypoints.slice(0, 10).map(kp => ({
+            name: kp.name,
+            x: Math.round(kp.x * 100) / 100,
+            y: Math.round(kp.y * 100) / 100,
+            z: kp.z ? Math.round(kp.z * 100) / 100 : undefined,
+            confidence: Math.round(kp.confidence * 100) / 100
+          }))
+        }))
+      },
+      timestamp: new Date().toISOString()
+    } as ApiResponse<any>);
+
+  } catch (err: any) {
+    logger.error(`[4D-HUMANS] Error: ${err.message}`, { error: err });
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to analyze video',
+      timestamp: new Date().toISOString()
+    } as ApiResponse<null>);
+  }
+});
+
 // Knowledge base endpoints
 app.get('/api/knowledge/phase/:phase', (req: Request, res: Response) => {
   try {
@@ -795,6 +1043,250 @@ app.get('/api/knowledge/search', (req: Request, res: Response) => {
       error: err.message || 'Search failed',
       timestamp: new Date().toISOString()
     } as ApiResponse<null>);
+  }
+});
+
+// Debug frames API
+app.get('/api/debug/frames', (req: Request, res: Response) => {
+  try {
+    const debugDir = path.join(process.cwd(), '.debug-frames');
+    if (!fs.existsSync(debugDir)) {
+      return res.json({ frames: [], count: 0 });
+    }
+
+    const frames = fs.readdirSync(debugDir)
+      .filter(f => f.startsWith('frame'))
+      .map(f => {
+        const frameNum = parseInt(f.replace(/frame-?/, '')) || f;
+        const framePath = path.join(debugDir, f);
+        const metadataPath = path.join(framePath, 'metadata.json');
+        
+        let metadata = null;
+        if (fs.existsSync(metadataPath)) {
+          try {
+            const content = fs.readFileSync(metadataPath, 'utf-8');
+            metadata = JSON.parse(content);
+          } catch (e) {
+            // Ignore parse errors
+          }
+        }
+
+        return {
+          frameNumber: frameNum,
+          frameName: f,
+          metadata,
+        };
+      })
+      .sort((a, b) => {
+        const aNum = typeof a.frameNumber === 'number' ? a.frameNumber : 0;
+        const bNum = typeof b.frameNumber === 'number' ? b.frameNumber : 0;
+        return aNum - bNum;
+      });
+
+    res.json({ frames, count: frames.length });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/debug/frame/:frameNumber', (req: Request, res: Response) => {
+  try {
+    const frameNumber = req.params.frameNumber;
+    const debugDir = path.join(process.cwd(), '.debug-frames');
+    
+    // Try both naming conventions
+    let frameDir = path.join(debugDir, `frame-${frameNumber}`);
+    if (!fs.existsSync(frameDir)) {
+      frameDir = path.join(debugDir, `frame${frameNumber}`);
+    }
+    if (!fs.existsSync(frameDir)) {
+      frameDir = path.join(debugDir, frameNumber);
+    }
+    
+    const imagePath = path.join(frameDir, 'frame.png');
+    const metadataPath = path.join(frameDir, 'metadata.json');
+
+    let imageBase64 = null;
+    if (fs.existsSync(imagePath)) {
+      const imageBuffer = fs.readFileSync(imagePath);
+      imageBase64 = imageBuffer.toString('base64');
+    }
+
+    let metadata = null;
+    if (fs.existsSync(metadataPath)) {
+      try {
+        const content = fs.readFileSync(metadataPath, 'utf-8');
+        metadata = JSON.parse(content);
+      } catch (e) {
+        // Ignore parse errors
+      }
+    }
+
+    if (!imageBase64 && !metadata) {
+      return res.status(404).json({ error: 'Frame not found' });
+    }
+
+    res.json({
+      frameNumber,
+      image: imageBase64,
+      metadata,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/debug/frame/:frameNumber/image', (req: Request, res: Response) => {
+  try {
+    const frameNumber = parseInt(req.params.frameNumber);
+    const debugDir = path.join(process.cwd(), '.debug-frames');
+    const frameDir = path.join(debugDir, `frame-${frameNumber}`);
+    const imagePath = path.join(frameDir, 'frame.png');
+
+    if (!fs.existsSync(imagePath)) {
+      return res.status(404).send('Frame not found');
+    }
+
+    res.setHeader('Content-Type', 'image/png');
+    res.sendFile(imagePath);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/debug/frames', (req: Request, res: Response) => {
+  try {
+    const debugDir = path.join(process.cwd(), '.debug-frames');
+    if (fs.existsSync(debugDir)) {
+      fs.rmSync(debugDir, { recursive: true, force: true });
+    }
+    fs.mkdirSync(debugDir, { recursive: true });
+
+    res.json({ success: true, message: 'All debug frames cleared' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Debug frame viewer
+app.get('/debug-frames', (req: Request, res: Response) => {
+  res.sendFile(path.join(process.cwd(), '.debug-frames', 'viewer.html'));
+});
+
+// Auto-fix mesh projection for a video
+app.post('/api/video/:videoId/auto-fix-mesh', async (req: Request, res: Response) => {
+  try {
+    const { videoId } = req.params;
+    
+    logger.info(`[AUTO-FIX] Starting mesh auto-fix for video ${videoId}`);
+    
+    // Get cached frames for this video
+    const cachedFrames = FrameExtractionService.getCachedFrames(videoId);
+    
+    if (!cachedFrames || cachedFrames.frames.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Video not found or no frames extracted',
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+    
+    // Prepare frame data for auto-fixer
+    const frameData = cachedFrames.frames.slice(0, 5).map(f => ({
+      frameNumber: f.frameNumber,
+      imageBase64: fs.readFileSync(f.imagePath).toString('base64'),
+      timestamp: f.timestamp
+    }));
+    
+    logger.info(`[AUTO-FIX] Running auto-fixer on ${frameData.length} frames`);
+    
+    // Run auto-fixer
+    const fixResult = await meshAutoFixer.fixMeshForVideo(videoId, frameData);
+    
+    // Save report
+    const reportPath = await meshAutoFixer.saveFixReport(fixResult);
+    
+    // Generate summary
+    const summary = await meshAutoFixer.generateFixSummary(fixResult);
+    
+    logger.info(`[AUTO-FIX] Auto-fix complete:\n${summary}`);
+    
+    res.json({
+      success: true,
+      data: {
+        videoId,
+        fixResult,
+        reportPath,
+        summary
+      },
+      timestamp: new Date().toISOString()
+    } as ApiResponse<any>);
+    
+  } catch (err: any) {
+    logger.error(`[AUTO-FIX] Error: ${err.message}`, { error: err });
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Auto-fix failed',
+      timestamp: new Date().toISOString()
+    } as ApiResponse<null>);
+  }
+});
+
+// Test endpoint to capture a debug frame from pose service
+app.post('/api/debug/test-capture', async (req: Request, res: Response) => {
+  try {
+    logger.info('Testing debug frame capture...');
+    
+    // Create a simple test image (100x100 RGB)
+    const testImageBuffer = Buffer.alloc(100 * 100 * 3);
+    for (let i = 0; i < testImageBuffer.length; i += 3) {
+      testImageBuffer[i] = Math.random() * 255;     // R
+      testImageBuffer[i + 1] = Math.random() * 255; // G
+      testImageBuffer[i + 2] = Math.random() * 255; // B
+    }
+    
+    // Convert to PNG (simple approach - just use raw data as base64)
+    const base64Image = testImageBuffer.toString('base64');
+    
+    // Save debug frame
+    const debugDir = path.join(process.cwd(), '.debug-frames');
+    if (!fs.existsSync(debugDir)) {
+      fs.mkdirSync(debugDir, { recursive: true });
+    }
+    
+    const frameNumber = Math.floor(Date.now() / 1000) % 1000;
+    const frameDir = path.join(debugDir, `frame-${frameNumber}`);
+    if (!fs.existsSync(frameDir)) {
+      fs.mkdirSync(frameDir, { recursive: true });
+    }
+    
+    // Save metadata
+    const metadata = {
+      timestamp: new Date().toISOString(),
+      frameNumber,
+      test: true,
+      keypoints: 23,
+      meshVertices: 6890,
+      meshFaces: 13776,
+      processingTime: 245,
+      model: 'HMR2/ViTDet',
+      message: 'This is a test frame. Upload a real video to see actual pose data.'
+    };
+    
+    const metadataPath = path.join(frameDir, 'metadata.json');
+    fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+    
+    logger.info(`Test frame saved: frame-${frameNumber}`);
+    
+    res.json({
+      success: true,
+      message: `Test frame ${frameNumber} created. Check http://localhost:${PORT}/debug-frames`,
+      frameNumber,
+      frameDir
+    });
+  } catch (error: any) {
+    logger.error(`Failed to create test frame: ${error.message}`);
+    res.status(500).json({ error: error.message });
   }
 });
 

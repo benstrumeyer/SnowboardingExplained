@@ -216,3 +216,126 @@ export function getAverageConfidence(frame: PoseFrame): number {
   const sum = frame.keypoints.reduce((acc, kp) => acc + kp.confidence, 0);
   return sum / frame.keypoints.length;
 }
+
+// 4D-Humans (HMR2) specific types
+export interface HybridPoseFrame extends PoseFrame {
+  has3d: boolean;
+  joints3dRaw?: number[][] | null;
+  jointAngles3d?: Record<string, number>;
+  cameraTranslation?: number[] | null;
+  meshVertices?: number;
+  trackingConfidence?: number;
+  visualization?: string; // Base64 image with skeleton overlay from Python
+}
+
+/**
+ * Detect pose using 4D-Humans (HMR2) hybrid endpoint
+ * Returns 3D joint positions and angles that work even when back-facing
+ * @param visualize - If true, Python service returns image with skeleton overlay
+ */
+export async function detectPoseHybrid(
+  imageBase64: string,
+  frameNumber: number = 0,
+  visualize: boolean = false
+): Promise<HybridPoseFrame> {
+  const startTime = Date.now();
+  
+  try {
+    logger.info(`[4D-HUMANS] Detecting 3D pose for frame ${frameNumber}`, { visualize });
+    
+    const response = await axios.post(
+      `${POSE_SERVICE_URL}/pose/hybrid`,
+      {
+        image_base64: imageBase64,
+        frame_number: frameNumber,
+        visualize: visualize
+      },
+      {
+        timeout: 120000, // 2 min timeout for 3D pose (first run downloads ~500MB model)
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+    
+    const data = response.data;
+    
+    const result: HybridPoseFrame = {
+      frameNumber: data.frame_number,
+      frameWidth: data.frame_width,
+      frameHeight: data.frame_height,
+      keypoints: data.keypoints || [],
+      keypointCount: data.keypoint_count || 0,
+      processingTimeMs: data.processing_time_ms,
+      modelVersion: data.model_version,
+      has3d: data.has_3d || false,
+      joints3dRaw: data.joints_3d_raw,
+      jointAngles3d: data.joint_angles_3d,
+      cameraTranslation: data.camera_translation,
+      meshVertices: data.mesh_vertices,
+      trackingConfidence: data.tracking_confidence,
+      visualization: data.visualization // Python-generated skeleton overlay
+    };
+    
+    logger.info(`[4D-HUMANS] Frame ${frameNumber} completed`, {
+      keypointCount: result.keypointCount,
+      has3d: result.has3d,
+      hasVisualization: !!result.visualization,
+      processingTimeMs: result.processingTimeMs,
+      totalTimeMs: Date.now() - startTime
+    });
+    
+    return result;
+    
+  } catch (error: any) {
+    logger.error(`[4D-HUMANS] Error`, { frameNumber, error: error.message });
+    
+    return {
+      frameNumber,
+      frameWidth: 0,
+      frameHeight: 0,
+      keypoints: [],
+      keypointCount: 0,
+      processingTimeMs: 0,
+      modelVersion: 'unknown',
+      has3d: false,
+      error: error.code === 'ECONNREFUSED' 
+        ? 'Pose service not available. Start it with: cd backend/pose-service && .\\venv\\Scripts\\python.exe app.py'
+        : error.message || 'Unknown error'
+    };
+  }
+}
+
+/**
+ * Detect 3D pose from multiple frames
+ * @param visualize - If true, Python service returns images with skeleton overlay
+ */
+export async function detectPoseHybridBatch(
+  frames: Array<{ imageBase64: string; frameNumber: number }>,
+  visualize: boolean = false
+): Promise<HybridPoseFrame[]> {
+  const startTime = Date.now();
+  
+  logger.info(`[4D-HUMANS] Processing ${frames.length} frames`, { visualize });
+  
+  // Process sequentially to avoid GPU memory issues
+  const results: HybridPoseFrame[] = [];
+  for (const frame of frames) {
+    const result = await detectPoseHybrid(frame.imageBase64, frame.frameNumber, visualize);
+    results.push(result);
+  }
+  
+  const successCount = results.filter(r => !r.error).length;
+  const has3dCount = results.filter(r => r.has3d).length;
+  const vizCount = results.filter(r => r.visualization).length;
+  
+  logger.info(`[4D-HUMANS] Batch complete`, {
+    totalFrames: frames.length,
+    successCount,
+    has3dCount,
+    visualizationsGenerated: vizCount,
+    totalTimeMs: Date.now() - startTime
+  });
+  
+  return results;
+}

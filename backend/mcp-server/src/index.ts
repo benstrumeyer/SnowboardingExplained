@@ -1,11 +1,15 @@
 import dotenv from 'dotenv';
-import { connectDB, disconnectDB, getDB } from './db/connection';
+import { connectDB, disconnectDB } from './db/connection';
 import { initializeCollections } from './db/schemas';
 import { ToolRegistry } from './tools/registry';
 import { Cache } from './cache/cache';
 import { getTrickInfoTool, getTrickProgressionTool, findSimilarTricksTool, getTrickVideosTool } from './tools/tricks';
 import { searchTipsTool, getTipDetailsTool, findTipsByProblemTool } from './tools/content';
 import { featureExtractionTools } from './tools/featureExtraction';
+import { wslFileTools } from './tools/wslFileTools';
+import { wslCommandTools } from './tools/wslCommandTools';
+import { wslServiceTools } from './tools/wslServiceTools';
+import { debugFrameTools } from './tools/debugFrames';
 
 dotenv.config();
 
@@ -36,6 +40,18 @@ export async function initializeMCPServer(): Promise<void> {
 
     // Register feature extraction tools
     featureExtractionTools.forEach((tool) => toolRegistry.register(tool));
+
+    // Register WSL file tools
+    Object.values(wslFileTools).forEach((tool) => toolRegistry.register(tool));
+
+    // Register WSL command tools
+    Object.values(wslCommandTools).forEach((tool) => toolRegistry.register(tool));
+
+    // Register WSL service tools
+    Object.values(wslServiceTools).forEach((tool) => toolRegistry.register(tool));
+
+    // Register debug frame tools
+    Object.values(debugFrameTools).forEach((tool) => toolRegistry.register(tool));
 
     // Initialize cache
     cache = new Cache(300); // 5 minute default TTL
