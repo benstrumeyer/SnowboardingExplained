@@ -42,6 +42,43 @@ interface PoseTestResult {
   }>;
 }
 
+// 4D-Humans result interface
+interface FourDHumansResult {
+  videoId: string;
+  totalFrames: number;
+  analyzedFrames: number;
+  has3dFrames: number;
+  duration: number;
+  visualizations: Array<{
+    frameNumber: number;
+    timestamp: number;
+    imageBase64: string;
+  }>;
+  poseData: Array<{
+    frameNumber: number;
+    timestamp: number;
+    keypointCount: number;
+    processingTimeMs: number;
+    modelVersion: string;
+    has3d: boolean;
+    jointAngles3d?: {
+      left_knee?: number;
+      right_knee?: number;
+      left_hip?: number;
+      right_hip?: number;
+      spine?: number;
+    };
+    error?: string;
+    keypoints: Array<{
+      name: string;
+      x: number;
+      y: number;
+      z?: number;
+      confidence: number;
+    }>;
+  }>;
+}
+
 // New interface for full pose analysis with Python service
 interface FullPoseAnalysisResult {
   videoId: string;
@@ -70,6 +107,7 @@ export const VideoCoachScreen: React.FC = () => {
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
   const [poseTest, setPoseTest] = useState<PoseTestResult | null>(null);
   const [fullPoseAnalysis, setFullPoseAnalysis] = useState<FullPoseAnalysisResult | null>(null);
+  const [fourDHumansResult, set4DHumansResult] = useState<FourDHumansResult | null>(null);
   const [currentFrameIndex, setCurrentFrameIndex] = useState(0);
   const [selectedFrame, setSelectedFrame] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +116,7 @@ export const VideoCoachScreen: React.FC = () => {
     try {
       console.log('[VideoCoach] Opening image picker...');
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        mediaTypes: ['videos'],
         allowsEditing: false,
         quality: 1
       });
@@ -167,7 +205,7 @@ export const VideoCoachScreen: React.FC = () => {
     try {
       console.log('[VideoCoach] Opening image picker for pose test...');
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        mediaTypes: ['videos'],
         allowsEditing: false,
         quality: 1
       });
@@ -235,7 +273,7 @@ export const VideoCoachScreen: React.FC = () => {
     try {
       console.log('[VideoCoach] Opening image picker for full pose analysis...');
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        mediaTypes: ['videos'],
         allowsEditing: false,
         quality: 1
       });
@@ -322,6 +360,99 @@ export const VideoCoachScreen: React.FC = () => {
           <Text style={styles.buttonText}>Try Again</Text>
         </TouchableOpacity>
       </View>
+    );
+  }
+
+  // Show 4D-Humans results with frame carousel
+  if (fourDHumansResult) {
+    const currentPose = fourDHumansResult.poseData[currentFrameIndex];
+    const currentViz = fourDHumansResult.visualizations[currentFrameIndex];
+    
+    return (
+      <ScrollView style={styles.darkContainer}>
+        <View style={styles.header}>
+          <Text style={styles.darkTitle}>🧍 4D-Humans 3D Pose</Text>
+          <Text style={styles.darkSubtitle}>
+            {fourDHumansResult.has3dFrames}/{fourDHumansResult.analyzedFrames} frames with 3D • {fourDHumansResult.duration.toFixed(1)}s video
+          </Text>
+        </View>
+
+        {/* Frame Display */}
+        <View style={styles.frameContainer}>
+          <Text style={styles.frameTitle}>
+            Frame {currentFrameIndex + 1} of {fourDHumansResult.analyzedFrames}
+          </Text>
+          {currentViz && (
+            <Image
+              source={{ uri: currentViz.imageBase64 }}
+              style={styles.frameImage}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+
+        {/* Navigation Buttons */}
+        <View style={styles.navButtonsContainer}>
+          <TouchableOpacity
+            style={[styles.navButton, currentFrameIndex === 0 && styles.navButtonDisabled]}
+            onPress={() => setCurrentFrameIndex(Math.max(0, currentFrameIndex - 1))}
+            disabled={currentFrameIndex === 0}
+          >
+            <Text style={styles.navButtonText}>← Previous</Text>
+          </TouchableOpacity>
+          <Text style={styles.frameCounter}>
+            {currentFrameIndex + 1} / {fourDHumansResult.analyzedFrames}
+          </Text>
+          <TouchableOpacity
+            style={[styles.navButton, currentFrameIndex >= fourDHumansResult.analyzedFrames - 1 && styles.navButtonDisabled]}
+            onPress={() => setCurrentFrameIndex(Math.min(fourDHumansResult.analyzedFrames - 1, currentFrameIndex + 1))}
+            disabled={currentFrameIndex >= fourDHumansResult.analyzedFrames - 1}
+          >
+            <Text style={styles.navButtonText}>Next →</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Pose Data */}
+        {currentPose && (
+          <View style={styles.darkStatsContainer}>
+            <View style={styles.stat}>
+              <Text style={styles.darkStatLabel}>3D</Text>
+              <Text style={[styles.darkStatValue, { color: currentPose.has3d ? '#4CAF50' : '#F44336' }]}>
+                {currentPose.has3d ? 'YES' : 'NO'}
+              </Text>
+            </View>
+            <View style={styles.stat}>
+              <Text style={styles.darkStatLabel}>Joints</Text>
+              <Text style={styles.darkStatValue}>{currentPose.keypointCount}</Text>
+            </View>
+            <View style={styles.stat}>
+              <Text style={styles.darkStatLabel}>Time</Text>
+              <Text style={styles.darkStatValue}>{currentPose.processingTimeMs}ms</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Joint Angles */}
+        {currentPose?.jointAngles3d && (
+          <View style={styles.anglesContainer}>
+            <Text style={styles.anglesTitle}>3D Joint Angles</Text>
+            <View style={styles.anglesGrid}>
+              <Text style={styles.angleText}>L Knee: {currentPose.jointAngles3d.left_knee?.toFixed(0) || '?'}°</Text>
+              <Text style={styles.angleText}>R Knee: {currentPose.jointAngles3d.right_knee?.toFixed(0) || '?'}°</Text>
+              <Text style={styles.angleText}>L Hip: {currentPose.jointAngles3d.left_hip?.toFixed(0) || '?'}°</Text>
+              <Text style={styles.angleText}>R Hip: {currentPose.jointAngles3d.right_hip?.toFixed(0) || '?'}°</Text>
+              <Text style={styles.angleText}>Spine: {currentPose.jointAngles3d.spine?.toFixed(0) || '?'}°</Text>
+            </View>
+          </View>
+        )}
+
+        <TouchableOpacity style={styles.fourDButton} onPress={analyze4DHumans}>
+          <Text style={styles.buttonText}>Analyze Another Video</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.backButton} onPress={() => set4DHumansResult(null)}>
+          <Text style={styles.buttonText}>Back to Main</Text>
+        </TouchableOpacity>
+      </ScrollView>
     );
   }
 
@@ -429,22 +560,92 @@ export const VideoCoachScreen: React.FC = () => {
     );
   }
 
+  // 4D-Humans analysis
+  const analyze4DHumans = async () => {
+    try {
+      console.log('[VideoCoach] Opening picker for 4D-Humans analysis...');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'],
+        allowsEditing: false,
+        quality: 1
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        console.log('[VideoCoach] Video selected for 4D-Humans:', result.assets[0].uri);
+        await uploadFor4DHumans(result.assets[0].uri);
+      }
+    } catch (err: any) {
+      console.error('[VideoCoach] 4D-Humans picker error:', err);
+      setError(`Failed to pick video: ${err.message || err}`);
+    }
+  };
+
+  const uploadFor4DHumans = async (videoUri: string) => {
+    try {
+      console.log('[VideoCoach] Starting 4D-Humans upload...');
+      setLoading(true);
+      setError(null);
+      setPoseTest(null);
+      setAnalysis(null);
+      setFullPoseAnalysis(null);
+      set4DHumansResult(null);
+      setCurrentFrameIndex(0);
+
+      const formData = new FormData();
+      const videoFile = {
+        uri: videoUri,
+        type: 'video/mp4',
+        name: 'trick-video.mp4'
+      };
+      formData.append('video', videoFile as any);
+      formData.append('fps', '2'); // 2 FPS for 4D-Humans
+
+      const uploadUrl = `${config.apiUrl}/api/video/analyze-4d`;
+      console.log('[VideoCoach] Sending to 4D-Humans endpoint:', uploadUrl);
+      
+      const response = await fetch(uploadUrl, {
+        method: 'POST',
+        body: formData,
+        headers: { 'Accept': 'application/json' }
+      });
+
+      console.log('[VideoCoach] 4D-Humans response status:', response.status);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`4D-Humans analysis failed: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      console.log('[VideoCoach] 4D-Humans result:', result);
+
+      if (result.success) {
+        // Store full 4D-Humans data with all frames
+        set4DHumansResult(result.data);
+        setCurrentFrameIndex(0);
+      } else {
+        setError(result.error || '4D-Humans analysis failed');
+      }
+    } catch (err: any) {
+      console.error('[VideoCoach] 4D-Humans error:', err);
+      setError(`4D-Humans error: ${err.message || err}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (!analysis) {
     return (
       <View style={styles.darkContainer}>
         <Text style={styles.darkTitle}>🎿 Video Trick Coach</Text>
         <Text style={styles.darkSubtitle}>Upload a snowboarding video to analyze your trick</Text>
         
+        <TouchableOpacity style={styles.fourDButton} onPress={analyze4DHumans}>
+          <Text style={styles.buttonText}>🧍 4D-Humans 3D Pose (HMR2)</Text>
+        </TouchableOpacity>
+        
         <TouchableOpacity style={styles.analyzeButton} onPress={analyzePose}>
-          <Text style={styles.buttonText}>🔬 Full Pose Analysis (Python MediaPipe)</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.testButton} onPress={testPose}>
-          <Text style={styles.buttonText}>🧪 Quick Pose Test (single frame)</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={styles.button} onPress={pickVideo}>
-          <Text style={styles.buttonText}>📊 Full Analysis (uses LLM)</Text>
+          <Text style={styles.buttonText}>🔬 MediaPipe Pose Analysis</Text>
         </TouchableOpacity>
       </View>
     );
@@ -659,6 +860,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12
   },
+  fourDButton: {
+    backgroundColor: '#9C27B0',
+    padding: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 12
+  },
   backButton: {
     backgroundColor: '#666',
     padding: 15,
@@ -682,5 +890,58 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 4,
     fontFamily: 'monospace'
+  },
+  navButtonsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: '#1a1a2e',
+    borderRadius: 12,
+    marginBottom: 15
+  },
+  navButton: {
+    backgroundColor: '#9C27B0',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 8
+  },
+  navButtonDisabled: {
+    backgroundColor: '#444',
+    opacity: 0.5
+  },
+  navButtonText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: '600'
+  },
+  frameCounter: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold'
+  },
+  anglesContainer: {
+    backgroundColor: '#1a1a2e',
+    borderRadius: 12,
+    padding: 15,
+    marginBottom: 15
+  },
+  anglesTitle: {
+    color: '#00BFFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+    marginBottom: 10
+  },
+  anglesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between'
+  },
+  angleText: {
+    color: 'white',
+    fontSize: 13,
+    width: '48%',
+    marginBottom: 5
   }
 });
