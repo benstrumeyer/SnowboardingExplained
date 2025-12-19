@@ -2,8 +2,10 @@ import express, { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import dotenv from 'dotenv';
 import FormData from 'form-data';
+import axios from 'axios';
 import logger from './logger';
 import { FrameExtractionService } from './services/frameExtraction';
 import { TrickDetectionService } from './services/trickDetection';
@@ -1313,8 +1315,6 @@ app.post('/api/video/process_video', upload.single('video'), async (req: Request
   try {
     logger.info(`[PROCESS_VIDEO] Request received`);
     logger.info(`[PROCESS_VIDEO] req.file exists: ${!!req.file}`);
-    logger.info(`[PROCESS_VIDEO] req.files: ${JSON.stringify(Object.keys(req.files || {}))}`);
-    logger.info(`[PROCESS_VIDEO] req.body: ${JSON.stringify(req.body)}`);
     
     if (!req.file) {
       logger.error(`[PROCESS_VIDEO] No file in req.file`);
@@ -1332,51 +1332,65 @@ app.post('/api/video/process_video', upload.single('video'), async (req: Request
     // Call the pose service to process the video
     const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
     
-    // Read file into buffer (more reliable than stream for cross-platform)
-    const videoBuffer = fs.readFileSync(videoPath);
-    logger.info(`[PROCESS_VIDEO] Read video buffer: ${videoBuffer.length} bytes`);
+    // Get parameters from request (FormData fields are in req.body)
+    const maxFrames = (req as any).body?.max_frames || (req as any).query?.max_frames || '10';
+    const outputFormat = (req as any).body?.output_format || (req as any).query?.output_format || 'file_path';
     
+    logger.info(`[PROCESS_VIDEO] req.body keys:`, Object.keys((req as any).body || {}));
+    logger.info(`[PROCESS_VIDEO] req.query keys:`, Object.keys((req as any).query || {}));
+    logger.info(`[PROCESS_VIDEO] Parameters: max_frames=${maxFrames}, output_format=${outputFormat}`);
+    
+    // Use file stream with FormData for proper multipart/form-data encoding
     const form = new FormData();
-    form.append('video', videoBuffer, req.file.originalname);
-    form.append('output_format', 'file_path');
+    const fileStream = fs.createReadStream(videoPath);
+    form.append('video', fileStream, req.file.originalname);
+    form.append('max_frames', String(maxFrames));
+    form.append('output_format', outputFormat);
 
-    logger.info(`[PROCESS_VIDEO] FormData prepared, sending to: ${poseServiceUrl}/process_video`);
+    logger.info(`[PROCESS_VIDEO] FormData prepared with stream, sending to: ${poseServiceUrl}/process_video`);
     logger.info(`[PROCESS_VIDEO] FormData headers:`, form.getHeaders());
 
-    const response = await fetch(`${poseServiceUrl}/process_video`, {
-      method: 'POST',
-      body: form,
-      headers: form.getHeaders()
-    });
-
-    logger.info(`[PROCESS_VIDEO] Response status: ${response.status}`);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      logger.error(`[PROCESS_VIDEO] Pose service error: ${response.status} - ${errorText}`);
-      return res.status(response.status).json({
-        error: `Pose service error: ${response.status}`,
-        details: errorText,
-        status: 'error'
+    let response;
+    try {
+      response = await axios.post(`${poseServiceUrl}/process_video`, form, {
+        headers: form.getHeaders(),
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
+        timeout: 0 // No timeout - let it run as long as needed
       });
+
+      logger.info(`[PROCESS_VIDEO] Response status: ${response.status}`);
+    } catch (axiosErr: any) {
+      logger.error(`[PROCESS_VIDEO] Axios error: ${axiosErr.message}`);
+      if (axiosErr.response) {
+        logger.error(`[PROCESS_VIDEO] Response status: ${axiosErr.response.status}`);
+        logger.error(`[PROCESS_VIDEO] Response data:`, axiosErr.response.data);
+      }
+      throw axiosErr;
     }
 
-    const result: any = await response.json();
-    logger.info(`[PROCESS_VIDEO] Processing complete:`, result);
+    // Response is JSON metadata with frames
+    const poseServiceResponse: any = response.data;
+    logger.info(`[PROCESS_VIDEO] Pose service response status: ${poseServiceResponse.status}`);
+    logger.info(`[PROCESS_VIDEO] Processing complete with ${poseServiceResponse.data?.frames?.length || 0} frames`);
 
     // Clean up uploaded file
     fs.unlink(videoPath, (err) => {
       if (err) logger.warn(`Failed to delete temp video: ${err}`);
     });
 
+    // Extract data from pose service response
+    const result = poseServiceResponse.data || poseServiceResponse;
+    
     res.json({
       status: 'success',
       data: result
     });
 
   } catch (err: any) {
-    logger.error(`[PROCESS_VIDEO] Error: ${err.message}`, { error: err });
-    logger.error(`[PROCESS_VIDEO] Stack:`, err.stack);
+    const errorMessage = err?.message || String(err) || 'Unknown error';
+    logger.error(`[PROCESS_VIDEO] Error: ${errorMessage}`, { error: err });
+    logger.error(`[PROCESS_VIDEO] Stack:`, err?.stack);
     
     // Clean up on error
     if (req.file) {
@@ -1386,9 +1400,126 @@ app.post('/api/video/process_video', upload.single('video'), async (req: Request
     }
 
     res.status(500).json({
-      error: `Processing error: ${err.message}`,
+      error: `Processing error: ${errorMessage}`,
       status: 'error'
     });
+  }
+});
+
+// Async video processing - submit job
+app.post('/api/video/process_async', upload.single('video'), async (req: Request, res: Response) => {
+  try {
+    logger.info(`[ASYNC] Request received`);
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No video file provided' });
+    }
+
+    const videoPath = req.file.path;
+    const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
+    const maxFrames = (req as any).body?.max_frames || '999999';
+    
+    // Forward to pose service async endpoint
+    const form = new FormData();
+    form.append('video', fs.createReadStream(videoPath), {
+      filename: req.file.originalname || 'video.mp4',
+      contentType: 'video/mp4'
+    });
+    form.append('max_frames', maxFrames);
+
+    const response = await axios.post(`${poseServiceUrl}/process_video_async`, form, {
+      headers: form.getHeaders(),
+      timeout: 30000 // 30 second timeout just for submitting
+    });
+
+    // Clean up uploaded file
+    fs.unlink(videoPath, () => {});
+
+    logger.info(`[ASYNC] Job submitted: ${response.data.job_id}`);
+    res.json(response.data);
+  } catch (err: any) {
+    logger.error(`[ASYNC] Error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Check async job status
+app.get('/api/video/job_status/:jobId', async (req: Request, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
+    
+    const response = await axios.get(`${poseServiceUrl}/job_status/${jobId}`, {
+      timeout: 10000
+    });
+
+    res.json(response.data);
+  } catch (err: any) {
+    if (err.response?.status === 404) {
+      return res.status(404).json({ error: 'Job not found' });
+    }
+    logger.error(`[JOB_STATUS] Error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Download processed video file
+app.get('/api/video/download', (req: Request, res: Response) => {
+  try {
+    let { path: videoPath } = req.query;
+    
+    if (!videoPath || typeof videoPath !== 'string') {
+      return res.status(400).json({ error: 'Missing path query parameter' });
+    }
+    
+    logger.info(`[DOWNLOAD] Download request for: ${videoPath}`);
+
+    // Security: prevent directory traversal
+    if (videoPath.includes('..')) {
+      return res.status(400).json({ error: 'Invalid path' });
+    }
+
+    // Convert WSL path to Windows path if needed
+    if (videoPath.startsWith('/mnt/c/')) {
+      videoPath = videoPath.replace('/mnt/c/', 'C:\\');
+    }
+    
+    logger.info(`[DOWNLOAD] Converted path: ${videoPath}`);
+    logger.info(`[DOWNLOAD] Attempting to download: ${videoPath}`);
+
+    // Check if file exists
+    if (!fs.existsSync(videoPath)) {
+      logger.warn(`[DOWNLOAD] File not found: ${videoPath}`);
+      logger.warn(`[DOWNLOAD] Current working directory: ${process.cwd()}`);
+      return res.status(404).json({ error: `Video file not found: ${videoPath}` });
+    }
+
+    // Get file size
+    const stats = fs.statSync(videoPath);
+    const fileSizeInMB = (stats.size / (1024 * 1024)).toFixed(2);
+    
+    // Extract just the filename for the response header
+    const responseFilename = path.basename(videoPath);
+    logger.info(`[DOWNLOAD] Serving video: ${responseFilename} (${fileSizeInMB} MB)`);
+
+    // Set headers for video download
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Disposition', `attachment; filename="${responseFilename}"`);
+    res.setHeader('Content-Length', stats.size.toString());
+
+    // Stream the file
+    const fileStream = fs.createReadStream(videoPath);
+    fileStream.pipe(res);
+
+    fileStream.on('error', (err) => {
+      logger.error(`[DOWNLOAD] Stream error: ${err.message}`);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to download video' });
+      }
+    });
+  } catch (error: any) {
+    logger.error(`[DOWNLOAD] Error: ${error.message}`);
+    res.status(500).json({ error: error.message });
   }
 });
 
