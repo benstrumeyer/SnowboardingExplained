@@ -9,7 +9,7 @@ This implementation exactly follows the 4D-Humans demo.py:
 
 Reference: https://github.com/shubham-goel/4D-Humans/blob/main/demo.py
 
-VERSION: 2024-12-19-v2 (demo-style implementation)
+VERSION: 2024-12-19-v3 (ViTDet exact demo.py implementation)
 """
 
 import base64
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 # Print version info on import
 print("=" * 60)
-print("[HYBRID_POSE_DETECTOR] VERSION: 2024-12-19-v2 (demo-style)")
+print("[HYBRID_POSE_DETECTOR] VERSION: 2024-12-19-v3 (ViTDet exact demo.py)")
 print(f"[HYBRID_POSE_DETECTOR] File: {__file__}")
 print(f"[HYBRID_POSE_DETECTOR] Python: {sys.executable}")
 print("=" * 60)
@@ -118,6 +118,8 @@ class HybridPoseDetector:
         self.hmr2_model = None
         self.hmr2_cfg = None
         self.model_loaded = False
+        self.vitdet_detector = None  # Cache ViTDet detector
+        self.vitdet_loaded = False
         
         self.use_3d = HAS_TORCH and HAS_HMR2 and self.device == 'cuda'
         self.model_version = "4d-humans-hmr2-demo" if self.use_3d else "disabled"
@@ -125,6 +127,46 @@ class HybridPoseDetector:
         print(f"[POSE] Initializing 4D-Humans detector (demo implementation)")
         print(f"[POSE] Device: {self.device}")
         print(f"[POSE] HMR2 enabled: {self.use_3d}")
+    
+    def _load_vitdet(self):
+        """Lazy load ViTDet detector - cached for reuse"""
+        if self.vitdet_loaded:
+            return self.vitdet_detector
+        
+        try:
+            logger.info("[ViTDet] Loading ViTDet detector (first run downloads ~2.7GB)...")
+            start = time.time()
+            
+            from pathlib import Path
+            from detectron2.config import LazyConfig
+            import hmr2
+            from hmr2.utils.utils_detectron2 import DefaultPredictor_Lazy
+            
+            # Load ViTDet config - EXACT as demo.py
+            cfg_path = Path(hmr2.__file__).parent / 'configs' / 'cascade_mask_rcnn_vitdet_h_75ep.py'
+            logger.info("[ViTDet] Loading config from: %s", cfg_path)
+            
+            detectron2_cfg = LazyConfig.load(str(cfg_path))
+            
+            # Set checkpoint URL - EXACT as demo.py
+            detectron2_cfg.train.init_checkpoint = "https://dl.fbaipublicfiles.com/detectron2/ViTDet/COCO/cascade_mask_rcnn_vitdet_h/f328730692/model_final_f05665.pkl"
+            
+            # Set score threshold - EXACT as demo.py
+            for i in range(3):
+                detectron2_cfg.model.roi_heads.box_predictors[i].test_score_thresh = 0.25
+            
+            logger.info("[ViTDet] Creating predictor...")
+            self.vitdet_detector = DefaultPredictor_Lazy(detectron2_cfg)
+            self.vitdet_loaded = True
+            
+            logger.info("[ViTDet] ✓ Loaded in %.1fs", time.time() - start)
+            return self.vitdet_detector
+            
+        except Exception as e:
+            logger.error("[ViTDet] Failed to load: %s", str(e), exc_info=True)
+            self.vitdet_loaded = True  # Mark as attempted
+            self.vitdet_detector = None
+            return None
     
     def _load_hmr2(self):
         """Lazy load HMR2 model - exactly as in demo.py"""
@@ -193,13 +235,47 @@ class HybridPoseDetector:
             h, w = image_np.shape[:2]
             logger.info("[HMR2] Image shape: %dx%d", w, h)
             
-            # Step 1: Use full image as bounding box (ViTDet not available on Windows)
-            # In demo.py, ViTDet provides boxes, but we use full image as fallback
-            logger.info("[HMR2] Using full image as bounding box (ViTDet not available)")
-            boxes = np.array([[0, 0, w, h]], dtype=np.float32)
+            # Step 1: Try ViTDet detection (EXACT as demo.py), fallback to full image
+            boxes = None
+            try:
+                # Use cached ViTDet detector
+                detector = self._load_vitdet()
+                
+                if detector is not None:
+                    logger.info("[HMR2] Running ViTDet inference on image...")
+                    det_out = detector(image_np)
+                    det_instances = det_out['instances']
+                    
+                    # Filter for persons (class 0) with score > 0.5 - EXACT as demo.py
+                    valid_idx = (det_instances.pred_classes == 0) & (det_instances.scores > 0.5)
+                    boxes_detected = det_instances.pred_boxes.tensor[valid_idx].cpu().numpy()
+                    
+                    logger.info("[HMR2] ✓ ViTDet inference complete")
+                    logger.info("[HMR2] Total instances: %d, Valid persons: %d", 
+                               len(det_instances), len(boxes_detected))
+                    
+                    if len(boxes_detected) > 0:
+                        logger.info("[HMR2] ✓ ViTDet found %d persons", len(boxes_detected))
+                        logger.info("[HMR2] Box bounds: %s", boxes_detected)
+                        boxes = boxes_detected.astype(np.float32)
+                    else:
+                        logger.info("[HMR2] ViTDet found no persons, using full image")
+                        boxes = np.array([[0, 0, w, h]], dtype=np.float32)
+                else:
+                    logger.info("[HMR2] ViTDet not available, using full image as bounding box")
+                    boxes = np.array([[0, 0, w, h]], dtype=np.float32)
+                    
+            except ImportError as e:
+                logger.error("[HMR2] ImportError: %s", str(e), exc_info=True)
+                logger.info("[HMR2] ViTDet not available, using full image as bounding box")
+                boxes = np.array([[0, 0, w, h]], dtype=np.float32)
+            except Exception as e:
+                logger.error("[HMR2] Exception during ViTDet detection: %s", str(e), exc_info=True)
+                logger.warning("[HMR2] ViTDet detection failed, using full image")
+                boxes = np.array([[0, 0, w, h]], dtype=np.float32)
             
             # Step 2: Create ViTDetDataset - exactly as in demo.py
-            logger.info("[HMR2] Creating ViTDetDataset")
+            logger.info("[HMR2] Creating ViTDetDataset with %d boxes", len(boxes))
             dataset = ViTDetDataset(self.hmr2_cfg, image_np, boxes)
             dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
             
@@ -218,9 +294,11 @@ class HybridPoseDetector:
                     img_size = batch["img_size"].float()  # (B, 2)
                     
                     # Step 5: Compute scaled focal length - exactly as in demo.py
+                    # CRITICAL: This must match the focal length used in projection
                     scaled_focal_length = self.hmr2_cfg.EXTRA.FOCAL_LENGTH / self.hmr2_cfg.MODEL.IMAGE_SIZE * img_size.max()
                     
                     # Step 6: Convert camera to full image space - THE KEY FUNCTION
+                    # This ensures mesh and keypoints use identical camera parameters
                     pred_cam_t_full = cam_crop_to_full(
                         pred_cam, 
                         box_center, 
@@ -280,37 +358,35 @@ class HybridPoseDetector:
         """
         Project 3D vertices to 2D using perspective projection.
         
-        This follows the rendering approach from 4D-Humans renderer.py:
-        - camera_translation[0] *= -1 (flip x)
-        - Use focal length for perspective projection
-        - Center at image center
+        EXACT implementation from 4D-Humans/hmr2/utils/renderer.py
+        This ensures mesh and keypoints use identical projection.
         
         Args:
-            vertices: (N, 3) 3D vertices
+            vertices: (N, 3) 3D vertices in world space
             cam_t_full: (3,) camera translation [tx, ty, tz] in full image space
-            focal_length: scaled focal length
+            focal_length: scaled focal length (already scaled for full image)
             img_size: (2,) [width, height]
         
         Returns:
             (N, 2) 2D projected points in image pixels
         """
-        # Copy camera translation and flip x (as in renderer.py)
+        # EXACT from renderer.py: camera_translation[0] *= -1
         camera_translation = cam_t_full.copy()
         camera_translation[0] *= -1.
         
-        # Add camera translation to vertices
+        # Transform vertices to camera space
         vertices_cam = vertices + camera_translation
         
-        # Perspective projection
-        # x_2d = fx * X / Z + cx
-        # y_2d = fy * Y / Z + cy
+        # Perspective projection (EXACT from renderer.py)
+        # The focal length is already scaled for the full image
         fx = fy = focal_length
         cx = img_size[0] / 2.0
         cy = img_size[1] / 2.0
         
-        # Avoid division by zero
+        # Project: x_2d = fx * X / Z + cx
         z = vertices_cam[:, 2]
-        z = np.where(np.abs(z) < 0.01, 0.01, z)
+        # Clamp z to avoid division by zero (points behind camera)
+        z = np.maximum(z, 0.01)
         
         x_2d = fx * vertices_cam[:, 0] / z + cx
         y_2d = fy * vertices_cam[:, 1] / z + cy
@@ -383,12 +459,20 @@ class HybridPoseDetector:
             scaled_focal = hmr2_result.get('scaled_focal_length')
             img_size = hmr2_result.get('img_size')
             
+            # DEBUG: Log projection parameters
+            logger.info("[PROJECTION] cam_t_full: %s", cam_t_full)
+            logger.info("[PROJECTION] scaled_focal_length: %.1f", scaled_focal)
+            logger.info("[PROJECTION] img_size: %s", img_size)
+            if joints_3d is not None:
+                logger.info("[PROJECTION] joints_3d sample (pelvis): %s", joints_3d[0])
+            
             # Project joints to 2D using the demo-style projection
             keypoints = []
             if joints_3d is not None and cam_t_full is not None:
                 joints_2d = self._project_vertices_to_2d(
                     joints_3d, cam_t_full, scaled_focal, img_size
                 )
+                logger.info("[PROJECTION] joints_2d sample (pelvis): %s", joints_2d[0])
                 
                 for i, name in enumerate(SMPL_JOINT_NAMES):
                     if i < len(joints_3d):
