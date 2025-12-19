@@ -58,6 +58,46 @@ except ImportError as e:
     HAS_MESH_RENDERER = False
 
 app = Flask(__name__)
+
+# Job tracking for async video processing
+import threading
+import uuid
+
+# Store job status and results
+video_jobs = {}  # {job_id: {status: 'processing'|'complete'|'error', result: {...}, error: str}}
+
+def process_video_async(job_id, input_path, output_path, max_frames):
+    """Process video in background thread"""
+    try:
+        print(f"[JOB {job_id}] Starting async video processing...")
+        video_jobs[job_id]['status'] = 'processing'
+        video_jobs[job_id]['started_at'] = time.time()
+        
+        # Create processor
+        detector = get_hybrid_detector()
+        mesh_renderer = SMPLMeshRenderer()
+        processor = VideoMeshProcessor(detector, mesh_renderer)
+        
+        # Process video
+        result = processor.process_video(input_path, output_path, max_frames=max_frames, return_frames=False)
+        
+        # Store result
+        video_jobs[job_id]['status'] = 'complete'
+        video_jobs[job_id]['result'] = result
+        video_jobs[job_id]['completed_at'] = time.time()
+        print(f"[JOB {job_id}] Processing complete!")
+        
+        # Clean up input file
+        if os.path.exists(input_path):
+            try:
+                os.remove(input_path)
+            except:
+                pass
+                
+    except Exception as e:
+        print(f"[JOB {job_id}] Error: {e}")
+        video_jobs[job_id]['status'] = 'error'
+        video_jobs[job_id]['error'] = str(e)
 CORS(app)
 
 # Track model readiness
@@ -327,31 +367,35 @@ def detect_pose_with_visualization():
 @app.route('/process_video', methods=['POST'])
 def process_video():
     """
-    Process full video with mesh overlay on every frame
+    Process video with mesh overlay on sampled or all frames
     
     Request body (multipart/form-data):
     {
         "video": <video file>,
+        "max_frames": 10 (default: 10, use 999999 for all frames),
         "output_format": "base64" or "file_path" (default: "file_path")
     }
     
     Returns:
     {
         "status": "success",
-        "output_path": "/path/to/output.mp4",
-        "output_base64": "base64 encoded video (if requested)",
-        "total_frames": 300,
-        "processed_frames": 300,
-        "fps": 30,
-        "resolution": [1920, 1080],
-        "processing_time_seconds": 45.2,
-        "output_size_mb": 125.5
+        "data": {
+            "output_path": "/path/to/output.mp4",
+            "output_base64": "base64 encoded video (if requested)",
+            "total_frames": 300,
+            "processed_frames": 300,
+            "fps": 30,
+            "resolution": [1920, 1080],
+            "processing_time_seconds": 45.2,
+            "output_size_mb": 125.5,
+            "frames": [{"frame_number": 0, "image_base64": "..."}, ...]
+        }
     }
     """
-    logger.info("[PROCESS_VIDEO] Request received")
-    logger.info(f"[PROCESS_VIDEO] request.files keys: {list(request.files.keys())}")
-    logger.info(f"[PROCESS_VIDEO] request.form keys: {list(request.form.keys())}")
-    logger.info(f"[PROCESS_VIDEO] Content-Type: {request.content_type}")
+    print("[PROCESS_VIDEO] Request received")
+    print(f"[PROCESS_VIDEO] request.files keys: {list(request.files.keys())}")
+    print(f"[PROCESS_VIDEO] request.form keys: {list(request.form.keys())}")
+    print(f"[PROCESS_VIDEO] Content-Type: {request.content_type}")
     
     if not HAS_HYBRID or not HAS_VIDEO_PROCESSOR or not HAS_MESH_RENDERER:
         missing = []
@@ -366,43 +410,72 @@ def process_video():
     try:
         # Check if video file is provided
         if 'video' not in request.files:
-            logger.error(f"[PROCESS_VIDEO] 'video' not in request.files. Available: {list(request.files.keys())}")
+            print(f"[PROCESS_VIDEO] 'video' not in request.files. Available: {list(request.files.keys())}")
             return jsonify({'error': 'video file is required'}), 400
         
         video_file = request.files['video']
         if video_file.filename == '':
             return jsonify({'error': 'No video file selected'}), 400
         
+        # Get parameters
+        max_frames = int(request.form.get('max_frames', '10'))
         output_format = request.form.get('output_format', 'file_path')
         
-        # Save uploaded video to temp file
+        print(f"[PROCESS_VIDEO] max_frames: {max_frames}, output_format: {output_format}")
+        
+        # Save uploaded video to shared location (Windows filesystem accessible from both WSL and Windows)
         import tempfile
-        temp_dir = tempfile.gettempdir()
+        # Use /mnt/c/temp if running in WSL, otherwise use system temp
+        if os.path.exists('/mnt/c'):
+            temp_dir = '/mnt/c/temp'
+            os.makedirs(temp_dir, exist_ok=True)
+        else:
+            temp_dir = tempfile.gettempdir()
+        
         input_path = os.path.join(temp_dir, f"upload_{int(time.time())}.mp4")
         output_path = os.path.join(temp_dir, f"mesh_overlay_{int(time.time())}.mp4")
         
         video_file.save(input_path)
+        print(f"[PROCESS_VIDEO] Video saved to: {input_path}")
+        print(f"[PROCESS_VIDEO] Input file size: {os.path.getsize(input_path)} bytes")
         
         try:
             # Create processor
+            print("[PROCESS_VIDEO] Loading detector...")
             detector = get_hybrid_detector()
+            print("[PROCESS_VIDEO] Loading mesh renderer...")
             mesh_renderer = SMPLMeshRenderer()
+            print("[PROCESS_VIDEO] Creating processor...")
             processor = VideoMeshProcessor(detector, mesh_renderer)
             
-            # Process video
-            result = processor.process_video(input_path, output_path)
+            # Process video with specified max_frames and return frame images
+            print(f"[PROCESS_VIDEO] Starting video processing: {input_path} -> {output_path}")
+            result = processor.process_video(input_path, output_path, max_frames=max_frames, return_frames=True)
+            print(f"[PROCESS_VIDEO] Video processing complete")
+            print(f"[PROCESS_VIDEO] Collected {len(result.get('frames', []))} frames for carousel")
             
             # Add status
             result['status'] = 'success'
             
-            # Optionally encode output to base64
+            print(f"[PROCESS_VIDEO] Result has {len(result.get('frames', []))} frames")
+            print(f"[PROCESS_VIDEO] Output format: {output_format}")
+            
+            # Encode video to base64 if requested
             if output_format == 'base64':
+                print("[PROCESS_VIDEO] Encoding video to base64...")
                 with open(output_path, 'rb') as f:
                     video_data = f.read()
                     result['output_base64'] = base64.b64encode(video_data).decode('utf-8')
                     result['output_base64_size_mb'] = round(len(result['output_base64']) / (1024 * 1024), 2)
             
-            return jsonify(result)
+            # Wrap result in data field for consistency
+            response_data = {
+                'status': 'success',
+                'data': result
+            }
+            
+            print(f"[PROCESS_VIDEO] Returning JSON with {len(result.get('frames', []))} frames")
+            return jsonify(response_data)
         
         finally:
             # Clean up input file
@@ -416,6 +489,97 @@ def process_video():
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+
+@app.route('/process_video_async', methods=['POST'])
+def process_video_async_endpoint():
+    """
+    Start async video processing - returns immediately with job_id
+    Poll /job_status/<job_id> to check progress
+    """
+    print("[ASYNC] Request received")
+    
+    if not HAS_HYBRID or not HAS_VIDEO_PROCESSOR or not HAS_MESH_RENDERER:
+        return jsonify({'error': 'Required components not available'}), 501
+    
+    try:
+        if 'video' not in request.files:
+            return jsonify({'error': 'video file is required'}), 400
+        
+        video_file = request.files['video']
+        if video_file.filename == '':
+            return jsonify({'error': 'No video file selected'}), 400
+        
+        max_frames = int(request.form.get('max_frames', '999999'))
+        
+        # Save video to temp location
+        import tempfile
+        if os.path.exists('/mnt/c'):
+            temp_dir = '/mnt/c/temp'
+            os.makedirs(temp_dir, exist_ok=True)
+        else:
+            temp_dir = tempfile.gettempdir()
+        
+        job_id = str(uuid.uuid4())[:8]
+        input_path = os.path.join(temp_dir, f"upload_{job_id}.mp4")
+        output_path = os.path.join(temp_dir, f"mesh_overlay_{job_id}.mp4")
+        
+        video_file.save(input_path)
+        print(f"[ASYNC] Video saved to: {input_path}")
+        
+        # Initialize job
+        video_jobs[job_id] = {
+            'status': 'queued',
+            'output_path': output_path,
+            'max_frames': max_frames,
+            'created_at': time.time()
+        }
+        
+        # Start processing in background thread
+        thread = threading.Thread(
+            target=process_video_async,
+            args=(job_id, input_path, output_path, max_frames)
+        )
+        thread.daemon = True
+        thread.start()
+        
+        print(f"[ASYNC] Job {job_id} started")
+        return jsonify({
+            'status': 'accepted',
+            'job_id': job_id,
+            'message': 'Video processing started. Poll /job_status/{job_id} for progress.'
+        })
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': f'Server error: {str(e)}'}), 500
+
+
+@app.route('/job_status/<job_id>', methods=['GET'])
+def get_job_status(job_id):
+    """Check status of async video processing job"""
+    if job_id not in video_jobs:
+        return jsonify({'error': 'Job not found'}), 404
+    
+    job = video_jobs[job_id]
+    response = {
+        'job_id': job_id,
+        'status': job['status']
+    }
+    
+    if job['status'] == 'complete':
+        response['result'] = job.get('result', {})
+        response['output_path'] = job.get('output_path')
+        if job.get('started_at') and job.get('completed_at'):
+            response['processing_time'] = round(job['completed_at'] - job['started_at'], 1)
+    elif job['status'] == 'error':
+        response['error'] = job.get('error', 'Unknown error')
+    elif job['status'] == 'processing':
+        if job.get('started_at'):
+            response['elapsed_time'] = round(time.time() - job['started_at'], 1)
+    
+    return jsonify(response)
 
 
 if __name__ == '__main__':
