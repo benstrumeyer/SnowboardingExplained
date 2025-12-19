@@ -2258,3 +2258,32 @@
 {"has3d":true,"hasVisualization":true,"keypointCount":24,"level":"info","message":"[4D-HUMANS] Frame 1 completed","processingTimeMs":2926.22,"service":"video-coach-api","timestamp":"2025-12-19 06:36:47","totalTimeMs":3343}
 {"has3dCount":2,"level":"info","message":"[4D-HUMANS] Batch complete","service":"video-coach-api","successCount":2,"timestamp":"2025-12-19 06:36:47","totalFrames":2,"totalTimeMs":6986,"visualizationsGenerated":2}
 {"framesAnalyzed":2,"has3dCount":2,"level":"info","message":"[4D-HUMANS] Analysis complete","service":"video-coach-api","successCount":2,"timestamp":"2025-12-19 06:36:47","videoId":"1766144199814"}
+{"filename":"trick-video.mp4","fps":2,"level":"info","message":"[4D-HUMANS] Video uploaded: trick-video.mp4","service":"video-coach-api","size":408300,"timestamp":"2025-12-19 06:36:57","videoId":"1766144217150"}
+{"fps":2,"level":"info","message":"Starting frame extraction for video: 1766144217150","outputDir":"C:\\Users\\benja\\repos\\SnowboardingExplained\\backend\\temp\\frames\\1766144217150","service":"video-coach-api","timestamp":"2025-12-19 06:36:57","videoPath":"C:\\Users\\benja\\repos\\SnowboardingExplained\\backend\\uploads\\video-1766144217029-59761396.mp4"}
+{"level":"info","message":"Frame extraction filenames generated: 2 frames","service":"video-coach-api","timestamp":"2025-12-19 06:36:57"}
+{"level":"info","message":"Frame extraction completed for video: 1766144217150","service":"video-coach-api","timestamp":"2025-12-19 06:36:57"}
+{"duration":3.785,"frameCount":7,"level":"info","message":"Frame extraction result: 7 frames from 3.785s video","service":"video-coach-api","timestamp":"2025-12-19 06:36:57","videoId":"1766144217150"}
+{"level":"info","message":"[4D-HUMANS] Extracted 2 frames","service":"video-coach-api","timestamp":"2025-12-19 06:36:57"}
+{"level":"info","message":"[4D-HUMANS] Sending 2 frames to 4D-Humans with visualization","service":"video-coach-api","timestamp":"2025-12-19 06:36:57"}
+{"level":"info","message":"[4D-HUMANS] Processing 2 frames","service":"video-coach-api","timestamp":"2025-12-19 06:36:57","visualize":true}
+{"level":"info","message":"[4D-HUMANS] Detecting 3D pose for frame 0","service":"video-coach-api","timestamp":"2025-12-19 06:36:57","visualize":true}
+{"has3d":true,"hasVisualization":true,"keypointCount":24,"level":"info","message":"[4D-HUMANS] Frame 0 completed","processingTimeMs":2936.96,"service":"video-coach-api","timestamp":"2025-12-19 06:37:00","totalTimeMs":3250}
+{"level":"info","message":"[4D-HUMANS] Detecting 3D pose for frame 1","service":"video-coach-api","timestamp":"2025-12-19 06:37:00","visualize":true}
+{"has3d":true,"hasVisualization":true,"keypointCount":24,"level":"info","message":"[4D-HUMANS] Frame 1 completed","processingTimeMs":2550.64,"service":"video-coach-api","timestamp":"2025-12-19 06:37:03","totalTimeMs":3177}
+{"has3dCount":2,"level":"info","message":"[4D-HUMANS] Batch complete","service":"video-coach-api","successCount":2,"timestamp":"2025-12-19 06:37:03","totalFrames":2,"totalTimeMs":6429,"visualizationsGenerated":2}
+{"framesAnalyzed":2,"has3dCount":2,"level":"info","message":"[4D-HUMANS] Analysis complete","service":"video-coach-api","successCount":2,"timestamp":"2025-12-19 06:37:03","videoId":"1766144217150"}
+{"level":"info","message":"Health check requested","service":"video-coach-api","timestamp":"2025-12-19 06:37:45"}
+{"filename":"trick-video.mp4","fps":2,"level":"info","message":"[4D-HUMANS] Video uploaded: trick-video.mp4","service":"video-coach-api","size":605210,"timestamp":"2025-12-19 06:38:24","videoId":"1766144304371"}
+{"fps":2,"level":"info","message":"Starting frame extraction for video: 1766144304371","outputDir":"C:\\Users\\benja\\repos\\SnowboardingExplained\\backend\\temp\\frames\\1766144304371","service":"video-coach-api","timestamp":"2025-12-19 06:38:24","videoPath":"C:\\Users\\benja\\repos\\SnowboardingExplained\\backend\\uploads\\video-1766144304150-921687970.mp4"}
+{"level":"info","message":"Frame extraction filenames generated: 2 frames","service":"video-coach-api","timestamp":"2025-12-19 06:38:24"}
+{"level":"info","message":"Frame extraction completed for video: 1766144304371","service":"video-coach-api","timestamp":"2025-12-19 06:38:24"}
+{"duration":6.712,"frameCount":13,"level":"info","message":"Frame extraction result: 13 frames from 6.712s video","service":"video-coach-api","timestamp":"2025-12-19 06:38:24","videoId":"1766144304371"}
+{"level":"info","message":"[4D-HUMANS] Extracted 2 frames","service":"video-coach-api","timestamp":"2025-12-19 06:38:24"}
+{"level":"info","message":"[4D-HUMANS] Sending 2 frames to 4D-Humans with visualization","service":"video-coach-api","timestamp":"2025-12-19 06:38:24"}
+{"level":"info","message":"[4D-HUMANS] Processing 2 frames","service":"video-coach-api","timestamp":"2025-12-19 06:38:24","visualize":true}
+{"level":"info","message":"[4D-HUMANS] Detecting 3D pose for frame 0","service":"video-coach-api","timestamp":"2025-12-19 06:38:24","visualize":true}
+{"has3d":true,"hasVisualization":true,"keypointCount":24,"level":"info","message":"[4D-HUMANS] Frame 0 completed","processingTimeMs":2981.3,"service":"video-coach-api","timestamp":"2025-12-19 06:38:28","totalTimeMs":3438}
+{"level":"info","message":"[4D-HUMANS] Detecting 3D pose for frame 1","service":"video-coach-api","timestamp":"2025-12-19 06:38:28","visualize":true}
+{"has3d":true,"hasVisualization":true,"keypointCount":24,"level":"info","message":"[4D-HUMANS] Frame 1 completed","processingTimeMs":2812.19,"service":"video-coach-api","timestamp":"2025-12-19 06:38:31","totalTimeMs":3166}
+{"has3dCount":2,"level":"info","message":"[4D-HUMANS] Batch complete","service":"video-coach-api","successCount":2,"timestamp":"2025-12-19 06:38:31","totalFrames":2,"totalTimeMs":6606,"visualizationsGenerated":2}
+{"framesAnalyzed":2,"has3dCount":2,"level":"info","message":"[4D-HUMANS] Analysis complete","service":"video-coach-api","successCount":2,"timestamp":"2025-12-19 06:38:31","videoId":"1766144304371"}

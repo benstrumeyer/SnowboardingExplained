@@ -3,6 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
+import FormData from 'form-data';
 import logger from './logger';
 import { FrameExtractionService } from './services/frameExtraction';
 import { TrickDetectionService } from './services/trickDetection';
@@ -1304,6 +1305,74 @@ app.post('/api/debug/test-capture', async (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error(`Failed to create test frame: ${error.message}`);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Full video mesh overlay processing endpoint
+app.post('/process_video', upload.single('video'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        error: 'No video file provided',
+        status: 'error'
+      });
+    }
+
+    const videoPath = req.file.path;
+    logger.info(`[PROCESS_VIDEO] Starting full video processing: ${videoPath}`);
+
+    // Call the pose service to process the video
+    const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
+    const form = new FormData();
+    
+    // Read the video file and append it
+    const videoStream = fs.createReadStream(videoPath);
+    form.append('video', videoStream, req.file.originalname);
+
+    logger.info(`[PROCESS_VIDEO] Sending to pose service: ${poseServiceUrl}/process_video`);
+
+    const response = await fetch(`${poseServiceUrl}/process_video`, {
+      method: 'POST',
+      body: form as any,
+      headers: form.getHeaders()
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error(`[PROCESS_VIDEO] Pose service error: ${response.status} - ${errorText}`);
+      return res.status(response.status).json({
+        error: `Pose service error: ${response.status}`,
+        status: 'error'
+      });
+    }
+
+    const result = await response.json();
+    logger.info(`[PROCESS_VIDEO] Processing complete:`, result);
+
+    // Clean up uploaded file
+    fs.unlink(videoPath, (err) => {
+      if (err) logger.warn(`Failed to delete temp video: ${err}`);
+    });
+
+    res.json({
+      status: 'success',
+      ...result
+    });
+
+  } catch (err: any) {
+    logger.error(`[PROCESS_VIDEO] Error: ${err.message}`, { error: err });
+    
+    // Clean up on error
+    if (req.file) {
+      fs.unlink(req.file.path, (err) => {
+        if (err) logger.warn(`Failed to delete temp video: ${err}`);
+      });
+    }
+
+    res.status(500).json({
+      error: `Processing error: ${err.message}`,
+      status: 'error'
+    });
   }
 });
 
