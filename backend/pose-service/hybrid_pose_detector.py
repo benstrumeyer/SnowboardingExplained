@@ -137,34 +137,63 @@ class HybridPoseDetector:
             logger.info("[ViTDet] Loading ViTDet detector (first run downloads ~2.7GB)...")
             start = time.time()
             
+            # Step 1: Import detectron2 with error handling
+            logger.info("[ViTDet] Step 1: Importing detectron2...")
+            try:
+                from detectron2.config import LazyConfig
+                logger.info("[ViTDet] ✓ detectron2 imported successfully")
+            except ImportError as e:
+                logger.error("[ViTDet] detectron2 import failed: %s", str(e))
+                raise
+            
+            # Step 2: Import HMR2 utilities
+            logger.info("[ViTDet] Step 2: Importing HMR2 utilities...")
             from pathlib import Path
-            from detectron2.config import LazyConfig
             import hmr2
             from hmr2.utils.utils_detectron2 import DefaultPredictor_Lazy
+            logger.info("[ViTDet] ✓ HMR2 utilities imported")
             
-            # Load ViTDet config - EXACT as demo.py
+            # Step 3: Load config file
+            logger.info("[ViTDet] Step 3: Loading config file...")
             cfg_path = Path(hmr2.__file__).parent / 'configs' / 'cascade_mask_rcnn_vitdet_h_75ep.py'
-            logger.info("[ViTDet] Loading config from: %s", cfg_path)
+            logger.info("[ViTDet] Config path: %s", cfg_path)
             
+            if not cfg_path.exists():
+                raise FileNotFoundError(f"Config file not found: {cfg_path}")
+            
+            logger.info("[ViTDet] Parsing LazyConfig...")
             detectron2_cfg = LazyConfig.load(str(cfg_path))
+            logger.info("[ViTDet] ✓ Config loaded")
             
-            # Set checkpoint URL - EXACT as demo.py
+            # Step 4: Configure checkpoint and thresholds
+            logger.info("[ViTDet] Step 4: Configuring checkpoint and thresholds...")
             detectron2_cfg.train.init_checkpoint = "https://dl.fbaipublicfiles.com/detectron2/ViTDet/COCO/cascade_mask_rcnn_vitdet_h/f328730692/model_final_f05665.pkl"
             
-            # Set score threshold - EXACT as demo.py
             for i in range(3):
                 detectron2_cfg.model.roi_heads.box_predictors[i].test_score_thresh = 0.25
+            logger.info("[ViTDet] ✓ Configuration complete")
             
-            logger.info("[ViTDet] Creating predictor...")
-            self.vitdet_detector = DefaultPredictor_Lazy(detectron2_cfg)
+            # Step 5: Create predictor (this is where crashes happen)
+            logger.info("[ViTDet] Step 5: Creating DefaultPredictor_Lazy (this may take a minute)...")
+            logger.info("[ViTDet] Downloading model weights (~2.7GB on first run)...")
+            
+            try:
+                self.vitdet_detector = DefaultPredictor_Lazy(detectron2_cfg)
+                logger.info("[ViTDet] ✓ Predictor created successfully")
+            except Exception as e:
+                logger.error("[ViTDet] Predictor creation failed: %s", str(e), exc_info=True)
+                logger.error("[ViTDet] This may be a memory issue or detectron2 crash")
+                raise
+            
             self.vitdet_loaded = True
-            
-            logger.info("[ViTDet] ✓ Loaded in %.1fs", time.time() - start)
+            elapsed = time.time() - start
+            logger.info("[ViTDet] ✓ ViTDet fully loaded in %.1fs", elapsed)
             return self.vitdet_detector
             
         except Exception as e:
             logger.error("[ViTDet] Failed to load: %s", str(e), exc_info=True)
-            self.vitdet_loaded = True  # Mark as attempted
+            logger.error("[ViTDet] Marking as attempted to prevent retry loops")
+            self.vitdet_loaded = True  # Mark as attempted to prevent retry loops
             self.vitdet_detector = None
             return None
     
@@ -394,7 +423,7 @@ class HybridPoseDetector:
         # Then apply 180-degree rotation around X-axis (flip Y and Z)
         x_cam = x - tx
         y_cam = -(y - ty)  # Flip Y
-        z_cam = -(z)       # Flip Z
+        z_cam = tz - z     # Depth from camera to vertex (tz is camera depth, z is vertex depth)
         
         # Clamp z to avoid division by zero
         z_cam = np.maximum(z_cam, 0.01)

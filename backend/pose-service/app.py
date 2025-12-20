@@ -1,4 +1,4 @@
-"""
+﻿"""
 Flask HTTP Server for 4D-Humans Pose Detection (WSL)
 Exposes HMR2 pose detection as a REST API
 
@@ -66,12 +66,13 @@ import uuid
 # Store job status and results
 video_jobs = {}  # {job_id: {status: 'processing'|'complete'|'error', result: {...}, error: str}}
 
-def process_video_async(job_id, input_path, output_path):
+def process_video_async(job_id, input_path, output_path, max_frames='999999'):
     """Process video in background thread"""
     try:
         print(f"[JOB {job_id}] Starting async video processing...")
         print(f"[JOB {job_id}] Input: {input_path}")
         print(f"[JOB {job_id}] Output: {output_path}")
+        print(f"[JOB {job_id}] Max frames: {max_frames}")
         print(f"[JOB {job_id}] Input file exists: {os.path.exists(input_path)}")
         if os.path.exists(input_path):
             print(f"[JOB {job_id}] Input file size: {os.path.getsize(input_path)} bytes")
@@ -92,16 +93,17 @@ def process_video_async(job_id, input_path, output_path):
         processor = VideoMeshProcessor(detector, mesh_renderer)
         print(f"[JOB {job_id}] Processor created")
         
-        # Process video
-        print(f"[JOB {job_id}] Calling process_video...")
-        result = processor.process_video(input_path, output_path)
+        # Process video with max_frames
+        print(f"[JOB {job_id}] Calling process_video with max_frames={max_frames}...")
+        max_frames_int = int(max_frames)
+        result = processor.process_video(input_path, output_path, max_frames=max_frames_int)
         print(f"[JOB {job_id}] process_video returned: {result}")
         
         # Store result
         video_jobs[job_id]['status'] = 'complete'
         video_jobs[job_id]['result'] = result
         video_jobs[job_id]['completed_at'] = time.time()
-        print(f"[JOB {job_id}] ✓ Processing complete!")
+        print(f"[JOB {job_id}] Γ£ô Processing complete!")
         
         # Clean up input file
         if os.path.exists(input_path):
@@ -112,7 +114,7 @@ def process_video_async(job_id, input_path, output_path):
                 print(f"[JOB {job_id}] Failed to clean up input file: {e}")
                 
     except Exception as e:
-        print(f"[JOB {job_id}] ✗ Error: {e}")
+        print(f"[JOB {job_id}] Γ£ù Error: {e}")
         import traceback
         traceback.print_exc()
         video_jobs[job_id]['status'] = 'error'
@@ -210,16 +212,16 @@ def do_warmup():
             results['status'] = 'ready'
             results['message'] = 'All models loaded and ready'
             _models_ready = True
-            print("[WARMUP] ✓ All models ready!")
+            print("[WARMUP] Γ£ô All models ready!")
         elif hmr2_ok:
             results['status'] = 'partial'
             results['message'] = 'HMR2 loaded, ViTDet failed (will use full-image fallback)'
             _models_ready = True
-            print("[WARMUP] ⚠ Partial ready (HMR2 only)")
+            print("[WARMUP] ΓÜá Partial ready (HMR2 only)")
         else:
             results['status'] = 'error'
             results['message'] = 'Model loading failed'
-            print("[WARMUP] ✗ Model loading failed")
+            print("[WARMUP] Γ£ù Model loading failed")
         
         return results
         
@@ -515,6 +517,10 @@ def process_video_async_endpoint():
         if video_file.filename == '':
             return jsonify({'error': 'No video file selected'}), 400
         
+        # Extract max_frames from form data
+        max_frames = request.form.get('max_frames', '999999')
+        print(f"[ASYNC] max_frames from form: {max_frames}")
+        
         # Save video to temp location
         import tempfile
         if os.path.exists('/mnt/c'):
@@ -534,18 +540,19 @@ def process_video_async_endpoint():
         video_jobs[job_id] = {
             'status': 'queued',
             'output_path': output_path,
-            'created_at': time.time()
+            'created_at': time.time(),
+            'max_frames': max_frames
         }
         
         # Start processing in background thread
         thread = threading.Thread(
             target=process_video_async,
-            args=(job_id, input_path, output_path)
+            args=(job_id, input_path, output_path, max_frames)
         )
         thread.daemon = True
         thread.start()
         
-        print(f"[ASYNC] Job {job_id} started")
+        print(f"[ASYNC] Job {job_id} started with max_frames={max_frames}")
         return jsonify({
             'status': 'accepted',
             'job_id': job_id,
@@ -594,6 +601,55 @@ def get_job_status(job_id):
     return jsonify(response)
 
 
+@app.route('/frame/<job_id>/<int:frame_index>', methods=['GET'])
+def get_frame_image(job_id, frame_index):
+    """Extract and serve a specific frame from the processed video as JPEG"""
+    print(f"[FRAME] Requesting frame {frame_index} from job {job_id}")
+    
+    if job_id not in video_jobs:
+        return jsonify({'error': 'Job not found'}), 404
+    
+    job = video_jobs[job_id]
+    if job['status'] != 'complete':
+        return jsonify({'error': 'Job not complete'}), 400
+    
+    output_path = job.get('output_path')
+    if not output_path or not os.path.exists(output_path):
+        return jsonify({'error': 'Output video not found'}), 404
+    
+    try:
+        # Open the video and seek to the frame
+        cap = cv2.VideoCapture(output_path)
+        if not cap.isOpened():
+            return jsonify({'error': 'Cannot open video'}), 500
+        
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        if frame_index < 0 or frame_index >= total_frames:
+            cap.release()
+            return jsonify({'error': f'Frame index out of range (0-{total_frames-1})'}), 400
+        
+        # Seek to the frame
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_index)
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret or frame is None:
+            return jsonify({'error': 'Failed to read frame'}), 500
+        
+        # Encode as JPEG
+        _, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 90])
+        
+        # Return as image response
+        from flask import Response
+        return Response(buffer.tobytes(), mimetype='image/jpeg')
+        
+    except Exception as e:
+        print(f"[FRAME] Error extracting frame: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     import threading
     import os
@@ -622,30 +678,30 @@ if __name__ == '__main__':
     
     print("=" * 60)
     
-    # Auto-warmup: load models in background after server starts
+    # Auto-warmup: load models on startup (synchronously)
     # Set SKIP_WARMUP=1 to disable auto-warmup
     skip_warmup = os.environ.get('SKIP_WARMUP', '0') == '1'
     
     if HAS_HYBRID and not skip_warmup:
-        def background_warmup():
-            """Load models in background after server starts"""
-            import time as t
-            t.sleep(1)  # Wait for server to be ready
-            print("")
-            print("=" * 60)
-            print("[STARTUP] Auto-warming up models...")
-            print("=" * 60)
-            do_warmup()
-            print("=" * 60)
-            print("[STARTUP] Ready to accept requests!")
-            print("=" * 60)
-        
-        warmup_thread = threading.Thread(target=background_warmup, daemon=True)
-        warmup_thread.start()
+        print("")
+        print("=" * 60)
+        print("[STARTUP] Pre-loading models on startup...")
+        print("=" * 60)
+        warmup_result = do_warmup()
+        print("=" * 60)
+        if warmup_result.get('status') in ['ready', 'partial']:
+            print("[STARTUP] ✓ Models loaded successfully")
+        else:
+            print(f"[STARTUP] ⚠ Warmup incomplete: {warmup_result.get('message', 'Unknown')}")
+        print("=" * 60)
     else:
         if skip_warmup:
             print("[STARTUP] Skipping auto-warmup (SKIP_WARMUP=1)")
         print("[STARTUP] Call /warmup to load models before first request")
     
     print("")
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    print("[STARTUP] Starting Flask server on 0.0.0.0:5000...")
+    print("[STARTUP] Server is ready to accept requests")
+    print("=" * 60)
+    app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False, use_debugger=False, threaded=False)
+

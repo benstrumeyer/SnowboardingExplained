@@ -13,14 +13,32 @@ import { LLMTrickDetectionService } from './services/llmTrickDetection';
 import { ChatService } from './services/chatService';
 import { KnowledgeBaseService } from './services/knowledgeBase';
 import { ApiResponse } from './types';
+import { connectDB } from '../mcp-server/src/db/connection';
+import { processVideoUpload, getVideoAnalysis } from './services/videoAnalysisPipelineImpl';
 // New imports for Python pose service
 import { detectPose, detectPoseParallel, detectPoseHybrid, detectPoseHybridBatch, checkPoseServiceHealth, PoseFrame, HybridPoseFrame } from './services/pythonPoseService';
 import { AnalysisLogBuilder, analyzeFrame, AnalysisLog, FrameAnalysis } from './services/analysisLogService';
+// API routes
+import perfectPhasesRouter from '../api/perfect-phases';
 
 // Load environment variables from .env.local
-dotenv.config({ path: path.join(__dirname, '../.env.local') });
+const envPath = path.join(__dirname, '../.env.local');
+console.log(`[STARTUP] Loading env from: ${envPath}`);
+console.log(`[STARTUP] Env file exists: ${fs.existsSync(envPath)}`);
+const envResult = dotenv.config({ path: envPath });
+if (envResult.error) {
+  console.warn(`[STARTUP] Warning loading .env.local: ${envResult.error.message}`);
+} else {
+  console.log(`[STARTUP] ✓ Loaded .env.local successfully`);
+}
 // Also load from .env as fallback
 dotenv.config();
+
+// Log critical environment variables
+console.log(`[STARTUP] POSE_SERVICE_URL: ${process.env.POSE_SERVICE_URL || 'NOT SET (will use http://localhost:5000)'}`);
+console.log(`[STARTUP] POSE_SERVICE_TIMEOUT: ${process.env.POSE_SERVICE_TIMEOUT || 'NOT SET (will use 10000ms)'}`);
+console.log(`[STARTUP] NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+console.log(`[STARTUP] PORT: ${process.env.PORT || '3001'}`);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -211,6 +229,146 @@ app.get('/api/health', (req: Request, res: Response) => {
     },
     timestamp: new Date().toISOString()
   } as ApiResponse<any>);
+});
+
+// Mount API routes
+app.use('/api/perfect-phases', perfectPhasesRouter);
+
+// Form Analysis Upload Endpoint
+app.post('/api/form-analysis/upload', upload.single('video'), async (req: Request, res: Response) => {
+  const requestId = Date.now().toString();
+  
+  try {
+    logger.info(`[${requestId}] Form analysis upload request received`, {
+      method: req.method,
+      url: req.url,
+      headers: req.headers,
+      body: req.body,
+      file: req.file ? {
+        fieldname: req.file.fieldname,
+        originalname: req.file.originalname,
+        encoding: req.file.encoding,
+        mimetype: req.file.mimetype,
+        size: req.file.size,
+        destination: req.file.destination,
+        filename: req.file.filename,
+        path: req.file.path
+      } : null
+    });
+
+    if (!req.file) {
+      logger.warn(`[${requestId}] No video file provided in request`);
+      return res.status(400).json({
+        success: false,
+        error: 'No video file provided',
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+
+    logger.info(`[${requestId}] Video file received`, {
+      filename: req.file.originalname,
+      size: req.file.size,
+      path: req.file.path
+    });
+
+    // Connect to database
+    logger.info(`[${requestId}] Connecting to MongoDB...`);
+    const db = await connectDB();
+    logger.info(`[${requestId}] ✓ Connected to MongoDB`);
+
+    // Import pipeline
+    logger.info(`[${requestId}] Pipeline ready`);
+
+    // Parse optional parameters
+    const { intendedTrick, stance } = req.body;
+    logger.info(`[${requestId}] Request parameters`, {
+      intendedTrick,
+      stance
+    });
+
+    // Validate stance if provided
+    if (stance && !['regular', 'goofy'].includes(stance)) {
+      logger.warn(`[${requestId}] Invalid stance provided: ${stance}`);
+      return res.status(400).json({
+        success: false,
+        error: 'stance must be "regular" or "goofy"',
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+
+    // Process video
+    logger.info(`[${requestId}] Starting video processing pipeline...`);
+    const result = await processVideoUpload(db, {
+      videoPath: req.file.path,
+      intendedTrick,
+      stance: stance as 'regular' | 'goofy' | undefined,
+    });
+
+    logger.info(`[${requestId}] Pipeline result`, {
+      status: result.status,
+      videoId: result.videoId,
+      error: result.error
+    });
+
+    if (result.status === 'failed') {
+      logger.error(`[${requestId}] Video processing failed`, {
+        error: result.error
+      });
+      return res.status(500).json({
+        success: false,
+        error: result.error,
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+
+    // Fetch the complete analysis
+    logger.info(`[${requestId}] Fetching analysis for videoId: ${result.videoId}`);
+    const analysis = await getVideoAnalysis(db, result.videoId);
+
+    if (!analysis) {
+      logger.error(`[${requestId}] Failed to retrieve analysis from database`);
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to retrieve analysis',
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+
+    logger.info(`[${requestId}] ✓ Analysis complete`, {
+      videoId: analysis.videoId,
+      duration: analysis.duration,
+      frameCount: analysis.frameCount,
+      fps: analysis.fps,
+      stance: analysis.stance
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        videoId: analysis.videoId,
+        duration: analysis.duration,
+        frameCount: analysis.frameCount,
+        fps: analysis.fps,
+        stance: analysis.stance,
+        phases: analysis.phases,
+        summary: analysis.summary,
+      },
+      timestamp: new Date().toISOString()
+    } as ApiResponse<any>);
+
+  } catch (error: any) {
+    logger.error(`[${requestId}] Form analysis upload error`, {
+      error: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Failed to process video',
+      timestamp: new Date().toISOString()
+    } as ApiResponse<null>);
+  }
 });
 
 // Video upload and analysis endpoint (DEPRECATED - use /api/video/analyze-pose instead)
@@ -909,6 +1067,44 @@ app.post('/api/pose/reload', async (req: Request, res: Response) => {
   }
 });
 
+// Proxy endpoint for pose hybrid analysis (mobile app uses this)
+app.post('/api/pose/hybrid', upload.single('frame'), async (req: Request, res: Response) => {
+  try {
+    const axios = (await import('axios')).default;
+    const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'No frame provided' });
+    }
+
+    const form = new FormData();
+    form.append('frame', fs.createReadStream(req.file.path), {
+      filename: req.file.originalname || 'frame.jpg',
+      contentType: 'image/jpeg'
+    });
+    
+    if (req.body.frameNumber) {
+      form.append('frameNumber', req.body.frameNumber);
+    }
+
+    const response = await axios.post(`${poseServiceUrl}/pose/hybrid`, form, {
+      headers: form.getHeaders(),
+      timeout: 30000
+    });
+
+    // Clean up uploaded file
+    fs.unlink(req.file.path, () => {});
+
+    res.json(response.data);
+  } catch (error: any) {
+    if (req.file) {
+      fs.unlink(req.file.path, () => {});
+    }
+    logger.error(`[POSE_HYBRID] Error: ${error.message}`);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 4D-Humans (HMR2) 3D pose analysis endpoint
 app.post('/api/video/analyze-4d', upload.single('video'), async (req: Request, res: Response) => {
   try {
@@ -1165,13 +1361,13 @@ app.get('/api/debug/frame/:frameNumber', (req: Request, res: Response) => {
     const imagePath = path.join(frameDir, 'frame.png');
     const metadataPath = path.join(frameDir, 'metadata.json');
 
-    let imageBase64 = null;
+    let imageBase64: string | null = null;
     if (fs.existsSync(imagePath)) {
       const imageBuffer = fs.readFileSync(imagePath);
       imageBase64 = imageBuffer.toString('base64');
     }
 
-    let metadata = null;
+    let metadata: any = null;
     if (fs.existsSync(metadataPath)) {
       try {
         const content = fs.readFileSync(metadataPath, 'utf-8');
@@ -1407,25 +1603,44 @@ app.post('/api/video/process_video', upload.single('video'), async (req: Request
 });
 
 // Async video processing - submit job
-app.post('/api/video/process_async', upload.single('video'), async (req: Request, res: Response) => {
+app.post('/api/video/process_async', upload.fields([{ name: 'video', maxCount: 1 }, { name: 'max_frames', maxCount: 1 }]), async (req: Request, res: Response) => {
   try {
     logger.info(`[ASYNC] Request received`);
+    logger.info(`[ASYNC] Content-Type: ${req.headers['content-type']}`);
+    logger.info(`[ASYNC] req.body:`, (req as any).body);
+    logger.info(`[ASYNC] req.query keys:`, Object.keys((req as any).query || {}));
+    logger.info(`[ASYNC] req.files keys:`, Object.keys((req as any).files || {}));
     
-    if (!req.file) {
+    const files = (req as any).files;
+    if (!files || !files.video || !files.video[0]) {
       return res.status(400).json({ error: 'No video file provided' });
     }
 
-    const videoPath = req.file.path;
+    const videoFile = files.video[0];
+    const videoPath = videoFile.path;
     const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
-    const maxFrames = (req as any).body?.max_frames || '999999';
+    
+    // Extract max_frames from FormData fields (multer parses as array)
+    let maxFrames = '999999';
+    if ((req as any).body?.max_frames) {
+      maxFrames = Array.isArray((req as any).body.max_frames) 
+        ? (req as any).body.max_frames[0] 
+        : (req as any).body.max_frames;
+    } else if ((req as any).query?.max_frames) {
+      maxFrames = (req as any).query.max_frames;
+    }
+    logger.info(`[ASYNC] max_frames extracted: ${maxFrames}`);
     
     // Forward to pose service async endpoint
     const form = new FormData();
     form.append('video', fs.createReadStream(videoPath), {
-      filename: req.file.originalname || 'video.mp4',
+      filename: videoFile.originalname || 'video.mp4',
       contentType: 'video/mp4'
     });
     form.append('max_frames', maxFrames);
+    
+    logger.info(`[ASYNC] Forwarding to pose service with max_frames=${maxFrames}`);
+    logger.info(`[ASYNC] Pose service URL: ${poseServiceUrl}/process_video_async`);
 
     const response = await axios.post(`${poseServiceUrl}/process_video_async`, form, {
       headers: form.getHeaders(),
@@ -1462,6 +1677,76 @@ app.get('/api/video/job_status/:jobId', async (req: Request, res: Response) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// Serve output video file
+app.get('/api/video/output/:jobId', async (req: Request, res: Response) => {
+  try {
+    const { jobId } = req.params;
+    const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
+    
+    logger.info(`[VIDEO_OUTPUT] Fetching output video for job ${jobId}`);
+    
+    // Get job status to find output video path
+    const statusResponse = await axios.get(`${poseServiceUrl}/job_status/${jobId}`, {
+      timeout: 10000
+    });
+    
+    if (statusResponse.data.status !== 'complete') {
+      return res.status(400).json({ error: 'Job not complete' });
+    }
+    
+    const outputPath = statusResponse.data.result?.output_path;
+    if (!outputPath) {
+      return res.status(404).json({ error: 'Output video not found' });
+    }
+    
+    logger.info(`[VIDEO_OUTPUT] Serving video from: ${outputPath}`);
+    
+    // Serve the video file
+    const fs = require('fs');
+    if (!fs.existsSync(outputPath)) {
+      return res.status(404).json({ error: 'Video file not found on disk' });
+    }
+    
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Disposition', `attachment; filename="output_${jobId}.mp4"`);
+    
+    const fileStream = fs.createReadStream(outputPath);
+    fileStream.pipe(res);
+    
+  } catch (err: any) {
+    logger.error(`[VIDEO_OUTPUT] Error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Serve individual frame as JPEG image
+app.get('/api/video/frame/:jobId/:frameIndex', async (req: Request, res: Response) => {
+  try {
+    const { jobId, frameIndex } = req.params;
+    const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
+    
+    logger.info(`[FRAME] Fetching frame ${frameIndex} for job ${jobId}`);
+    
+    // Proxy to pose service frame endpoint
+    const response = await axios.get(`${poseServiceUrl}/frame/${jobId}/${frameIndex}`, {
+      responseType: 'arraybuffer',
+      timeout: 30000
+    });
+    
+    res.setHeader('Content-Type', 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.send(response.data);
+    
+  } catch (err: any) {
+    if (err.response?.status === 404) {
+      return res.status(404).json({ error: 'Frame not found' });
+    }
+    logger.error(`[FRAME] Error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 
 // Download processed video file
 app.get('/api/video/download', (req: Request, res: Response) => {
@@ -1528,6 +1813,31 @@ async function startServer() {
   try {
     // Initialize knowledge base
     await KnowledgeBaseService.initialize();
+    
+    // Initialize database connection
+    const { connectToDatabase } = await import('./db/connection');
+    await connectToDatabase();
+
+    // Check pose service health on startup (non-blocking, just for diagnostics)
+    console.log(`[STARTUP] Checking pose service health...`);
+    const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
+    console.log(`[STARTUP] Pose service URL: ${poseServiceUrl}`);
+    
+    try {
+      const healthResponse = await axios.get(`${poseServiceUrl}/health`, { timeout: 5000 });
+      console.log(`[STARTUP] ✓ Pose service is responding`);
+      console.log(`[STARTUP] Pose service status:`, healthResponse.data);
+    } catch (healthError: any) {
+      console.warn(`[STARTUP] ⚠ Pose service health check failed (this is OK if service is still warming up)`);
+      console.warn(`[STARTUP] Error:`, {
+        message: healthError.message,
+        code: healthError.code,
+        address: healthError.address,
+        port: healthError.port
+      });
+      console.warn(`[STARTUP] The pose service may still be loading models. This is normal.`);
+      console.warn(`[STARTUP] Backend will check health when requests need it.`);
+    }
 
     app.listen(Number(PORT), '0.0.0.0', () => {
       logger.info(`🚀 Video Coaching API running on port ${PORT}`, {
