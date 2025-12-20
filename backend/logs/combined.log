@@ -3301,3 +3301,20 @@
 {"level":"info","message":"Health check requested","service":"video-coach-api","timestamp":"2025-12-19 12:40:50"}
 {"level":"info","message":"[ASYNC] Request received","service":"video-coach-api","timestamp":"2025-12-19 12:40:55"}
 {"level":"info","message":"[ASYNC] Job submitted: cf86f923","service":"video-coach-api","timestamp":"2025-12-19 12:40:55"}
+{"level":"info","message":"Initializing knowledge base","service":"video-coach-api","timestamp":"2025-12-19 12:44:55"}
+{"level":"info","message":"Loaded 3 phase requirement sets","service":"video-coach-api","timestamp":"2025-12-19 12:44:55"}
+{"level":"info","message":"Loaded 10 knowledge entries","service":"video-coach-api","timestamp":"2025-12-19 12:44:55"}
+{"level":"info","message":"Knowledge base initialized with 10 entries","service":"video-coach-api","timestamp":"2025-12-19 12:44:55"}
+{"accessibleAt":"http://192.168.1.153:3001","bindAddress":"0.0.0.0","environment":"development","level":"info","message":"🚀 Video Coaching API running on port 3001","port":3001,"service":"video-coach-api","timestamp":"2025-12-19 12:44:55"}
+{"addMessage":"POST http://0.0.0.0:3001/api/chat/message","chatSession":"POST http://0.0.0.0:3001/api/chat/session","frame":"GET http://0.0.0.0:3001/api/video/:videoId/frame/:frameNumber","frames":"GET http://0.0.0.0:3001/api/video/:videoId/frames","getMessage":"GET http://0.0.0.0:3001/api/chat/session/:sessionId","health":"GET http://0.0.0.0:3001/api/health","knowledge":"GET http://0.0.0.0:3001/api/knowledge/phase/:phase","level":"info","message":"Available endpoints:","search":"GET http://0.0.0.0:3001/api/knowledge/search?q=query","service":"video-coach-api","timestamp":"2025-12-19 12:44:55","upload":"POST http://0.0.0.0:3001/api/video/upload"}
+{"level":"error","message":"[JOB_STATUS] Error: connect ECONNREFUSED 172.24.183.130:5000","service":"video-coach-api","timestamp":"2025-12-19 12:44:58"}
+{"level":"error","message":"[JOB_STATUS] Error: connect ECONNREFUSED 172.24.183.130:5000","service":"video-coach-api","timestamp":"2025-12-19 12:45:03"}
+{"level":"info","message":"Health check requested","service":"video-coach-api","timestamp":"2025-12-19 12:46:29"}
+{"level":"info","message":"[ASYNC] Request received","service":"video-coach-api","timestamp":"2025-12-19 12:46:33"}
+{"level":"info","message":"[ASYNC] Job submitted: 92097444","service":"video-coach-api","timestamp":"2025-12-19 12:46:33"}
+{"level":"error","message":"[JOB_STATUS] Error: timeout of 10000ms exceeded","service":"video-coach-api","timestamp":"2025-12-19 12:49:32"}
+{"level":"error","message":"[JOB_STATUS] Error: timeout of 10000ms exceeded","service":"video-coach-api","timestamp":"2025-12-19 12:49:46"}
+{"level":"info","message":"[DOWNLOAD] Download request for: /mnt/c/temp/mesh_overlay_92097444.mp4","service":"video-coach-api","timestamp":"2025-12-19 13:05:02"}
+{"level":"info","message":"[DOWNLOAD] Converted path: C:\\temp/mesh_overlay_92097444.mp4","service":"video-coach-api","timestamp":"2025-12-19 13:05:02"}
+{"level":"info","message":"[DOWNLOAD] Attempting to download: C:\\temp/mesh_overlay_92097444.mp4","service":"video-coach-api","timestamp":"2025-12-19 13:05:02"}
+{"level":"info","message":"[DOWNLOAD] Serving video: mesh_overlay_92097444.mp4 (23.59 MB)","service":"video-coach-api","timestamp":"2025-12-19 13:05:02"}

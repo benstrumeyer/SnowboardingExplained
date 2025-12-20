@@ -426,3 +426,7 @@
 {"level":"error","message":"[JOB_STATUS] Error: connect ECONNREFUSED 172.24.183.130:5000","service":"video-coach-api","timestamp":"2025-12-19 12:30:20"}
 {"level":"error","message":"[JOB_STATUS] Error: connect ECONNREFUSED 172.24.183.130:5000","service":"video-coach-api","timestamp":"2025-12-19 12:30:32"}
 {"level":"error","message":"[ASYNC] Error: connect ECONNREFUSED 172.24.183.130:5000","service":"video-coach-api","timestamp":"2025-12-19 12:32:00"}
+{"level":"error","message":"[JOB_STATUS] Error: connect ECONNREFUSED 172.24.183.130:5000","service":"video-coach-api","timestamp":"2025-12-19 12:44:58"}
+{"level":"error","message":"[JOB_STATUS] Error: connect ECONNREFUSED 172.24.183.130:5000","service":"video-coach-api","timestamp":"2025-12-19 12:45:03"}
+{"level":"error","message":"[JOB_STATUS] Error: timeout of 10000ms exceeded","service":"video-coach-api","timestamp":"2025-12-19 12:49:32"}
+{"level":"error","message":"[JOB_STATUS] Error: timeout of 10000ms exceeded","service":"video-coach-api","timestamp":"2025-12-19 12:49:46"}
