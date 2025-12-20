@@ -45,7 +45,13 @@ The form analysis system uses a two-phase architecture:
 ### Backend - Form Analysis
 - Node.js + TypeScript
 - MongoDB (video analysis storage)
-- 4D-Humans pose estimation (WSL service)
+- **4D-Humans** - Advanced human pose reconstruction and tracking using Transformers ([GitHub](https://github.com/shubham-goel/4D-Humans))
+  - Extracts 3D joint positions from video frames
+  - Runs on WSL service for GPU acceleration
+  - Provides per-frame pose data with confidence scores
+- **ViTDet** - Vision Transformer backbone for object detection ([Hugging Face](https://huggingface.co/docs/transformers/en/model_doc/vitdet))
+  - Used for robust person detection in frames
+  - Enables accurate pose estimation even in challenging angles
 - MCP (Model Context Protocol) for LLM tool integration
 - Pinecone (coaching tips knowledge base)
 
@@ -152,6 +158,36 @@ SnowboardingExplained/
 - LLM generates one comprehensive coaching response
 - All computation already done—LLM just interprets and coaches
 - Fast response (no waiting for analysis)
+
+## Pose Estimation Pipeline
+
+The form analysis system uses state-of-the-art computer vision models to extract accurate 3D pose data from snowboarding videos.
+
+### 4D-Humans: Advanced Pose Reconstruction
+
+[4D-Humans](https://github.com/shubham-goel/4D-Humans) is a Transformer-based model that reconstructs 3D human pose and shape from video. It provides:
+
+- **3D Joint Positions** - 24 SMPL joints with x, y, z coordinates per frame
+- **Per-Frame Confidence** - Reliability score for each joint detection
+- **Temporal Consistency** - Smooth pose tracking across frames using video context
+- **Robust to Occlusion** - Handles partial visibility (e.g., arms behind body during rotation)
+
+### ViTDet: Robust Person Detection
+
+[ViTDet](https://huggingface.co/docs/transformers/en/model_doc/vitdet) (Vision Transformer Detection) provides the backbone for detecting people in frames before pose estimation:
+
+- **Vision Transformer Backbone** - Transformer-based architecture for robust feature extraction
+- **Multi-Scale Detection** - Handles riders at various distances and angles
+- **High Accuracy** - Enables reliable pose estimation even in challenging snowboarding scenarios
+
+### Processing Pipeline
+
+1. **Frame Extraction** - Extract frames from uploaded video at consistent intervals
+2. **Person Detection** - Use ViTDet to locate rider in each frame
+3. **Pose Estimation** - Use 4D-Humans to extract 3D joint positions
+4. **Pose Validation** - Filter out low-confidence detections
+5. **Phase Detection** - Use pose timeline to identify trick phases
+6. **Metric Computation** - Calculate biomechanical metrics from pose data
 
 ### 6 Trick Phases
 
