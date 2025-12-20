@@ -677,6 +677,7 @@ class HybridPoseDetector:
         viz_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
         
         result['visualization'] = f"data:image/png;base64,{viz_base64}"
+        result['visualization_base64'] = viz_base64  # For video processor carousel frames
         
         return result
 

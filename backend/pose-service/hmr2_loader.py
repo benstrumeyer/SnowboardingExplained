@@ -1,13 +1,23 @@
 """
-HMR2 loader that bypasses pyrender/OpenGL requirements on Windows
+HMR2 loader that bypasses pyrender/OpenGL requirements on Windows/WSL
 We only need the model inference, not the rendering
 """
 import sys
 import os
 
+def _is_wsl():
+    """Check if running in WSL"""
+    try:
+        if sys.platform.startswith('linux'):
+            with open('/proc/version', 'r') as f:
+                return 'microsoft' in f.read().lower()
+    except:
+        pass
+    return False
+
 def load_hmr2_without_renderer():
     """
-    Load HMR2 model with proper pyrender support for mesh rendering
+    Load HMR2 model, skipping renderer initialization in WSL/Windows
     """
     
     # Fix HOME env var for Windows - strip any whitespace
@@ -32,6 +42,18 @@ def load_hmr2_without_renderer():
 
         # Override CACHE_DIR_4DHUMANS to use our clean path
         clean_cache_dir = cache_dir_4dhumans
+
+        # Patch HMR2.__init__ to skip renderer in WSL
+        if _is_wsl():
+            print("[HMR2_LOADER] WSL detected - patching HMR2 to skip renderer initialization")
+            original_init = HMR2.__init__
+            
+            def patched_init(self, cfg, init_renderer=True):
+                # Force init_renderer=False in WSL
+                print("[HMR2_LOADER] Calling HMR2.__init__ with init_renderer=False")
+                original_init(self, cfg, init_renderer=False)
+            
+            HMR2.__init__ = patched_init
 
         return {
             'HMR2': HMR2,

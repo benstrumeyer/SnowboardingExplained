@@ -49,7 +49,12 @@ class VideoMeshProcessor:
         import time
         start_time = time.time()
         
+        print(f"[VIDEO_PROCESSOR] Starting process_video")
+        print(f"[VIDEO_PROCESSOR] Input: {video_path}")
+        print(f"[VIDEO_PROCESSOR] Output: {output_path}")
+        
         # Open video
+        print(f"[VIDEO_PROCESSOR] Opening video file...")
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
             raise ValueError(f"Cannot open video: {video_path}")
@@ -60,6 +65,7 @@ class VideoMeshProcessor:
         height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         
+        print(f"[VIDEO_PROCESSOR] Video properties: {width}x{height} @ {fps}fps, {total_frames} frames")
         logger.info(f"[VIDEO] Processing: {width}x{height} @ {fps}fps, {total_frames} frames")
         
         # Setup output video
@@ -77,16 +83,24 @@ class VideoMeshProcessor:
         frame_num = 0
         processed_frames = 0
         
+        print(f"[VIDEO_PROCESSOR] Starting frame processing loop...")
+        
         try:
             while True:
                 ret, frame = cap.read()
                 if not ret:
+                    print(f"[VIDEO_PROCESSOR] End of video reached at frame {frame_num}")
                     break
+                
+                if frame_num == 0:
+                    print(f"[VIDEO_PROCESSOR] Processing first frame...")
                 
                 try:
                     # Encode frame to base64
                     _, buffer = cv2.imencode('.jpg', frame)
                     frame_base64 = base64.b64encode(buffer).decode('utf-8')
+                    
+                    print(f"[VIDEO_PROCESSOR] Frame {frame_num}: Calling detect_pose_with_visualization...")
                     
                     # Detect pose and render mesh
                     result = self.detector.detect_pose_with_visualization(
@@ -94,13 +108,17 @@ class VideoMeshProcessor:
                         frame_number=frame_num
                     )
                     
+                    print(f"[VIDEO_PROCESSOR] Frame {frame_num}: Got result, keys: {list(result.keys())}")
+                    
                     # Get visualization if available
                     if 'visualization_base64' in result:
+                        print(f"[VIDEO_PROCESSOR] Frame {frame_num}: Has visualization")
                         viz_data = base64.b64decode(result['visualization_base64'])
                         viz_array = np.frombuffer(viz_data, dtype=np.uint8)
                         frame_out = cv2.imdecode(viz_array, cv2.IMREAD_COLOR)
                     else:
                         # Fallback: use original frame if visualization failed
+                        print(f"[VIDEO_PROCESSOR] Frame {frame_num}: No visualization, using original frame")
                         frame_out = frame
                     
                     out.write(frame_out)
@@ -110,9 +128,13 @@ class VideoMeshProcessor:
                         progress_callback(frame_num + 1, total_frames)
                     
                     if (frame_num + 1) % 10 == 0:
+                        print(f"[VIDEO_PROCESSOR] Processed {frame_num + 1}/{total_frames} frames")
                         logger.info(f"[VIDEO] Processed {frame_num + 1}/{total_frames} frames")
                     
                 except Exception as e:
+                    print(f"[VIDEO_PROCESSOR] Error processing frame {frame_num}: {e}")
+                    import traceback
+                    traceback.print_exc()
                     logger.error(f"[VIDEO] Error processing frame {frame_num}: {e}")
                     # Write original frame on error
                     out.write(frame)
@@ -121,22 +143,31 @@ class VideoMeshProcessor:
                 frame_num += 1
         
         finally:
+            print(f"[VIDEO_PROCESSOR] Releasing video resources...")
             cap.release()
             out.release()
+            print(f"[VIDEO_PROCESSOR] Resources released")
         
         processing_time = time.time() - start_time
         
+        print(f"[VIDEO_PROCESSOR] ✓ Complete: {processed_frames}/{total_frames} frames in {processing_time:.1f}s")
         logger.info(f"[VIDEO] ✓ Complete: {processed_frames}/{total_frames} frames in {processing_time:.1f}s")
         
-        return {
+        output_size_mb = round(os.path.getsize(output_path) / (1024 * 1024), 2)
+        print(f"[VIDEO_PROCESSOR] Output file size: {output_size_mb} MB")
+        
+        result = {
             'output_path': output_path,
             'total_frames': total_frames,
             'processed_frames': processed_frames,
             'fps': fps,
             'resolution': [width, height],
             'processing_time_seconds': round(processing_time, 2),
-            'output_size_mb': round(os.path.getsize(output_path) / (1024 * 1024), 2)
+            'output_size_mb': output_size_mb
         }
+        
+        print(f"[VIDEO_PROCESSOR] Returning result: {result}")
+        return result
     
     def process_video_from_base64(self, video_base64, output_path=None, progress_callback=None):
         """
