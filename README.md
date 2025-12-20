@@ -22,7 +22,7 @@ The form analysis system uses a two-phase architecture:
 - **Technique Verdicts** - Convert raw measurements into coaching language (e.g., "proper_tail", "clean_flat", "stomped")
 - **Reference Comparison** - Compare user form against ideal poses for each trick/phase
 - **Coach Tips Integration** - Attach relevant coaching content from Pinecone knowledge base to each verdict
-- **Single LLM Call** - One comprehensive coaching analysis after all pre-processing completes
+- **LLM Analysis via MCP Tools** - LLM calls 23 tools to fetch pre-computed data and generate comprehensive coaching response
 
 ### Knowledge Chat
 - **Guided Coaching Flow** - Structured questions to understand your trick, skill level, and issues
@@ -145,12 +145,13 @@ SnowboardingExplained/
 - Compare against reference poses
 - Store all results in MongoDB for instant retrieval
 
-**Phase 2: Single LLM Call (after pre-processing completes)**
-- Backend passes complete video analysis to LLM
-- LLM receives: summary, all phase metrics, verdicts, coaching tips
+**Phase 2: LLM Analysis via MCP Tools (after pre-processing completes)**
+- Backend initiates LLM call with video summary
+- LLM calls MCP tools to fetch pre-computed data as needed
+- LLM queries: get_takeoff_analysis, get_spin_control_analysis, get_air_analysis, etc.
 - LLM generates one comprehensive coaching response
-- No additional tool calls or frame-by-frame analysis
-- Fast response (all data pre-computed)
+- All computation already done—LLM just interprets and coaches
+- Fast response (no waiting for analysis)
 
 ### 6 Trick Phases
 
@@ -169,7 +170,7 @@ SnowboardingExplained/
 
 ### 23 MCP Tools
 
-The MCP tools are data retrieval endpoints used by the backend to fetch pre-computed results. They're not called by the LLM during analysis—they're used internally to organize and retrieve data from MongoDB.
+The MCP tools are called by the LLM during analysis to fetch pre-computed data from MongoDB. The LLM starts with a video summary and progressively calls tools to get the specific data it needs to generate coaching feedback.
 
 **Video Overview (3)**: get_video_summary, get_video_metadata, list_available_videos
 
