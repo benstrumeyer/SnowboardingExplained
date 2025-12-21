@@ -21,6 +21,8 @@ import { AnalysisLogBuilder, analyzeFrame, AnalysisLog, FrameAnalysis } from './
 // API routes
 import perfectPhasesRouter from '../api/perfect-phases';
 import comparisonRouter from '../api/comparison';
+import stackedPositionRouter from '../api/stacked-position';
+import referenceLibraryRouter from '../api/reference-library';
 
 // Load environment variables from .env.local
 const envPath = path.join(__dirname, '../.env.local');
@@ -235,6 +237,8 @@ app.get('/api/health', (req: Request, res: Response) => {
 // Mount API routes
 app.use('/api/perfect-phases', perfectPhasesRouter);
 app.use('/api', comparisonRouter);
+app.use('/api', stackedPositionRouter);
+app.use('/api', referenceLibraryRouter);
 
 // Form Analysis Upload Endpoint
 app.post('/api/form-analysis/upload', upload.single('video'), async (req: Request, res: Response) => {
