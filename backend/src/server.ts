@@ -20,6 +20,7 @@ import { detectPose, detectPoseParallel, detectPoseHybrid, detectPoseHybridBatch
 import { AnalysisLogBuilder, analyzeFrame, AnalysisLog, FrameAnalysis } from './services/analysisLogService';
 // API routes
 import perfectPhasesRouter from '../api/perfect-phases';
+import comparisonRouter from '../api/comparison';
 
 // Load environment variables from .env.local
 const envPath = path.join(__dirname, '../.env.local');
@@ -233,6 +234,7 @@ app.get('/api/health', (req: Request, res: Response) => {
 
 // Mount API routes
 app.use('/api/perfect-phases', perfectPhasesRouter);
+app.use('/api', comparisonRouter);
 
 // Form Analysis Upload Endpoint
 app.post('/api/form-analysis/upload', upload.single('video'), async (req: Request, res: Response) => {

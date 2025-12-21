@@ -95,6 +95,14 @@ export interface ArmPosition {
   armsTowardNose: boolean;
 }
 
+export interface AnkleLandingSync {
+  frame: number;
+  leftAnkleY: number;
+  rightAnkleY: number;
+  yDifference: number; // Right - Left (positive = right higher)
+  timingOffsetMs: number; // Estimated timing difference
+}
+
 export interface PhaseDetectionSignals {
   edgeAngle: number[];
   edgeTransitions: EdgeTransition[];
@@ -110,6 +118,7 @@ export interface PhaseDetectionSignals {
   headRotation: number[];
   bodyStackedness: number[];
   formVariance: number[];
+  ankleLandingSync: AnkleLandingSync[];
 }
 
 export interface PhaseData {

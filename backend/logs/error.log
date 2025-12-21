@@ -430,3 +430,10 @@
 {"level":"error","message":"[JOB_STATUS] Error: connect ECONNREFUSED 172.24.183.130:5000","service":"video-coach-api","timestamp":"2025-12-19 12:45:03"}
 {"level":"error","message":"[JOB_STATUS] Error: timeout of 10000ms exceeded","service":"video-coach-api","timestamp":"2025-12-19 12:49:32"}
 {"level":"error","message":"[JOB_STATUS] Error: timeout of 10000ms exceeded","service":"video-coach-api","timestamp":"2025-12-19 12:49:46"}
+{"error":"TSError: ⨯ Unable to compile TypeScript:\n\u001b[96mmcp-server/src/db/formAnalysisSchemas.ts\u001b[0m:\u001b[93m11\u001b[0m:\u001b[93m8\u001b[0m - \u001b[91merror\u001b[0m\u001b[90m TS2307: \u001b[0mCannot find module '../../../types/formAnalysis' or its corresponding type declarations.\r\n\r\n\u001b[7m11\u001b[0m } from '../../../types/formAnalysis';\r\n\u001b[7m  \u001b[0m \u001b[91m       ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\u001b[0m\r\n","level":"error","message":"[1766222510112] Video processing failed","service":"video-coach-api","timestamp":"2025-12-20 04:21:50"}
+{"level":"error","message":"[JOB_STATUS] Error: timeout of 10000ms exceeded","service":"video-coach-api","timestamp":"2025-12-20 11:36:33"}
+{"level":"error","message":"[ASYNC] Error: connect ECONNREFUSED 172.24.183.130:5000","service":"video-coach-api","timestamp":"2025-12-20 11:42:45"}
+{"level":"error","message":"[JOB_STATUS] Error: read ECONNRESET","service":"video-coach-api","timestamp":"2025-12-20 11:45:18"}
+{"level":"error","message":"[JOB_STATUS] Error: timeout of 10000ms exceeded","service":"video-coach-api","timestamp":"2025-12-20 11:47:52"}
+{"level":"error","message":"[JOB_STATUS] Error: connect ECONNREFUSED 172.24.183.130:5000","service":"video-coach-api","timestamp":"2025-12-20 13:39:34"}
+{"level":"error","message":"[JOB_STATUS] Error: timeout of 10000ms exceeded","service":"video-coach-api","timestamp":"2025-12-20 13:45:18"}

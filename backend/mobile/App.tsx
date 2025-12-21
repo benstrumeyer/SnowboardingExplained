@@ -20,11 +20,18 @@ import { Provider } from 'react-redux';
 import tw from 'twrnc';
 import { store } from './src/store/store';
 import { VideoCoachScreen } from './src/screens/VideoCoachScreen';
+import { FormAnalysisScreen } from './src/screens/FormAnalysisScreen';
 import ChatScreen from './src/screens/ChatScreen';
 import VideoLibraryScreen from './src/screens/VideoLibraryScreen';
+import { VideoUploadScreen } from './src/screens/VideoUploadScreen';
+import { PhaseSelectionScreen } from './src/screens/PhaseSelectionScreen';
+import { TrickAnalysisScreen } from './src/screens/TrickAnalysisScreen';
+import { VideoAnalysisScreen } from './src/screens/VideoAnalysisScreen';
+import { PerfectPhasesManagementPage } from './src/screens/PerfectPhasesManagementPage';
 import { getApiUrl, checkHealth } from './src/services/api';
+import { useAppSelector } from './src/store/hooks';
 
-type Screen = 'video-coach' | 'chat' | 'videos';
+type Screen = 'video-coach' | 'form-analysis' | 'chat' | 'videos' | 'video-upload' | 'phase-selection' | 'trick-analysis' | 'perfect-phases';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.75;
@@ -171,8 +178,12 @@ export default function App() {
 
         {/* Screen Content */}
         {currentScreen === 'video-coach' && <VideoCoachScreen />}
+        {currentScreen === 'form-analysis' && <FormAnalysisScreen />}
         {currentScreen === 'chat' && <ChatScreen />}
         {currentScreen === 'videos' && <VideoLibraryScreen />}
+        {currentScreen === 'video-upload' && <VideoAnalysisScreen />}
+        {currentScreen === 'trick-analysis' && <VideoAnalysisScreen />}
+        {currentScreen === 'perfect-phases' && <PerfectPhasesManagementPage />}
       </View>
 
       {/* Drawer Overlay */}
@@ -224,6 +235,23 @@ export default function App() {
             </Text>
           </TouchableOpacity>
 
+          {/* Form Analysis */}
+          <TouchableOpacity
+            style={tw`flex-row items-center py-3 px-4 rounded-lg mb-2 ${
+              currentScreen === 'form-analysis' ? 'bg-[#0066CC]/20' : ''
+            }`}
+            onPress={() => navigateTo('form-analysis')}
+          >
+            <Text style={tw`text-xl mr-3`}>📊</Text>
+            <Text
+              style={tw`${
+                currentScreen === 'form-analysis' ? 'text-[#4DA6FF]' : 'text-white'
+              } text-base font-bold`}
+            >
+              Form Analysis
+            </Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={tw`flex-row items-center py-3 px-4 rounded-lg mb-2 ${
               currentScreen === 'chat' ? 'bg-[#0066CC]/20' : ''
@@ -265,6 +293,60 @@ export default function App() {
               } text-base`}
             >
               Video Library
+            </Text>
+          </TouchableOpacity>
+
+          {/* Separator */}
+          <View style={tw`h-px bg-[#333333] my-4`} />
+
+          {/* Redux Pose Tagging System */}
+          <Text style={tw`text-[#999] text-xs font-bold px-4 mb-2`}>POSE TAGGING</Text>
+
+          <TouchableOpacity
+            style={tw`flex-row items-center py-3 px-4 rounded-lg mb-2 ${
+              currentScreen === 'video-upload' ? 'bg-[#0066CC]/20' : ''
+            }`}
+            onPress={() => navigateTo('video-upload')}
+          >
+            <Text style={tw`text-xl mr-3`}>📤</Text>
+            <Text
+              style={tw`${
+                currentScreen === 'video-upload' ? 'text-[#4DA6FF]' : 'text-white'
+              } text-base`}
+            >
+              Upload Video
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={tw`flex-row items-center py-3 px-4 rounded-lg mb-2 ${
+              currentScreen === 'trick-analysis' ? 'bg-[#0066CC]/20' : ''
+            }`}
+            onPress={() => navigateTo('trick-analysis')}
+          >
+            <Text style={tw`text-xl mr-3`}>🔍</Text>
+            <Text
+              style={tw`${
+                currentScreen === 'trick-analysis' ? 'text-[#4DA6FF]' : 'text-white'
+              } text-base`}
+            >
+              Trick Analysis
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={tw`flex-row items-center py-3 px-4 rounded-lg ${
+              currentScreen === 'perfect-phases' ? 'bg-[#0066CC]/20' : ''
+            }`}
+            onPress={() => navigateTo('perfect-phases')}
+          >
+            <Text style={tw`text-xl mr-3`}>⭐</Text>
+            <Text
+              style={tw`${
+                currentScreen === 'perfect-phases' ? 'text-[#4DA6FF]' : 'text-white'
+              } text-base`}
+            >
+              Perfect Phases
             </Text>
           </TouchableOpacity>
         </ScrollView>

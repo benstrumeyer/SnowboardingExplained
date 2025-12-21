@@ -50,6 +50,9 @@ apiClient.interceptors.response.use(
   }
 );
 
+// Export api client for use in thunks
+export const api = apiClient;
+
 export interface VideoReference {
   videoId: string;
   videoTitle: string;

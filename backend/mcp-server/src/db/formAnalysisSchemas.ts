@@ -8,7 +8,7 @@ import {
   VideoAnalysis,
   ReferencePose,
   CoachingTip,
-} from '../../../types/formAnalysis';
+} from '../types/formAnalysis';
 
 /**
  * Initialize all form analysis collections with indexes

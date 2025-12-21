@@ -5,10 +5,20 @@
  */
 
 import { Db } from 'mongodb';
-import { PoseFrame, VideoAnalysis, PhaseMap } from '../types/formAnalysis';
+import { PoseFrame, VideoAnalysis } from '../types/formAnalysis';
 import { detectPhases } from '../utils/phaseDetector';
-import { getVideoAnalysisCollection } from '../mcp-server/src/db/formAnalysisSchemas';
 import { v4 as uuidv4 } from 'uuid';
+
+// Lazy load to avoid circular dependencies
+let getVideoAnalysisCollection: any = null;
+
+async function getCollection(db: Db) {
+  if (!getVideoAnalysisCollection) {
+    const schemas = await import('../../mcp-server/src/db/formAnalysisSchemas');
+    getVideoAnalysisCollection = schemas.getVideoAnalysisCollection;
+  }
+  return getVideoAnalysisCollection(db);
+}
 
 export interface UploadVideoRequest {
   videoPath: string;
@@ -80,7 +90,9 @@ export async function processVideoUpload(
       summary: {
         trickIdentified: request.intendedTrick || 'unknown',
         confidence: 0,
-        phasesDetected: Object.keys(phases.phases).filter((p) => phases.phases[p as any] !== null),
+        phasesDetected: Object.keys(phases.phases)
+          .filter((p) => phases.phases[p as keyof typeof phases.phases] !== null)
+          .map((p) => p as any),
         keyIssues: [],
         keyPositives: [],
         recommendedFocusAreas: [],
@@ -91,7 +103,7 @@ export async function processVideoUpload(
 
     // Step 5: Store in MongoDB
     console.log(`[${videoId}] Step 4: Storing analysis in database...`);
-    const collection = getVideoAnalysisCollection(db);
+    const collection = await getCollection(db);
     await collection.insertOne(videoAnalysis as any);
 
     console.log(`[${videoId}] ✓ Video processing complete`);
@@ -105,7 +117,7 @@ export async function processVideoUpload(
 
     // Store error in database
     try {
-      const collection = getVideoAnalysisCollection(db);
+      const collection = await getCollection(db);
       await collection.insertOne({
         videoId,
         uploadedAt: new Date(),
@@ -266,7 +278,7 @@ export async function getVideoAnalysis(
   db: Db,
   videoId: string
 ): Promise<VideoAnalysis | null> {
-  const collection = getVideoAnalysisCollection(db);
+  const collection = await getCollection(db);
   return await collection.findOne({ videoId });
 }
 
@@ -274,7 +286,7 @@ export async function getVideoAnalysis(
  * List all processed videos
  */
 export async function listProcessedVideos(db: Db, limit: number = 50): Promise<VideoAnalysis[]> {
-  const collection = getVideoAnalysisCollection(db);
+  const collection = await getCollection(db);
   return await collection
     .find({})
     .sort({ uploadedAt: -1 })

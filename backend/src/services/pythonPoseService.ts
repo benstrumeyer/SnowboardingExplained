@@ -9,6 +9,10 @@ import logger from '../logger';
 const POSE_SERVICE_URL = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
 const POSE_SERVICE_TIMEOUT = parseInt(process.env.POSE_SERVICE_TIMEOUT || '10000');
 
+// Log on module load
+console.log(`[POSE_SERVICE_CLIENT] Initialized with URL: ${POSE_SERVICE_URL}`);
+console.log(`[POSE_SERVICE_CLIENT] Timeout: ${POSE_SERVICE_TIMEOUT}ms`);
+
 export interface Keypoint {
   name: string;
   x: number;
@@ -45,12 +49,27 @@ export interface PoseServiceStatus {
  */
 export async function checkPoseServiceHealth(): Promise<boolean> {
   try {
+    logger.info(`[POSE SERVICE] Checking health at: ${POSE_SERVICE_URL}`);
     const response = await axios.get(`${POSE_SERVICE_URL}/health`, {
       timeout: 5000
     });
-    return response.data?.status === 'ready' || response.data?.status === 'healthy';
-  } catch (error) {
-    logger.warn('[POSE SERVICE] Health check failed', { error });
+    const isHealthy = response.data?.status === 'ready' || response.data?.status === 'healthy';
+    logger.info(`[POSE SERVICE] Health check response:`, { 
+      status: response.data?.status,
+      isHealthy,
+      statusCode: response.status
+    });
+    return isHealthy;
+  } catch (error: any) {
+    logger.warn('[POSE SERVICE] Health check failed', { 
+      url: POSE_SERVICE_URL,
+      error: error.message,
+      code: error.code,
+      errno: error.errno,
+      syscall: error.syscall,
+      address: error.address,
+      port: error.port
+    });
     return false;
   }
 }

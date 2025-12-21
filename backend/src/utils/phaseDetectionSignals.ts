@@ -9,6 +9,7 @@ import {
   PhaseDetectionSignals,
   EdgeTransition,
   ArmPosition,
+  AnkleLandingSync,
   Vector3,
 } from '../types/formAnalysis';
 
@@ -37,6 +38,7 @@ export function calculatePhaseDetectionSignals(
   const headRotation = calculateHeadRotation(poseTimeline);
   const bodyStackedness = calculateBodyStackedness(poseTimeline);
   const formVariance = calculateFormVariance(poseTimeline);
+  const ankleLandingSync = calculateAnkleLandingSync(poseTimeline);
 
   return {
     edgeAngle,
@@ -53,6 +55,7 @@ export function calculatePhaseDetectionSignals(
     headRotation,
     bodyStackedness,
     formVariance,
+    ankleLandingSync,
   };
 }
 
@@ -444,4 +447,39 @@ function calculateFormVariance(poseTimeline: PoseFrame[]): number[] {
   }
 
   return variances;
+}
+
+
+/**
+ * Calculate left/right ankle landing synchronization
+ */
+function calculateAnkleLandingSync(poseTimeline: PoseFrame[]): AnkleLandingSync[] {
+  return poseTimeline.map((frame, frameNumber) => {
+    const leftAnkle = frame.joints3D.find((j) => j.name === 'left_ankle');
+    const rightAnkle = frame.joints3D.find((j) => j.name === 'right_ankle');
+
+    if (!leftAnkle || !rightAnkle) {
+      return {
+        frame: frameNumber,
+        leftAnkleY: 0,
+        rightAnkleY: 0,
+        yDifference: 0,
+        timingOffsetMs: 0,
+      };
+    }
+
+    const yDifference = rightAnkle.position.y - leftAnkle.position.y;
+    
+    // Estimate timing offset based on Y difference and typical landing speed
+    // Assuming ~2m/s landing speed, convert Y difference to time
+    const timingOffsetMs = (yDifference / 2) * 1000;
+
+    return {
+      frame: frameNumber,
+      leftAnkleY: leftAnkle.position.y,
+      rightAnkleY: rightAnkle.position.y,
+      yDifference,
+      timingOffsetMs,
+    };
+  });
 }

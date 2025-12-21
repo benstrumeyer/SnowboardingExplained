@@ -41,6 +41,14 @@ export interface PoseKeypoint {
   name?: string;
 }
 
+export interface PoseData {
+  frameNumber: number;
+  timestamp: number;
+  keypoints: PoseKeypoint[];
+  confidence: number;
+  [key: string]: any;
+}
+
 export interface PoseEstimationResult {
   frameNumber: number;
   timestamp: number;

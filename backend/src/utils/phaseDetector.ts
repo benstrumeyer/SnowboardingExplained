@@ -10,14 +10,11 @@ import {
   PhaseData,
   SetupCarvePhase,
   TrickType,
-  Verdict,
-  Edge,
 } from '../types/formAnalysis';
 import { calculatePhaseDetectionSignals } from './phaseDetectionSignals';
 
 const TAKEOFF_RATIO_THRESHOLD = 1.0;
 const LANDING_ACCELERATION_THRESHOLD = 0.5;
-const EDGE_ANGLE_THRESHOLD = 15;
 const ROTATION_VELOCITY_THRESHOLD = 2;
 
 /**
