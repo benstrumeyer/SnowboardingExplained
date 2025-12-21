@@ -122,7 +122,6 @@ backend/web/
 │   ├── meshInterpolation.test.ts
 │   └── ...
 ├── package.json
-├── vite.config.ts
 ├── tsconfig.json
 ├── .env.example
 └── README.md
@@ -143,7 +142,12 @@ backend/web/
     "typescript": "^5.0.0",
     "vite": "^4.0.0",
     "@vitejs/plugin-react": "^3.0.0",
+    "@types/react": "^18.0.0",
+    "@types/react-dom": "^18.0.0",
+    "@types/three": "^r150",
+    "@types/node": "^20.0.0",
     "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
     "@testing-library/react": "^14.0.0"
   }
 }
