@@ -181,6 +181,17 @@ class VideoMeshProcessor:
                             
                             # Extract pose data for this frame
                             timestamp = target_frame / fps if fps > 0 else 0
+                            
+                            # Extract mesh geometry if available
+                            mesh_vertices = None
+                            mesh_faces = None
+                            if hasattr(self.detector, '_last_hmr2_result') and self.detector._last_hmr2_result:
+                                hmr2_result = self.detector._last_hmr2_result
+                                if 'vertices' in hmr2_result and 'faces' in hmr2_result:
+                                    mesh_vertices = hmr2_result['vertices'].tolist() if hasattr(hmr2_result['vertices'], 'tolist') else hmr2_result['vertices']
+                                    mesh_faces = hmr2_result['faces'].tolist() if hasattr(hmr2_result['faces'], 'tolist') else hmr2_result['faces']
+                                    log_with_time(f"[VIDEO_PROCESSOR]   ✓ Extracted mesh: {len(mesh_vertices)} vertices, {len(mesh_faces)} faces")
+                            
                             pose_frame = {
                                 'frameNumber': processed_frames,
                                 'originalFrameNumber': target_frame,
@@ -191,6 +202,8 @@ class VideoMeshProcessor:
                                 'jointAngles': result.get('joint_angles_3d', {}),
                                 'has3D': result.get('has_3d', False),
                                 'meshRendered': result.get('mesh_rendered', False),
+                                'vertices': mesh_vertices,
+                                'faces': mesh_faces,
                                 'imageBase64': f"data:image/jpeg;base64,{result.get('visualization_base64', '')}",
                             }
                             pose_timeline.append(pose_frame)
@@ -250,6 +263,15 @@ class VideoMeshProcessor:
             'frame_acceptance': frame_acceptance,
             'pose_timeline': pose_timeline,
             'video_duration': round(total_frames_in_video / fps, 2) if fps > 0 else 0,
+            'frames': [
+                {
+                    'frameNumber': frame['frameNumber'],
+                    'timestamp': frame['timestamp'],
+                    'vertices': frame.get('vertices', []),
+                    'faces': frame.get('faces', []),
+                }
+                for frame in pose_timeline
+            ]
         }
         
         log_with_time(f"[VIDEO_PROCESSOR] Returning result with {processed_frames} frames")

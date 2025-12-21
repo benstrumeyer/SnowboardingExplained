@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-dark text-light;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors font-medium;
+  }
+
+  .btn-secondary {
+    @apply px-4 py-2 bg-secondary text-white rounded-lg hover:bg-orange-600 transition-colors font-medium;
+  }
+
+  .btn-small {
+    @apply px-2 py-1 text-sm;
+  }
+
+  .slider {
+    @apply w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer;
+  }
+
+  .slider::-webkit-slider-thumb {
+    @apply appearance-none w-4 h-4 bg-primary rounded-full cursor-pointer;
+  }
+
+  .slider::-moz-range-thumb {
+    @apply w-4 h-4 bg-primary rounded-full cursor-pointer border-0;
+  }
+
+  .control-group {
+    @apply bg-gray-800 rounded-lg p-4 space-y-3;
+  }
+
+  .control-label {
+    @apply text-sm font-semibold text-gray-300 uppercase tracking-wide;
+  }
+}

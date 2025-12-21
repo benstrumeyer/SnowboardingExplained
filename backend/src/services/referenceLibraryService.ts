@@ -4,6 +4,7 @@
  * Extracts and stores all signals for each phase of each trick
  */
 
+import { ObjectId } from 'mongodb';
 import { db } from '../db/connection';
 import { PoseFrame, Phase, VideoAnalysis } from '../types/formAnalysis';
 import { calculatePhaseDetectionSignals } from '../utils/phaseDetectionSignals';
@@ -163,7 +164,7 @@ export async function createReferenceSignalSet(
 
   // Store in database
   const collection = db.collection('referenceSignalSets');
-  const result = await collection.insertOne(referenceSet);
+  const result = await collection.insertOne(referenceSet as any);
 
   return {
     ...referenceSet,
@@ -176,7 +177,8 @@ export async function createReferenceSignalSet(
  */
 export async function getReferenceSignalSet(id: string): Promise<ReferenceSignalSet | null> {
   const collection = db.collection('referenceSignalSets');
-  return (await collection.findOne({ _id: id })) as ReferenceSignalSet | null;
+  const doc = await collection.findOne({ _id: new ObjectId(id) });
+  return doc ? (doc as unknown as ReferenceSignalSet) : null;
 }
 
 /**
@@ -192,7 +194,8 @@ export async function getReferenceSignalSetsForPhase(
   if (stance) {
     query.stance = stance;
   }
-  return (await collection.find(query).toArray()) as ReferenceSignalSet[];
+  const docs = await collection.find(query).toArray();
+  return docs as unknown as ReferenceSignalSet[];
 }
 
 /**
@@ -204,8 +207,9 @@ export async function getBestReferenceSignalSet(
   stance: 'regular' | 'goofy'
 ): Promise<ReferenceSignalSet | null> {
   const collection = db.collection('referenceSignalSets');
-  return (await collection
-    .findOne({ trick, phase, stance }, { sort: { quality: -1 } })) as ReferenceSignalSet | null;
+  const doc = await collection
+    .findOne({ trick, phase, stance }, { sort: { quality: -1 } });
+  return doc ? (doc as unknown as ReferenceSignalSet) : null;
 }
 
 /**
@@ -213,7 +217,8 @@ export async function getBestReferenceSignalSet(
  */
 export async function getReferenceSignalSetsForTrick(trick: string): Promise<ReferenceSignalSet[]> {
   const collection = db.collection('referenceSignalSets');
-  return (await collection.find({ trick }).toArray()) as ReferenceSignalSet[];
+  const docs = await collection.find({ trick }).toArray();
+  return docs as unknown as ReferenceSignalSet[];
 }
 
 /**
@@ -221,7 +226,8 @@ export async function getReferenceSignalSetsForTrick(trick: string): Promise<Ref
  */
 export async function getReferenceSignalSetsByCoach(coachName: string): Promise<ReferenceSignalSet[]> {
   const collection = db.collection('referenceSignalSets');
-  return (await collection.find({ coachName }).toArray()) as ReferenceSignalSet[];
+  const docs = await collection.find({ coachName }).toArray();
+  return docs as unknown as ReferenceSignalSet[];
 }
 
 /**
@@ -229,7 +235,8 @@ export async function getReferenceSignalSetsByCoach(coachName: string): Promise<
  */
 export async function listAllReferenceSignalSets(): Promise<ReferenceSignalSet[]> {
   const collection = db.collection('referenceSignalSets');
-  return (await collection.find({}).toArray()) as ReferenceSignalSet[];
+  const docs = await collection.find({}).toArray();
+  return docs as unknown as ReferenceSignalSet[];
 }
 
 /**
@@ -241,7 +248,7 @@ export async function updateReferenceSignalSet(
 ): Promise<ReferenceSignalSet | null> {
   const collection = db.collection('referenceSignalSets');
   const result = await collection.findOneAndUpdate(
-    { _id: id },
+    { _id: new ObjectId(id) },
     {
       $set: {
         ...updates,
@@ -251,7 +258,7 @@ export async function updateReferenceSignalSet(
     { returnDocument: 'after' }
   );
 
-  return result.value as ReferenceSignalSet | null;
+  return result && result.value ? (result.value as unknown as ReferenceSignalSet) : null;
 }
 
 /**
@@ -259,7 +266,7 @@ export async function updateReferenceSignalSet(
  */
 export async function deleteReferenceSignalSet(id: string): Promise<boolean> {
   const collection = db.collection('referenceSignalSets');
-  const result = await collection.deleteOne({ _id: id });
+  const result = await collection.deleteOne({ _id: new ObjectId(id) });
   return result.deletedCount > 0;
 }
 
@@ -277,7 +284,8 @@ export async function getReferenceLibraryStats(): Promise<{
   averageQuality: number;
 }> {
   const collection = db.collection('referenceSignalSets');
-  const allSets = (await collection.find({}).toArray()) as ReferenceSignalSet[];
+  const docs = await collection.find({}).toArray();
+  const allSets = docs as unknown as ReferenceSignalSet[];
 
   const tricks = new Set(allSets.map((s) => s.trick));
   const phases = new Set(allSets.map((s) => s.phase));
@@ -301,9 +309,10 @@ export async function getReferenceLibraryStats(): Promise<{
  */
 export async function searchReferenceSignalSetsByTags(tags: string[]): Promise<ReferenceSignalSet[]> {
   const collection = db.collection('referenceSignalSets');
-  return (await collection
+  const docs = await collection
     .find({ tags: { $in: tags } })
-    .toArray()) as ReferenceSignalSet[];
+    .toArray();
+  return docs as unknown as ReferenceSignalSet[];
 }
 
 /**
@@ -313,7 +322,8 @@ export async function getReferenceSignalSetsWithMinQuality(
   minQuality: number
 ): Promise<ReferenceSignalSet[]> {
   const collection = db.collection('referenceSignalSets');
-  return (await collection
+  const docs = await collection
     .find({ quality: { $gte: minQuality } })
-    .toArray()) as ReferenceSignalSet[];
+    .toArray();
+  return docs as unknown as ReferenceSignalSet[];
 }

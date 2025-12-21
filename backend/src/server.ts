@@ -46,6 +46,9 @@ console.log(`[STARTUP] PORT: ${process.env.PORT || '3001'}`);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// In-memory storage for mesh data from uploads
+const meshDataStore = new Map<string, any>();
+
 // Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -59,6 +62,8 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     'https://uncongenial-nonobstetrically-norene.ngrok-free.dev',
     'http://localhost:3000',
     'http://localhost:3001',
+    'http://localhost:5173',
+    'http://localhost:5174',
     'http://localhost:8081',
     /^http:\/\/192\.168\./,
     /^http:\/\/127\./,
@@ -240,7 +245,300 @@ app.use('/api', comparisonRouter);
 app.use('/api', stackedPositionRouter);
 app.use('/api', referenceLibraryRouter);
 
-// Form Analysis Upload Endpoint
+// Chunked Video Upload Endpoints
+const chunksDir = path.join(os.tmpdir(), 'video-chunks');
+if (!fs.existsSync(chunksDir)) {
+  fs.mkdirSync(chunksDir, { recursive: true });
+}
+
+const chunkStorage = multer.diskStorage({
+  destination: (_req: any, _file: any, cb: any) => {
+    cb(null, chunksDir);
+  },
+  filename: (_req: any, file: any, cb: any) => {
+    // Use a simple timestamp-based filename
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substr(2, 9);
+    cb(null, `chunk-${timestamp}-${random}`);
+  },
+});
+
+const chunkUpload = multer({ 
+  storage: chunkStorage
+});
+
+app.post('/api/upload-chunk', chunkUpload.single('chunk'), (req: Request, res: Response) => {
+  try {
+    const { sessionId, chunkIndex, totalChunks } = req.body;
+
+    if (!sessionId || chunkIndex === undefined || !totalChunks) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No chunk file provided' });
+    }
+
+    // Rename the file to include sessionId and chunkIndex
+    const oldPath = req.file.path;
+    const newPath = path.join(chunksDir, `${sessionId}-chunk-${chunkIndex}`);
+    fs.renameSync(oldPath, newPath);
+
+    logger.info(`Chunk uploaded: ${sessionId}-chunk-${chunkIndex}`, {
+      sessionId,
+      chunkIndex,
+      totalChunks,
+      fileSize: req.file.size,
+      filename: req.file.filename
+    });
+
+    res.status(200).json({
+      success: true,
+      chunkIndex: parseInt(chunkIndex),
+      totalChunks: parseInt(totalChunks),
+    });
+  } catch (error) {
+    logger.error('Chunk upload error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.post('/api/finalize-upload', upload.single('video'), async (req: Request, res: Response) => {
+  try {
+    const { role } = req.body;
+
+    if (!role) {
+      return res.status(400).json({ error: 'Missing role field' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No video file provided' });
+    }
+
+    // Use simple ID format: v_{timestamp}_{counter}
+    const videoId = generateVideoId();
+    const videoPath = req.file.path;
+    
+    console.log(`[FINALIZE] ========================================`);
+    console.log(`[FINALIZE] Generated videoId: ${videoId}`);
+    console.log(`[FINALIZE] Role: ${role}`);
+
+    logger.info(`Video uploaded and ready for pose extraction: ${videoId}`, {
+      role,
+      videoPath,
+      filename: req.file.originalname,
+      size: req.file.size
+    });
+
+    // Trigger pose extraction asynchronously
+    (async () => {
+      try {
+        logger.info(`Starting pose extraction for ${videoId}`);
+        
+        // Extract frames and get pose data
+        const frameResult = await FrameExtractionService.extractFrames(videoPath, videoId);
+        logger.info(`Extracted ${frameResult.frameCount} frames from video ${videoId}`);
+
+        // Get pose data for each frame from the pose service
+        const poseFrames: any[] = [];
+        for (let i = 0; i < Math.min(frameResult.frameCount, 60); i++) {
+          const frame = frameResult.frames[i];
+          if (frame) {
+            try {
+              const imageBase64 = FrameExtractionService.getFrameAsBase64(frame.imagePath);
+              const poseResult = await detectPoseHybrid(imageBase64);
+              poseFrames.push({
+                frameNumber: i,
+                timestamp: frame.timestamp,
+                pose: poseResult
+              });
+            } catch (err) {
+              logger.warn(`Failed to extract pose for frame ${i}:`, err);
+            }
+          }
+        }
+
+        logger.info(`Pose extraction complete for ${videoId}: ${poseFrames.length} frames with pose data`);
+      } catch (err) {
+        logger.error(`Pose extraction failed for ${videoId}:`, err);
+      }
+    })();
+
+    res.status(200).json({
+      success: true,
+      videoId,
+      role,
+      message: 'Video uploaded. Pose extraction started in background.'
+    });
+  } catch (error) {
+    logger.error('Finalize upload error:', error);
+    res.status(500).json({ error: 'Failed to finalize upload' });
+  }
+});
+
+// Simple ID generator for video uploads
+let videoIdCounter = 0;
+function generateVideoId(): string {
+  videoIdCounter++;
+  return `v_${Date.now()}_${videoIdCounter}`;
+}
+
+// Alternative endpoint for direct video upload with pose extraction
+app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Request, res: Response) => {
+  try {
+    const { role } = req.body;
+
+    if (!role) {
+      return res.status(400).json({ error: 'Missing role field' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No video file provided' });
+    }
+
+    // Use simple ID format: v_{timestamp}_{counter}
+    const videoId = generateVideoId();
+    const videoPath = req.file.path;
+    
+    console.log(`[UPLOAD] ========================================`);
+    console.log(`[UPLOAD] Generated videoId: ${videoId}`);
+    console.log(`[UPLOAD] Role: ${role}`);
+
+    console.log(`[UPLOAD] Processing video for pose extraction`);
+    console.log(`[UPLOAD] File: ${req.file.originalname}, Size: ${req.file.size}`);
+    
+    logger.info(`Processing video for pose extraction: ${videoId}`, {
+      role,
+      videoPath,
+      filename: req.file.originalname,
+      fileSize: req.file.size
+    });
+
+    // Extract frames
+    let frameResult;
+    try {
+      frameResult = await FrameExtractionService.extractFrames(videoPath, videoId);
+      logger.info(`Extracted ${frameResult.frameCount} frames`);
+    } catch (err: any) {
+      logger.error(`Frame extraction failed for ${videoId}:`, err);
+      return res.status(400).json({ 
+        error: 'Failed to extract frames from video. The file may be corrupted or in an unsupported format.',
+        details: err.message 
+      });
+    }
+
+    // Extract pose data for all frames
+    const meshSequence: any[] = [];
+    for (let i = 0; i < frameResult.frameCount; i++) {
+      const frame = frameResult.frames[i];
+      if (frame) {
+        try {
+          const imageBase64 = FrameExtractionService.getFrameAsBase64(frame.imagePath);
+          const poseResult = await detectPoseHybrid(imageBase64);
+          
+          meshSequence.push({
+            frameNumber: i,
+            timestamp: frame.timestamp,
+            keypoints: poseResult.keypoints,
+            has3d: poseResult.has3d,
+            jointAngles3d: poseResult.jointAngles3d,
+            mesh_vertices_data: poseResult.mesh_vertices_data,
+            mesh_faces_data: poseResult.mesh_faces_data,
+            cameraTranslation: poseResult.cameraTranslation
+          });
+        } catch (err) {
+          logger.warn(`Failed to extract pose for frame ${i}:`, err);
+        }
+      }
+    }
+
+    logger.info(`Pose extraction complete: ${meshSequence.length} frames with pose data`);
+    
+    // Store mesh data in the meshDataStore for later retrieval
+    const meshData = {
+      frames: meshSequence.map(frame => ({
+        frameNumber: frame.frameNumber,
+        timestamp: frame.timestamp,
+        vertices: frame.mesh_vertices_data || [],
+        faces: frame.mesh_faces_data || [],
+        keypoints: frame.keypoints,
+        has3d: frame.has3d,
+        jointAngles3d: frame.jointAngles3d,
+        cameraTranslation: frame.cameraTranslation
+      }))
+    };
+    meshDataStore.set(videoId, meshData);
+    console.log(`[UPLOAD] ✓ Stored mesh data in meshDataStore[${videoId}]`);
+    console.log(`[UPLOAD] ✓ meshDataStore keys:`, Array.from(meshDataStore.keys()));
+
+    res.status(200).json({
+      success: true,
+      videoId,
+      role,
+      frameCount: meshSequence.length,
+      meshSequence: meshSequence.slice(0, 60) // Return first 60 frames
+    });
+  } catch (error: any) {
+    logger.error('Video upload with pose error:', error);
+    res.status(500).json({ 
+      error: 'Failed to process video',
+      details: error.message 
+    });
+  }
+});
+
+// Endpoint to store mesh data from frontend
+app.post('/api/mesh-data/:videoId', express.json(), (req: Request, res: Response) => {
+  try {
+    const { videoId } = req.params;
+    const meshData = req.body;
+
+    if (!videoId || !meshData) {
+      return res.status(400).json({ error: 'Missing videoId or mesh data' });
+    }
+
+    meshDataStore.set(videoId, meshData);
+    logger.info(`Stored mesh data for ${videoId}`);
+
+    res.status(200).json({
+      success: true,
+      message: `Mesh data stored for ${videoId}`
+    });
+  } catch (error: any) {
+    logger.error('Error storing mesh data:', error);
+    res.status(500).json({ 
+      error: 'Failed to store mesh data',
+      details: error.message 
+    });
+  }
+});
+
+// Endpoint to retrieve mesh data
+app.get('/api/mesh-data/:videoId', (req: Request, res: Response) => {
+  try {
+    const { videoId } = req.params;
+    
+    console.log(`[MESH-DATA] ========================================`);
+    console.log(`[MESH-DATA] Request for videoId: "${videoId}"`);
+    console.log(`[MESH-DATA] meshDataStore keys:`, Array.from(meshDataStore.keys()));
+
+    const meshData = meshDataStore.get(videoId);
+    if (!meshData) {
+      console.log(`[MESH-DATA] ✗ Not found: "${videoId}"`);
+      return res.status(404).json({ error: `Mesh data not found for ${videoId}` });
+    }
+    
+    console.log(`[MESH-DATA] ✓ Found! Frames: ${meshData.frames?.length || 0}`);
+    res.status(200).json(meshData);
+  } catch (error: any) {
+    logger.error('Error retrieving mesh data:', error);
+    res.status(500).json({ 
+      error: 'Failed to retrieve mesh data',
+      details: error.message 
+    });
+  }
+});
+
 app.post('/api/form-analysis/upload', upload.single('video'), async (req: Request, res: Response) => {
   const requestId = Date.now().toString();
   

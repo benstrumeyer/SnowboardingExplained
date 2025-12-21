@@ -4,6 +4,7 @@
  * Allows comparing rider positions to perfect stacked form
  */
 
+import { ObjectId } from 'mongodb';
 import { db } from '../db/connection';
 import { PoseFrame } from '../types/formAnalysis';
 import {
@@ -44,7 +45,7 @@ export async function storeReferenceStackedPosition(
 ): Promise<ReferenceStackedPosition> {
   const metrics = extractStackedPositionMetrics(referenceFrame);
 
-  const reference: ReferenceStackedPosition = {
+  const reference: Omit<ReferenceStackedPosition, '_id'> = {
     name,
     description,
     stance,
@@ -57,12 +58,12 @@ export async function storeReferenceStackedPosition(
   };
 
   const collection = db.collection('referenceStackedPositions');
-  const result = await collection.insertOne(reference);
+  const result = await collection.insertOne(reference as any);
 
   return {
     ...reference,
     _id: result.insertedId.toString(),
-  };
+  } as ReferenceStackedPosition;
 }
 
 /**
@@ -72,7 +73,8 @@ export async function getReferenceStackedPosition(
   id: string
 ): Promise<ReferenceStackedPosition | null> {
   const collection = db.collection('referenceStackedPositions');
-  return (await collection.findOne({ _id: id })) as ReferenceStackedPosition | null;
+  const doc = await collection.findOne({ _id: new ObjectId(id) });
+  return doc ? (doc as unknown as ReferenceStackedPosition) : null;
 }
 
 /**
@@ -82,10 +84,11 @@ export async function getDefaultStackedPosition(
   stance: 'regular' | 'goofy'
 ): Promise<ReferenceStackedPosition | null> {
   const collection = db.collection('referenceStackedPositions');
-  return (await collection.findOne({
+  const doc = await collection.findOne({
     stance,
     isDefault: true,
-  })) as ReferenceStackedPosition | null;
+  });
+  return doc ? (doc as unknown as ReferenceStackedPosition) : null;
 }
 
 /**
@@ -95,9 +98,10 @@ export async function getStackedPositionsForStance(
   stance: 'regular' | 'goofy'
 ): Promise<ReferenceStackedPosition[]> {
   const collection = db.collection('referenceStackedPositions');
-  return (await collection
+  const docs = await collection
     .find({ stance })
-    .toArray()) as ReferenceStackedPosition[];
+    .toArray();
+  return docs as unknown as ReferenceStackedPosition[];
 }
 
 /**
@@ -108,10 +112,11 @@ export async function getStackedPositionForTrick(
   stance: 'regular' | 'goofy'
 ): Promise<ReferenceStackedPosition | null> {
   const collection = db.collection('referenceStackedPositions');
-  return (await collection.findOne({
+  const doc = await collection.findOne({
     trick,
     stance,
-  })) as ReferenceStackedPosition | null;
+  });
+  return doc ? (doc as unknown as ReferenceStackedPosition) : null;
 }
 
 /**
@@ -123,7 +128,7 @@ export async function updateReferenceStackedPosition(
 ): Promise<ReferenceStackedPosition | null> {
   const collection = db.collection('referenceStackedPositions');
   const result = await collection.findOneAndUpdate(
-    { _id: id },
+    { _id: new ObjectId(id) },
     {
       $set: {
         ...updates,
@@ -133,7 +138,7 @@ export async function updateReferenceStackedPosition(
     { returnDocument: 'after' }
   );
 
-  return result.value as ReferenceStackedPosition | null;
+  return result && result.value ? (result.value as unknown as ReferenceStackedPosition) : null;
 }
 
 /**
@@ -149,7 +154,7 @@ export async function setAsDefaultStackedPosition(
   await collection.updateMany({ stance, isDefault: true }, { $set: { isDefault: false } });
 
   // Set this one as default
-  await collection.updateOne({ _id: id }, { $set: { isDefault: true } });
+  await collection.updateOne({ _id: new ObjectId(id) }, { $set: { isDefault: true } });
 }
 
 /**
@@ -157,7 +162,7 @@ export async function setAsDefaultStackedPosition(
  */
 export async function deleteReferenceStackedPosition(id: string): Promise<boolean> {
   const collection = db.collection('referenceStackedPositions');
-  const result = await collection.deleteOne({ _id: id });
+  const result = await collection.deleteOne({ _id: new ObjectId(id) });
   return result.deletedCount > 0;
 }
 
@@ -166,7 +171,8 @@ export async function deleteReferenceStackedPosition(id: string): Promise<boolea
  */
 export async function listAllReferenceStackedPositions(): Promise<ReferenceStackedPosition[]> {
   const collection = db.collection('referenceStackedPositions');
-  return (await collection.find({}).toArray()) as ReferenceStackedPosition[];
+  const docs = await collection.find({}).toArray();
+  return docs as unknown as ReferenceStackedPosition[];
 }
 
 /**

@@ -283,6 +283,8 @@ export interface HybridPoseFrame extends PoseFrame {
   jointAngles3d?: Record<string, number>;
   cameraTranslation?: number[] | null;
   meshVertices?: number;
+  mesh_vertices_data?: number[][] | null;
+  mesh_faces_data?: number[][] | null;
   trackingConfidence?: number;
   visualization?: string; // Base64 image with skeleton overlay from Python
 }
@@ -332,6 +334,8 @@ export async function detectPoseHybrid(
       jointAngles3d: data.joint_angles_3d,
       cameraTranslation: data.camera_translation,
       meshVertices: data.mesh_vertices,
+      mesh_vertices_data: data.mesh_vertices_data,
+      mesh_faces_data: data.mesh_faces_data,
       trackingConfidence: data.tracking_confidence,
       visualization: data.visualization // Python-generated skeleton overlay
     };
