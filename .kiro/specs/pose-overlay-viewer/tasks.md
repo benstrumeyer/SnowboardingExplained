@@ -55,22 +55,25 @@
   - Frame counter display
   - _Requirements: Global playback_
 
-### Per-Mesh Controls (5 hours)
-- [ ] 7. Build per-mesh frame offset controls
+### Per-Mesh Controls (6 hours)
+- [ ] 7. Build per-mesh frame offset and rotation controls
   - Create `MeshControls.tsx` component (rider)
   - Create `MeshControls.tsx` component (reference)
   - Show/hide toggle for each mesh
   - Frame offset slider (±5 frames)
+  - Rotation sliders (X, Y, Z axes, ±180 degrees)
   - Frame counter display
   - _Requirements: Individual mesh adjustment_
 
-### Synchronized Playback (6 hours)
-- [ ] 8. Implement synchronized playback
+### Synchronized Playback (7 hours)
+- [ ] 8. Implement synchronized playback with rotation
   - Create `useSynchronizedPlayback.ts` hook
   - Manage playback state (playing, currentFrame, speed)
+  - Manage per-mesh rotations (X, Y, Z)
   - Sync both meshes to same playback speed
   - Handle play/pause/scrub
   - Calculate display frames with offsets
+  - Apply rotations to meshes
   - Update meshes each frame
   - _Requirements: Playback synchronization_
 

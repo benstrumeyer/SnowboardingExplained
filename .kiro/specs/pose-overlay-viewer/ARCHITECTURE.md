@@ -67,9 +67,11 @@ interface PoseOverlayViewerState {
   currentFrame: number; // Absolute frame number
   playbackSpeed: number; // 0.5, 1, 2
   
-  // Per-mesh offsets
+  // Per-mesh offsets and rotations
   riderFrameOffset: number; // ±N frames
   referenceFrameOffset: number; // ±N frames
+  riderRotation: { x: number; y: number; z: number }; // degrees
+  referenceRotation: { x: number; y: number; z: number }; // degrees
   
   // Visibility
   showRider: boolean;
@@ -116,6 +118,7 @@ interface PlaybackControlsProps {
 **Responsibilities**:
 - Per-mesh visibility toggle
 - Per-mesh frame offset slider
+- Per-mesh rotation adjustment (X, Y, Z axes)
 - Per-mesh frame counter
 
 **Props**:
@@ -124,10 +127,14 @@ interface MeshControlsProps {
   meshName: 'rider' | 'reference';
   isVisible: boolean;
   frameOffset: number;
+  rotationX: number; // degrees
+  rotationY: number; // degrees
+  rotationZ: number; // degrees
   currentFrame: number;
   color: 'blue' | 'orange';
   onVisibilityChange: (visible: boolean) => void;
   onFrameOffsetChange: (offset: number) => void;
+  onRotationChange: (axis: 'x' | 'y' | 'z', angle: number) => void;
 }
 ```
 
@@ -266,11 +273,13 @@ function setFrameOffset(meshName: 'rider' | 'reference', offset: number): void
 ┌─────────────────────────────────────────────────────────────────┐
 │ RIDER MESH CONTROLS                                             │
 │ ☑ Show  [Offset: 0 ◄─────●─────► +5]  [Frame: 50]             │
+│ Rotation: X [◄─────●─────►] Y [◄─────●─────►] Z [◄─────●─────►]│
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
 │ REFERENCE MESH CONTROLS                                         │
 │ ☑ Show  [Offset: -5 ◄─────●─────► +5]  [Frame: 45]            │
+│ Rotation: X [◄─────●─────►] Y [◄─────●─────►] Z [◄─────●─────►]│
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐

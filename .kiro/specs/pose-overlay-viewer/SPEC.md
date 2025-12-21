@@ -142,6 +142,11 @@ In-place mode:
 - Speed control (0.5x, 1x, 2x)
 - Frame-by-frame navigation (← →)
 
+**Per-Mesh Adjustment**:
+- Frame offset slider (±N frames) for each mesh
+- Rotation adjustment (X, Y, Z axes) for each mesh
+- Ensures both meshes start at same position/orientation
+
 **Visibility**:
 - Toggle rider skeleton on/off
 - Toggle reference skeleton on/off
