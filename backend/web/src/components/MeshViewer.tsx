@@ -165,11 +165,22 @@ function createMeshFromFrame(frame: MeshFrame, color: number): THREE.Mesh | null
   const maxSize = Math.max(sizeX, sizeY, sizeZ);
   const scale = maxSize > 0 ? 2 / maxSize : 1;
 
-  const normalizedVertices = vertices.map(([x, y, z]) => [
-    (x - centerX) * scale,
-    (y - centerY) * scale,
-    (z - centerZ) * scale,
-  ]);
+  // Normalize and reorient vertices to be upright
+  // HMR2 outputs in camera space, we need to rotate to world space
+  const normalizedVertices = vertices.map(([x, y, z]) => {
+    // Center the mesh
+    let nx = (x - centerX) * scale;
+    let ny = (y - centerY) * scale;
+    let nz = (z - centerZ) * scale;
+    
+    // Rotate 90 degrees around X axis to make upright (camera Y becomes world Z)
+    // This converts from camera space (Y up) to world space (Z up)
+    const temp = ny;
+    ny = -nz;
+    nz = temp;
+    
+    return [nx, ny, nz];
+  });
 
   geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(normalizedVertices.flat()), 3));
 

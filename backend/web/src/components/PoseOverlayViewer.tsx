@@ -96,13 +96,13 @@ export function PoseOverlayViewer({
     // Mesh loading is handled by the render logic checking if meshes are available
   }, [riderMesh, referenceMesh]);
 
-  // Get current frame data
-  const currentRiderFrame = riderMesh && riderMesh.frames && playback.currentFrame < riderMesh.frames.length
-    ? riderMesh.frames[Math.floor(playback.currentFrame)]
+  // Get current frame data with frame offset support
+  const currentRiderFrame = riderMesh && riderMesh.frames && playback.currentFrame + playback.riderFrameOffset < riderMesh.frames.length
+    ? riderMesh.frames[Math.floor(playback.currentFrame + playback.riderFrameOffset)]
     : null;
 
-  const currentReferenceFrame = referenceMesh && referenceMesh.frames && playback.currentFrame < referenceMesh.frames.length
-    ? referenceMesh.frames[Math.floor(playback.currentFrame)]
+  const currentReferenceFrame = referenceMesh && referenceMesh.frames && playback.currentFrame + playback.referenceFrameOffset < referenceMesh.frames.length
+    ? referenceMesh.frames[Math.floor(playback.currentFrame + playback.referenceFrameOffset)]
     : null;
 
   // Keyboard shortcuts
