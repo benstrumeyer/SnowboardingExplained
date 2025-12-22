@@ -156,7 +156,6 @@ function createMeshFromFrame(frame: MeshFrame, color: number): THREE.Mesh | null
   }
 
   const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
   const centerZ = (minZ + maxZ) / 2;
 
   const sizeX = maxX - minX || 1;
@@ -168,9 +167,9 @@ function createMeshFromFrame(frame: MeshFrame, color: number): THREE.Mesh | null
   // Normalize and reorient vertices to be upright
   // HMR2 outputs in camera space, we need to rotate to world space
   const normalizedVertices = vertices.map(([x, y, z]) => {
-    // Center the mesh
+    // Center X and Z, but keep Y offset so feet are on ground
     let nx = (x - centerX) * scale;
-    let ny = (y - centerY) * scale;
+    let ny = (y - minY) * scale; // Position feet at Y=0 (ground level)
     let nz = (z - centerZ) * scale;
     
     // Rotate 90 degrees around X axis to make upright (camera Y becomes world Z)
