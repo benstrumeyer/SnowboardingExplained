@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PoseOverlayViewer } from './components/PoseOverlayViewer';
 import { VideoUploadModal } from './components/VideoUploadModal';
+import { ModelsBrowser } from './components/ModelsBrowser';
 import './styles/App.css';
 
 function App() {
@@ -8,6 +9,7 @@ function App() {
   const [referenceVideoId, setReferenceVideoId] = useState('coach-video-1');
   const [phase, setPhase] = useState('takeoff');
   const [uploadModalOpen, setUploadModalOpen] = useState<'rider' | 'reference' | null>(null);
+  const [sidebarTab, setSidebarTab] = useState<'models' | 'settings'>('models');
 
   const handleVideoLoaded = (videoId: string, role: 'rider' | 'coach') => {
     if (role === 'rider') {
@@ -16,6 +18,14 @@ function App() {
       setReferenceVideoId(videoId);
     }
     setUploadModalOpen(null);
+  };
+
+  const handleModelSelect = (videoId: string, role: 'rider' | 'coach') => {
+    if (role === 'rider') {
+      setRiderVideoId(videoId);
+    } else {
+      setReferenceVideoId(videoId);
+    }
   };
 
   return (
@@ -40,11 +50,46 @@ function App() {
         </div>
       </div>
 
-      <PoseOverlayViewer
-        riderVideoId={riderVideoId}
-        referenceVideoId={referenceVideoId}
-        phase={phase}
-      />
+      <div className="app-content">
+        <div className="sidebar">
+          <div className="sidebar-tabs">
+            <button
+              className={`tab-btn ${sidebarTab === 'models' ? 'active' : ''}`}
+              onClick={() => setSidebarTab('models')}
+              title="Browse loaded models"
+            >
+              📦 Models
+            </button>
+            <button
+              className={`tab-btn ${sidebarTab === 'settings' ? 'active' : ''}`}
+              onClick={() => setSidebarTab('settings')}
+              title="Settings"
+            >
+              ⚙️ Settings
+            </button>
+          </div>
+
+          <div className="sidebar-content">
+            {sidebarTab === 'models' && (
+              <ModelsBrowser onModelSelect={handleModelSelect} />
+            )}
+            {sidebarTab === 'settings' && (
+              <div className="settings-panel">
+                <h3>Settings</h3>
+                <p>Settings coming soon...</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="viewer-container">
+          <PoseOverlayViewer
+            riderVideoId={riderVideoId}
+            referenceVideoId={referenceVideoId}
+            phase={phase}
+          />
+        </div>
+      </div>
 
       {uploadModalOpen && (
         <VideoUploadModal
