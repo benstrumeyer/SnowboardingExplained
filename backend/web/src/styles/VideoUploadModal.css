@@ -73,13 +73,6 @@
 }
 
 .file-input {
-  position: absolute;
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.file-label {
   display: block;
   padding: 12px 16px;
   background-color: #f5f5f5;
@@ -90,16 +83,22 @@
   font-size: 14px;
   color: #666;
   transition: all 0.2s;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-.file-input:hover + .file-label {
+.file-input:hover {
   background-color: #efefef;
   border-color: #999;
 }
 
-.file-input:disabled + .file-label {
+.file-input:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.file-label {
+  display: none;
 }
 
 .error-message {

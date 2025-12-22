@@ -52,73 +52,27 @@ export const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
 
       console.log('[UPLOAD] Starting video upload...');
 
-      // Upload video
-      const uploadResponse = await axios.post(`${API_URL}/api/upload-video-with-pose`, formData, {
+      // Upload video - fire and forget
+      axios.post(`${API_URL}/api/upload-video-with-pose`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         timeout: 300000, // 5 minute timeout
         onUploadProgress: (progressEvent) => {
           const progress = 10 + Math.round((progressEvent.loaded / (progressEvent.total || 1)) * 40);
           setUploadProgress(progress);
         },
+      }).then((uploadResponse) => {
+        console.log('[UPLOAD] Upload response:', uploadResponse.data);
+        const { videoId } = uploadResponse.data;
+        console.log(`[UPLOAD] ✓ Video sent for processing: ${videoId}`);
+      }).catch((err) => {
+        console.error('[UPLOAD] Background error:', err);
       });
 
-      console.log('[UPLOAD] Upload response:', uploadResponse.data);
-      const { videoId, status, frameCount } = uploadResponse.data;
-
-      if (!videoId) {
-        throw new Error('No videoId returned from upload');
-      }
-
-      console.log(`[UPLOAD] Got videoId: ${videoId}`);
-
-      // If already complete, we're done
-      if (status !== 'processing' && frameCount > 0) {
-        console.log(`[UPLOAD] ✓ Upload complete with ${frameCount} frames`);
-        setUploadProgress(100);
-        onVideoLoaded(videoId, role === 'rider' ? 'rider' : 'coach');
-        resetForm();
-        return;
-      }
-
-      // Poll for completion
-      console.log('[UPLOAD] Polling for job completion...');
-      setUploadProgress(60);
-      
-      for (let i = 0; i < 600; i++) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        try {
-          const statusResponse = await axios.get(`${API_URL}/api/job-status/${videoId}`, {
-            timeout: 10000,
-          });
-
-          const jobStatus = statusResponse.data.status;
-          console.log(`[UPLOAD] Poll ${i + 1}: status=${jobStatus}`);
-
-          setUploadProgress(60 + Math.min((i / 600) * 40, 39));
-
-          if (jobStatus === 'complete') {
-            console.log('[UPLOAD] ✓ Job complete!');
-            setUploadProgress(100);
-            onVideoLoaded(videoId, role === 'rider' ? 'rider' : 'coach');
-            resetForm();
-            return;
-          } else if (jobStatus === 'error') {
-            throw new Error(statusResponse.data.error || 'Processing failed');
-          }
-        } catch (err: any) {
-          if (err.response?.status === 404) {
-            // Job not found yet, keep polling
-            continue;
-          }
-          if (err.message?.includes('Processing failed')) {
-            throw err;
-          }
-          console.warn('[UPLOAD] Poll error:', err.message);
-        }
-      }
-
-      throw new Error('Video processing timeout');
+      // Close dialog immediately
+      setUploadProgress(100);
+      console.log('[UPLOAD] Dialog closing - processing continues in background');
+      resetForm();
+      onClose();
 
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
@@ -177,7 +131,7 @@ export const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
                   style={{ width: `${uploadProgress}%`, backgroundColor: roleColor }}
                 />
               </div>
-              <p className="progress-text">{uploadProgress}% - Processing...</p>
+              <p className="progress-text">Uploading... Processing will continue in background</p>
             </div>
           )}
         </div>
