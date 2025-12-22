@@ -19,7 +19,7 @@ const loadingVideos = new Set<string>();
 async function fetchMeshDataWithPolling(
   videoId: string,
   maxRetries: number = 120,
-  retryInterval: number = 1000
+  retryInterval: number = 2000
 ): Promise<MeshSequence> {
   // Prevent duplicate loads
   if (loadingVideos.has(videoId)) {
@@ -34,10 +34,13 @@ async function fetchMeshDataWithPolling(
       try {
         console.log(`[MESH] Polling /api/mesh-data/${videoId} (attempt ${attempt + 1}/${maxRetries})`);
         
-        const response = await client.get<MeshSequence>(`/api/mesh-data/${videoId}`);
+        const response = await client.get<any>(`/api/mesh-data/${videoId}`);
         
-        console.log(`[MESH] ✓ Got mesh data for ${videoId}: ${response.data.frames?.length || 0} frames`);
-        return response.data;
+        // Extract the mesh data from the API response wrapper
+        const meshData = response.data.data || response.data;
+        
+        console.log(`[MESH] ✓ Got mesh data for ${videoId}: ${meshData.frames?.length || 0} frames`);
+        return meshData as MeshSequence;
         
       } catch (err: any) {
         const status = err.response?.status;

@@ -97,11 +97,11 @@ export function PoseOverlayViewer({
   }, [riderMesh, referenceMesh]);
 
   // Get current frame data
-  const currentRiderFrame = riderMesh && playback.currentFrame < riderMesh.frames.length
+  const currentRiderFrame = riderMesh && riderMesh.frames && playback.currentFrame < riderMesh.frames.length
     ? riderMesh.frames[Math.floor(playback.currentFrame)]
     : null;
 
-  const currentReferenceFrame = referenceMesh && playback.currentFrame < referenceMesh.frames.length
+  const currentReferenceFrame = referenceMesh && referenceMesh.frames && playback.currentFrame < referenceMesh.frames.length
     ? referenceMesh.frames[Math.floor(playback.currentFrame)]
     : null;
 
@@ -119,7 +119,7 @@ export function PoseOverlayViewer({
           break;
         case 'ArrowRight':
           e.preventDefault();
-          playback.scrub(Math.min(playback.currentFrame + 1, (riderMesh?.frames.length || 0) - 1));
+          playback.scrub(Math.min(playback.currentFrame + 1, (riderMesh?.frames?.length || 0) - 1));
           break;
         case 'KeyR':
           if (!e.ctrlKey && !e.metaKey) {
@@ -171,8 +171,8 @@ export function PoseOverlayViewer({
   }
 
   const totalFrames = Math.max(
-    riderMesh?.frames.length || 0,
-    referenceMesh?.frames.length || 0
+    riderMesh?.frames?.length || 0,
+    referenceMesh?.frames?.length || 0
   );
 
   return (

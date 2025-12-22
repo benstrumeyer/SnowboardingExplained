@@ -36,7 +36,7 @@ export function useSynchronizedPlayback(
 
   // Playback loop
   useEffect(() => {
-    if (!state.isPlaying || !riderMesh || !referenceMesh) {
+    if (!state.isPlaying || !riderMesh || !referenceMesh || !riderMesh.frames || !referenceMesh.frames) {
       return;
     }
 
@@ -51,8 +51,8 @@ export function useSynchronizedPlayback(
         const newFrame = prev.currentFrame + frameAdvance;
 
         const maxFrames = Math.max(
-          riderMesh.frames.length - prev.riderFrameOffset,
-          referenceMesh.frames.length - prev.referenceFrameOffset
+          (riderMesh.frames?.length || 0) - prev.riderFrameOffset,
+          (referenceMesh.frames?.length || 0) - prev.referenceFrameOffset
         );
 
         if (newFrame >= maxFrames) {
@@ -126,7 +126,7 @@ export function useSynchronizedPlayback(
   }, []);
 
   const getDisplayFrames = useCallback(() => {
-    if (!riderMesh || !referenceMesh) {
+    if (!riderMesh || !referenceMesh || !riderMesh.frames || !referenceMesh.frames) {
       return { riderFrame: 0, referenceFrame: 0 };
     }
 
