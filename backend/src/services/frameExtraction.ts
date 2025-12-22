@@ -1,6 +1,7 @@
 import ffmpeg from 'fluent-ffmpeg';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import logger from '../logger';
 import { FrameExtractionResult } from '../types';
 import { meshDataService } from './meshDataService';
@@ -10,7 +11,8 @@ import ffmpegStatic from 'ffmpeg-static';
 const ffprobeStatic = require('ffprobe-static');
 
 const FRAMES_PER_SECOND = 4;
-const TEMP_DIR = path.join(__dirname, '../../temp/frames');
+// Use system temp directory to keep paths short (Windows has 260 char limit)
+const TEMP_DIR = path.join(os.tmpdir(), 'snowboard-frames');
 
 // Set ffmpeg and ffprobe paths
 if (ffmpegStatic) {
