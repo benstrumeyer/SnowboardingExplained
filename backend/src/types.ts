@@ -24,6 +24,7 @@ export interface Video {
 export interface FrameExtractionResult {
   frameCount: number;
   videoDuration: number;
+  fps: number;
   frames: Array<{
     frameNumber: number;
     timestamp: number;
