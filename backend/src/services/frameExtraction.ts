@@ -25,6 +25,15 @@ if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
+/**
+ * Generate a short hash from videoId to avoid path length issues on Windows
+ */
+function getShortVideoPath(videoId: string): string {
+  // Use first 8 chars of videoId to keep paths short
+  const shortId = videoId.substring(0, 8);
+  return shortId;
+}
+
 export class FrameExtractionService {
   /**
    * Normalize frame rate between multiple videos
@@ -57,10 +66,11 @@ export class FrameExtractionService {
           });
 
           // Convert MongoDB mesh data back to frame extraction format
+          const shortPath = getShortVideoPath(videoId);
           const frames = cachedMeshData.frames.map((frame: any) => ({
             frameNumber: frame.frameNumber,
             timestamp: frame.timestamp,
-            imagePath: path.join(TEMP_DIR, videoId, `frame-${frame.frameNumber + 1}.png`)
+            imagePath: path.join(TEMP_DIR, shortPath, `frame-${frame.frameNumber + 1}.png`)
           }));
 
           return resolve({
@@ -83,7 +93,8 @@ export class FrameExtractionService {
         }
 
         // Extract frames if not cached
-        const outputDir = path.join(TEMP_DIR, videoId);
+        const shortPath = getShortVideoPath(videoId);
+        const outputDir = path.join(TEMP_DIR, shortPath);
         const framesPerSecond = fps || FRAMES_PER_SECOND;
         
         console.log(`[FRAME_EXTRACTION] 🎬 Starting extraction for ${videoId}`);
@@ -177,7 +188,8 @@ export class FrameExtractionService {
    * Get cached frames if they exist
    */
   static getCachedFrames(videoId: string): FrameExtractionResult | null {
-    const outputDir = path.join(TEMP_DIR, videoId);
+    const shortPath = getShortVideoPath(videoId);
+    const outputDir = path.join(TEMP_DIR, shortPath);
     
     if (!fs.existsSync(outputDir)) {
       return null;
