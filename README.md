@@ -159,6 +159,54 @@ SnowboardingExplained/
 - All computation already done—LLM just interprets and coaches
 - Fast response (no waiting for analysis)
 
+## Mesh Data Management
+
+### Stale Mesh Data Fix (December 2025)
+
+The system now properly handles multiple video uploads with correct mesh data isolation:
+
+**Problem Solved:**
+- Previously, uploading a second video would display the first video's mesh
+- Root cause: Frame extraction cache used only first 8 characters of videoId, causing collisions
+- Both videos `v_1766516045056_1` and `v_1766516091051_2` mapped to same cache directory `v_176651`
+
+**Solution Implemented:**
+- Frame extraction now uses full videoId for unique cache directories
+- MeshDataService implements three-layer verification:
+  1. **Deletion Verification** - Confirms old frames deleted before new insertion
+  2. **Insertion Verification** - Confirms all new frames saved with correct videoId
+  3. **Retrieval Verification** - Confirms retrieved frames have correct videoId
+- MongoDB stores mesh data in two collections:
+  - `mesh_data` - Video metadata (fps, duration, frame count)
+  - `mesh_frames` - Individual frame data with keypoints and mesh vertices
+
+**Architecture:**
+```
+Upload Video
+    ↓
+Extract Frames (unique cache per videoId)
+    ↓
+Extract Pose Data
+    ↓
+Delete Old Mesh Data (Layer 1)
+    ↓
+Insert New Frames (Layer 2)
+    ↓
+Verify Insertion (Layer 3)
+    ↓
+Frontend Fetches Mesh Data
+    ↓
+Retrieve with VideoId Verification (Layer 3)
+    ↓
+Display Correct Mesh
+```
+
+**Key Components:**
+- `meshDataService.ts` - MongoDB operations with verification
+- `frameExtraction.ts` - Frame caching with unique directories
+- `server.ts` - Upload endpoint with mesh data persistence
+- `query-mesh-db.js` - Diagnostic tool for database inspection
+
 ## Pose Estimation Pipeline
 
 The form analysis system uses state-of-the-art computer vision models to extract accurate 3D pose data from snowboarding videos.
@@ -244,6 +292,21 @@ The MCP tools are called by the LLM during analysis to fetch pre-computed data f
 - Total: ~$5.04/month
 
 ## Development Phases
+
+### Spec-Driven Development
+
+This project uses formal specification documents to guide feature development:
+
+**Stale Mesh Data Fix Spec** (`.kiro/specs/stale-mesh-data-fix/`)
+- Requirements: 4 user stories with 13 acceptance criteria (EARS format)
+- Design: Architecture, data models, 7 correctness properties
+- Tasks: 14 implementation tasks with property-based tests
+- Status: Core implementation complete, property tests pending
+
+**Synchronized Video-Mesh Playback Spec** (`.kiro/specs/synchronized-video-mesh-playback/`)
+- Requirements: Frame synchronization and mesh display consistency
+- Design: Playback sync service, frame seeking, overlay management
+- Tasks: Implementation plan for synchronized playback
 
 ### MVP Phase (Tasks 1-6)
 Focus on validating pose detection algorithm:
