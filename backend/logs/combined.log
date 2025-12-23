@@ -17959,3 +17959,23 @@
 {"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:48:45"}
 {"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:48:50"}
 {"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:48:51"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:48:55"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:48:55"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:00"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:00"}
+{"has3d":true,"hasVisualization":false,"keypointCount":24,"level":"info","message":"[4D-HUMANS] Frame 0 completed","processingTimeMs":85338.63,"service":"video-coach-api","timestamp":"2025-12-23 07:49:03","totalTimeMs":84366}
+{"level":"info","message":"[4D-HUMANS] Detecting 3D pose for frame 1","service":"video-coach-api","timestamp":"2025-12-23 07:49:03","visualize":false}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:05"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:06"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:10"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:10"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:15"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:15"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:20"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:21"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:25"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:25"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:30"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:30"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:35"}
+{"level":"info","message":"Retrieved 1 mesh data entries","service":"video-coach-api","timestamp":"2025-12-23 07:49:35"}
