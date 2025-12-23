@@ -26,6 +26,7 @@
     "fuse.js": "^7.1.0",
     "mongodb": "^6.3.0",
     "multer": "^1.4.5-lts.1",
+    "redis": "^4.6.12",
     "sharp": "^0.33.5",
     "uuid": "^9.0.1",
     "winston": "^3.11.0"
@@ -37,9 +38,11 @@
     "@types/node": "^20.10.5",
     "@types/uuid": "^9.0.7",
     "@vercel/node": "^3.0.12",
+    "fast-check": "^3.13.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.3.3",
-    "vercel": "^33.0.1"
+    "vercel": "^33.0.1",
+    "vitest": "^1.0.0"
   },
   "overrides": {
     "axios": "^1.13.2"
