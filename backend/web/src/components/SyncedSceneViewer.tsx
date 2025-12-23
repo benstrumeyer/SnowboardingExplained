@@ -1,7 +1,7 @@
 /**
  * Synced Scene Viewer Component
- * Integrates PlaybackSyncService with scene rendering
- * Maintains independent frame positions while playing at same speed
+ * Displays video on left, mesh on right
+ * Maintains synchronized playback
  */
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -10,7 +10,6 @@ import { FrameDataService, getFrameDataService } from '../services/frameDataServ
 import { OverlayToggleService, getOverlayToggleService } from '../services/overlayToggleService';
 
 export interface SyncedSceneViewerProps {
-  sceneId: string;
   videoId: string;
   width?: number;
   height?: number;
@@ -18,12 +17,12 @@ export interface SyncedSceneViewerProps {
 }
 
 export const SyncedSceneViewer: React.FC<SyncedSceneViewerProps> = ({
-  sceneId,
   videoId,
   width = 640,
   height = 480
 }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const videoCanvasRef = useRef<HTMLCanvasElement>(null);
+  const meshCanvasRef = useRef<HTMLCanvasElement>(null);
   const [frameIndex, setFrameIndex] = useState(0);
   const [isOverlayEnabled, setIsOverlayEnabled] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
@@ -54,8 +53,8 @@ export const SyncedSceneViewer: React.FC<SyncedSceneViewerProps> = ({
   useEffect(() => {
     if (!playbackService.current) return;
 
-    // Subscribe to frame changes for this scene
-    unsubscribeFrame.current = playbackService.current.onSceneFrameChange(sceneId, (newFrameIndex) => {
+    // Subscribe to frame changes for main scene
+    unsubscribeFrame.current = playbackService.current.onSceneFrameChange('main', (newFrameIndex) => {
       setFrameIndex(newFrameIndex);
     });
 
@@ -64,13 +63,13 @@ export const SyncedSceneViewer: React.FC<SyncedSceneViewerProps> = ({
         unsubscribeFrame.current();
       }
     };
-  }, [sceneId]);
+  }, []);
 
   // Subscribe to overlay toggle changes
   useEffect(() => {
     if (!overlayService.current) return;
 
-    unsubscribeOverlay.current = overlayService.current.onOverlayToggle(sceneId, (isEnabled) => {
+    unsubscribeOverlay.current = overlayService.current.onOverlayToggle('main', (isEnabled) => {
       setIsOverlayEnabled(isEnabled);
     });
 
@@ -79,12 +78,12 @@ export const SyncedSceneViewer: React.FC<SyncedSceneViewerProps> = ({
         unsubscribeOverlay.current();
       }
     };
-  }, [sceneId]);
+  }, []);
 
-  // Render frame when frameIndex or overlay state changes
+  // Render frames when frameIndex or overlay state changes
   useEffect(() => {
-    const renderFrame = async () => {
-      if (!canvasRef.current || !frameDataService.current) return;
+    const renderFrames = async () => {
+      if (!videoCanvasRef.current || !meshCanvasRef.current || !frameDataService.current) return;
 
       setIsLoading(true);
       try {
@@ -95,56 +94,90 @@ export const SyncedSceneViewer: React.FC<SyncedSceneViewerProps> = ({
           includeMesh: true
         });
 
-        // Get canvas context
-        const ctx = canvasRef.current.getContext('2d');
-        if (!ctx) return;
-
-        // Determine which frame to display
-        const frameToDisplay = isOverlayEnabled && frameData.overlayFrame ? frameData.overlayFrame : frameData.originalFrame;
-
-        if (frameToDisplay) {
-          // Convert base64 to image
+        // Render video frame on left canvas
+        const videoCtx = videoCanvasRef.current.getContext('2d');
+        if (videoCtx && frameData.originalFrame) {
           const img = new Image();
           img.onload = () => {
-            ctx.drawImage(img, 0, 0, width, height);
+            videoCtx.drawImage(img, 0, 0, width, height);
           };
-          img.src = `data:image/jpeg;base64,${frameToDisplay}`;
+          img.src = `data:image/jpeg;base64,${frameData.originalFrame}`;
         }
 
-        // Draw mesh if available
-        if (frameData.meshData && frameData.meshData.keypoints) {
-          drawMesh(ctx, frameData.meshData.keypoints, frameData.meshData.skeleton, width, height);
+        // Render mesh on right canvas
+        const meshCtx = meshCanvasRef.current.getContext('2d');
+        if (meshCtx && frameData.meshData) {
+          // Clear canvas
+          meshCtx.fillStyle = '#000';
+          meshCtx.fillRect(0, 0, width, height);
+
+          // Draw mesh if available
+          if (frameData.meshData.keypoints) {
+            drawMesh(meshCtx, frameData.meshData.keypoints, frameData.meshData.skeleton, width, height);
+          }
         }
       } catch (error) {
-        console.error(`Error rendering frame for ${sceneId}:`, error);
+        console.error(`Error rendering frames:`, error);
       } finally {
         setIsLoading(false);
       }
     };
 
-    renderFrame();
-  }, [frameIndex, isOverlayEnabled, videoId, sceneId, width, height]);
+    renderFrames();
+  }, [frameIndex, isOverlayEnabled, videoId, width, height]);
 
   const handleToggleOverlay = () => {
     if (overlayService.current) {
-      overlayService.current.toggleOverlay(sceneId);
+      overlayService.current.toggleOverlay('main');
     }
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-      <canvas
-        ref={canvasRef}
-        width={width}
-        height={height}
-        style={{ border: '1px solid #ccc', backgroundColor: '#000' }}
-      />
-      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-        <span>Frame: {frameIndex}</span>
-        <button onClick={handleToggleOverlay} disabled={isLoading}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', padding: '20px' }}>
+      {/* Side-by-side viewers */}
+      <div style={{ display: 'flex', gap: '20px', justifyContent: 'center' }}>
+        {/* Video on left */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
+          <h3 style={{ margin: '0', color: '#fff' }}>Video</h3>
+          <canvas
+            ref={videoCanvasRef}
+            width={width}
+            height={height}
+            style={{ border: '2px solid #4ECDC4', backgroundColor: '#000', borderRadius: '4px' }}
+          />
+        </div>
+
+        {/* Mesh on right */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
+          <h3 style={{ margin: '0', color: '#fff' }}>Mesh</h3>
+          <canvas
+            ref={meshCanvasRef}
+            width={width}
+            height={height}
+            style={{ border: '2px solid #4ECDC4', backgroundColor: '#000', borderRadius: '4px' }}
+          />
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center' }}>
+        <span style={{ color: '#fff' }}>Frame: {frameIndex}</span>
+        <button
+          onClick={handleToggleOverlay}
+          disabled={isLoading}
+          style={{
+            padding: '6px 12px',
+            background: '#4ECDC4',
+            color: '#000',
+            border: 'none',
+            borderRadius: '4px',
+            cursor: 'pointer',
+            fontWeight: 'bold'
+          }}
+        >
           {isOverlayEnabled ? 'Hide Overlay' : 'Show Overlay'}
         </button>
-        {isLoading && <span>Loading...</span>}
+        {isLoading && <span style={{ color: '#999' }}>Loading...</span>}
       </div>
     </div>
   );
