@@ -1,0 +1,301 @@
+.playback-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background-color: #1a1a1a;
+  border-top: 1px solid #333;
+  border-radius: 4px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell,
+    sans-serif;
+}
+
+/* Playback Buttons */
+.playback-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+}
+
+.control-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  background-color: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.control-button:hover {
+  background-color: #333;
+  border-color: #555;
+}
+
+.control-button:active {
+  background-color: #1a1a1a;
+  border-color: #666;
+}
+
+.control-button.play-pause {
+  width: 48px;
+  height: 48px;
+  font-size: 20px;
+  background-color: #0066cc;
+  border-color: #0052a3;
+}
+
+.control-button.play-pause:hover {
+  background-color: #0073e6;
+  border-color: #0052a3;
+}
+
+.control-button.play-pause.playing {
+  background-color: #ff6b6b;
+  border-color: #cc5555;
+}
+
+.control-button.play-pause.playing:hover {
+  background-color: #ff8080;
+  border-color: #cc5555;
+}
+
+/* Timeline Container */
+.timeline-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.timeline-slider {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, #0066cc, #0066cc);
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.timeline-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: #0066cc;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.timeline-slider::-webkit-slider-thumb:hover {
+  width: 16px;
+  height: 16px;
+  box-shadow: 0 2px 8px rgba(0, 102, 204, 0.5);
+}
+
+.timeline-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: #0066cc;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.timeline-slider::-moz-range-thumb:hover {
+  width: 16px;
+  height: 16px;
+  box-shadow: 0 2px 8px rgba(0, 102, 204, 0.5);
+}
+
+.timeline-slider::-moz-range-track {
+  background: transparent;
+  border: none;
+}
+
+.timeline-slider::-moz-range-progress {
+  background-color: #0066cc;
+  height: 6px;
+  border-radius: 3px;
+}
+
+/* Frame Counter */
+.frame-counter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #aaa;
+  font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.current-time {
+  color: #fff;
+  font-weight: 500;
+}
+
+.separator {
+  color: #666;
+}
+
+.total-time {
+  color: #aaa;
+}
+
+.frame-info {
+  color: #666;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+/* Speed Selector */
+.speed-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.speed-selector label {
+  font-size: 12px;
+  color: #aaa;
+  font-weight: 500;
+}
+
+.speed-dropdown {
+  padding: 6px 12px;
+  background-color: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.speed-dropdown:hover {
+  background-color: #333;
+  border-color: #555;
+}
+
+.speed-dropdown:focus {
+  outline: none;
+  border-color: #0066cc;
+  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
+}
+
+/* Speed Buttons */
+.speed-buttons {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.speed-button {
+  padding: 6px 12px;
+  background-color: #2a2a2a;
+  border: 1px solid #444;
+  border-radius: 4px;
+  color: #aaa;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.speed-button:hover {
+  background-color: #333;
+  border-color: #555;
+  color: #fff;
+}
+
+.speed-button.active {
+  background-color: #0066cc;
+  border-color: #0052a3;
+  color: #fff;
+}
+
+.speed-button.active:hover {
+  background-color: #0073e6;
+  border-color: #0052a3;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .playback-controls {
+    gap: 8px;
+    padding: 12px;
+  }
+
+  .control-button {
+    width: 36px;
+    height: 36px;
+    font-size: 16px;
+  }
+
+  .control-button.play-pause {
+    width: 44px;
+    height: 44px;
+    font-size: 18px;
+  }
+
+  .frame-counter {
+    font-size: 11px;
+  }
+
+  .speed-buttons {
+    gap: 2px;
+  }
+
+  .speed-button {
+    padding: 4px 8px;
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .playback-controls {
+    gap: 6px;
+    padding: 8px;
+  }
+
+  .control-button {
+    width: 32px;
+    height: 32px;
+    font-size: 14px;
+  }
+
+  .control-button.play-pause {
+    width: 40px;
+    height: 40px;
+    font-size: 16px;
+  }
+
+  .speed-selector {
+    display: none;
+  }
+
+  .speed-buttons {
+    gap: 2px;
+  }
+
+  .speed-button {
+    padding: 4px 6px;
+    font-size: 9px;
+  }
+}

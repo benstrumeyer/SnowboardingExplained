@@ -12,6 +12,8 @@ interface FloatingControlPanelProps {
   onFrameChange: (frame: number) => void;
   playbackSpeed: number;
   onSpeedChange: (speed: number) => void;
+  sceneId?: string; // Identifier for this scene (e.g., 'left', 'right')
+  onSceneFrameChange?: (frame: number) => void; // Scene-specific frame handler
   children?: React.ReactNode;
 }
 
@@ -24,6 +26,7 @@ export const FloatingControlPanel: React.FC<FloatingControlPanelProps> = ({
   onFrameChange,
   playbackSpeed,
   onSpeedChange,
+  onSceneFrameChange,
   children,
 }) => {
   const { position, elementRef, handlers } = useDraggable(12, 12);
@@ -79,7 +82,15 @@ export const FloatingControlPanel: React.FC<FloatingControlPanelProps> = ({
               min="0"
               max={totalFrames - 1}
               value={currentFrame}
-              onChange={(e) => onFrameChange(parseInt(e.target.value))}
+              onChange={(e) => {
+                const newFrame = parseInt(e.target.value);
+                // Use scene-specific handler if available, otherwise use shared handler
+                if (onSceneFrameChange) {
+                  onSceneFrameChange(newFrame);
+                } else {
+                  onFrameChange(newFrame);
+                }
+              }}
               className="floating-slider"
               title="Frame scrubber"
             />

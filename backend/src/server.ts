@@ -485,7 +485,17 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
     };
 
     try {
-      await meshDataService.saveMeshData(meshData);
+      // Save with new unified structure
+      await meshDataService.saveMeshData({
+        videoId,
+        videoUrl: `${req.protocol}://${req.get('host')}/videos/${videoId}`,
+        fps: meshData.fps,
+        videoDuration: meshData.videoDuration,
+        frameCount: meshData.frameCount,
+        totalFrames: meshData.frameCount,
+        frames: meshData.frames,
+        role: role as 'rider' | 'coach'
+      });
       console.log(`[UPLOAD] ✓ Stored mesh data in MongoDB for ${videoId}`);
     } catch (err) {
       console.error(`[UPLOAD] Failed to store mesh data in MongoDB:`, err);
@@ -523,10 +533,12 @@ app.post('/api/mesh-data/:videoId', express.json(), async (req: Request, res: Re
 
     await meshDataService.saveMeshData({
       videoId,
-      role: meshData.role || 'rider',
+      videoUrl: meshData.videoUrl || `${req.protocol}://${req.get('host')}/videos/${videoId}`,
+      role: (meshData.role || 'rider') as 'rider' | 'coach',
       fps: meshData.fps || 4,
       videoDuration: meshData.videoDuration || 0,
       frameCount: meshData.frameCount || meshData.frames?.length || 0,
+      totalFrames: meshData.totalFrames || meshData.frameCount || meshData.frames?.length || 0,
       frames: meshData.frames || []
     });
 
@@ -583,29 +595,30 @@ app.get('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
       } as ApiResponse<null>);
     }
     
-    // Transform MongoDB MeshData to frontend MeshSequence format
+    // Return unified MeshSequence format
     const meshSequence = {
-      id: meshData._id || videoId,
       videoId: meshData.videoId,
-      trick: 'unknown',
-      phase: 'default',
-      frameStart: 0,
-      frameEnd: meshData.frameCount - 1,
+      videoUrl: meshData.videoUrl || `${req.protocol}://${req.get('host')}/videos/${videoId}`,
       fps: meshData.fps,
+      videoDuration: meshData.videoDuration,
+      totalFrames: meshData.totalFrames || meshData.frameCount,
       frames: (meshData.frames || []).map((frame: any) => ({
-        frameNumber: frame.frameNumber,
-        timestamp: frame.timestamp,
-        vertices: frame.skeleton?.vertices || [],
-        faces: frame.skeleton?.faces || [],
-        normals: []
+        frameIndex: frame.frameNumber || 0,
+        timestamp: frame.timestamp || 0,
+        videoFrameData: {
+          offset: frame.frameNumber || 0
+        },
+        meshData: {
+          keypoints: frame.keypoints || [],
+          skeleton: frame.skeleton || [],
+          vertices: frame.skeleton?.vertices || [],
+          faces: frame.skeleton?.faces || []
+        }
       })),
-      bodyProportions: {
-        height: 1.7,
-        armLength: 0.7,
-        legLength: 0.9,
-        torsoLength: 0.5,
-        shoulderWidth: 0.4,
-        hipWidth: 0.35
+      metadata: {
+        uploadedAt: meshData.createdAt || new Date(),
+        processingTime: 0,
+        extractionMethod: 'mediapipe'
       }
     };
     

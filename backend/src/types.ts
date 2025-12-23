@@ -124,6 +124,47 @@ export interface PhaseBasedCoachingFeedback {
   knowledgeReferences: string[];
 }
 
+// Mesh Viewer Types - Unified Video + Mesh Data Structure
+export interface Keypoint {
+  index: number;
+  name: string;
+  position: [number, number, number]; // x, y, z
+  confidence: number;
+}
+
+export interface SkeletonConnection {
+  from: number; // keypoint index
+  to: number;   // keypoint index
+}
+
+export interface SyncedFrame {
+  frameIndex: number;
+  timestamp: number; // milliseconds
+  videoFrameData?: {
+    offset: number; // Reference to video frame
+  };
+  meshData: {
+    keypoints: Keypoint[]; // 33 keypoints from MediaPipe
+    skeleton: SkeletonConnection[];
+    vertices: [number, number, number][]; // 3D positions
+    faces: number[][]; // Triangle indices
+  };
+}
+
+export interface MeshSequence {
+  videoId: string;
+  videoUrl: string;
+  fps: number;
+  videoDuration: number;
+  totalFrames: number;
+  frames: SyncedFrame[];
+  metadata: {
+    uploadedAt: Date;
+    processingTime: number;
+    extractionMethod: string;
+  };
+}
+
 // Chat Types
 export interface ChatMessage {
   role: 'user' | 'assistant';

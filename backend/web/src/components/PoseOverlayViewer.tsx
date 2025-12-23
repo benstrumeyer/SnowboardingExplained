@@ -122,25 +122,23 @@ export function PoseOverlayViewer({
       });
   }, [referenceVideoId, rightScreen.mesh]);
 
-  // Get current frames
-  const currentLeftFrame = leftScreen.mesh && leftScreen.mesh.frames && currentFrame < leftScreen.mesh.frames.length
-    ? leftScreen.mesh.frames[Math.floor(currentFrame)]
+  // Get current frames using independent scene frames
+  const currentLeftFrame = leftScreen.mesh && leftScreen.mesh.frames && leftSceneFrame < leftScreen.mesh.frames.length
+    ? leftScreen.mesh.frames[Math.floor(leftSceneFrame)]
     : null;
 
-  const currentRightFrame = rightScreen.mesh && rightScreen.mesh.frames && currentFrame < rightScreen.mesh.frames.length
-    ? rightScreen.mesh.frames[Math.floor(currentFrame)]
+  const currentRightFrame = rightScreen.mesh && rightScreen.mesh.frames && rightSceneFrame < rightScreen.mesh.frames.length
+    ? rightScreen.mesh.frames[Math.floor(rightSceneFrame)]
     : null;
 
-  // Playback animation loop
+  // Playback animation loop - advances independent scene frames
   useEffect(() => {
     if (!isPlaying) return;
 
-    const maxFrames = Math.max(
-      leftScreen.mesh?.frames?.length || 0,
-      rightScreen.mesh?.frames?.length || 0
-    );
+    const maxLeftFrames = leftScreen.mesh?.frames?.length || 0;
+    const maxRightFrames = rightScreen.mesh?.frames?.length || 0;
 
-    if (maxFrames === 0) return;
+    if (maxLeftFrames === 0 && maxRightFrames === 0) return;
 
     let lastFrameTime = performance.now();
     let animationFrameId: number;
@@ -151,15 +149,27 @@ export function PoseOverlayViewer({
       const frameAdvanceTime = (1000 / fps) / playbackSpeed; // Time per frame in ms
 
       if (deltaTime >= frameAdvanceTime) {
-        const nextFrame = currentFrame + 1;
-        if (nextFrame < maxFrames) {
-          onFrameChange(nextFrame);
-          lastFrameTime = currentTime;
-        } else {
-          // Loop back to start
-          onFrameChange(0);
-          lastFrameTime = currentTime;
+        // Advance left scene frame
+        if (maxLeftFrames > 0) {
+          const nextLeftFrame = leftSceneFrame + 1;
+          if (nextLeftFrame < maxLeftFrames) {
+            onLeftSceneFrameChange(nextLeftFrame);
+          } else {
+            onLeftSceneFrameChange(0); // Loop back
+          }
         }
+
+        // Advance right scene frame
+        if (maxRightFrames > 0) {
+          const nextRightFrame = rightSceneFrame + 1;
+          if (nextRightFrame < maxRightFrames) {
+            onRightSceneFrameChange(nextRightFrame);
+          } else {
+            onRightSceneFrameChange(0); // Loop back
+          }
+        }
+
+        lastFrameTime = currentTime;
       }
 
       animationFrameId = requestAnimationFrame(animate);
@@ -168,7 +178,7 @@ export function PoseOverlayViewer({
     animationFrameId = requestAnimationFrame(animate);
 
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying, currentFrame, playbackSpeed, onFrameChange, leftScreen.mesh, rightScreen.mesh]);
+  }, [isPlaying, leftSceneFrame, rightSceneFrame, playbackSpeed, onLeftSceneFrameChange, onRightSceneFrameChange, leftScreen.mesh, rightScreen.mesh]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -180,19 +190,22 @@ export function PoseOverlayViewer({
           break;
         case 'ArrowLeft':
           e.preventDefault();
-          onFrameChange(Math.max(0, currentFrame - 1));
+          onLeftSceneFrameChange(Math.max(0, leftSceneFrame - 1));
+          onRightSceneFrameChange(Math.max(0, rightSceneFrame - 1));
           break;
         case 'ArrowRight':
           e.preventDefault();
-          const maxFrame = Math.max(leftScreen.mesh?.frames?.length || 0, rightScreen.mesh?.frames?.length || 0) - 1;
-          onFrameChange(Math.min(currentFrame + 1, maxFrame));
+          const maxLeftFrame = (leftScreen.mesh?.frames?.length || 0) - 1;
+          const maxRightFrame = (rightScreen.mesh?.frames?.length || 0) - 1;
+          onLeftSceneFrameChange(Math.min(leftSceneFrame + 1, maxLeftFrame));
+          onRightSceneFrameChange(Math.min(rightSceneFrame + 1, maxRightFrame));
           break;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, currentFrame, onPlayingChange, onFrameChange, leftScreen.mesh, rightScreen.mesh]);
+  }, [isPlaying, leftSceneFrame, rightSceneFrame, onPlayingChange, onLeftSceneFrameChange, onRightSceneFrameChange, leftScreen.mesh, rightScreen.mesh]);
 
   // Update total frames when meshes change
   useEffect(() => {
@@ -276,13 +289,15 @@ export function PoseOverlayViewer({
                             onRiderVideoChange?.(videoId);
                           }
                         }}
-                        currentFrame={currentFrame}
+                        currentFrame={leftSceneFrame}
                         totalFrames={totalFrames}
                         isPlaying={isPlaying}
                         onPlayPause={() => onPlayingChange(!isPlaying)}
                         onFrameChange={onFrameChange}
+                        onSceneFrameChange={onLeftSceneFrameChange}
                         playbackSpeed={playbackSpeed}
                         onSpeedChange={onSpeedChange}
+                        sceneId="left"
                       >
                         <div className="floating-section">
                           <label className="floating-label">Scene Controls</label>
@@ -420,13 +435,15 @@ export function PoseOverlayViewer({
                               onRiderVideoChange?.(videoId);
                             }
                           }}
-                          currentFrame={currentFrame}
+                          currentFrame={leftSceneFrame}
                           totalFrames={totalFrames}
                           isPlaying={isPlaying}
                           onPlayPause={() => onPlayingChange(!isPlaying)}
                           onFrameChange={onFrameChange}
+                          onSceneFrameChange={onLeftSceneFrameChange}
                           playbackSpeed={playbackSpeed}
                           onSpeedChange={onSpeedChange}
+                          sceneId="left"
                         >
                           <div className="floating-section">
                             <label className="floating-label">Scene Controls</label>
@@ -479,13 +496,15 @@ export function PoseOverlayViewer({
                           onRiderVideoChange?.(videoId);
                         }
                       }}
-                      currentFrame={currentFrame}
+                      currentFrame={leftSceneFrame}
                       totalFrames={totalFrames}
                       isPlaying={isPlaying}
                       onPlayPause={() => onPlayingChange(!isPlaying)}
                       onFrameChange={onFrameChange}
+                      onSceneFrameChange={onLeftSceneFrameChange}
                       playbackSpeed={playbackSpeed}
                       onSpeedChange={onSpeedChange}
+                      sceneId="left"
                     >
                       <div className="floating-section">
                         <label className="floating-label">Scene Controls</label>
@@ -577,13 +596,15 @@ export function PoseOverlayViewer({
                           onReferenceVideoChange?.(videoId);
                         }
                       }}
-                      currentFrame={currentFrame}
+                      currentFrame={leftSceneFrame}
                       totalFrames={totalFrames}
                       isPlaying={isPlaying}
                       onPlayPause={() => onPlayingChange(!isPlaying)}
                       onFrameChange={onFrameChange}
+                      onSceneFrameChange={onLeftSceneFrameChange}
                       playbackSpeed={playbackSpeed}
                       onSpeedChange={onSpeedChange}
+                      sceneId="left"
                     >
                       <div className="floating-section">
                         <label className="floating-label">Left Mesh</label>
@@ -733,13 +754,15 @@ export function PoseOverlayViewer({
                               onReferenceVideoChange?.(videoId);
                             }
                           }}
-                          currentFrame={currentFrame}
+                          currentFrame={rightSceneFrame}
                           totalFrames={totalFrames}
                           isPlaying={isPlaying}
                           onPlayPause={() => onPlayingChange(!isPlaying)}
                           onFrameChange={onFrameChange}
+                          onSceneFrameChange={onRightSceneFrameChange}
                           playbackSpeed={playbackSpeed}
                           onSpeedChange={onSpeedChange}
+                          sceneId="right"
                         >
                           <div className="floating-section">
                             <label className="floating-label">Scene Controls</label>
@@ -853,13 +876,15 @@ export function PoseOverlayViewer({
                             onReferenceVideoChange?.(videoId);
                           }
                         }}
-                        currentFrame={currentFrame}
+                        currentFrame={rightSceneFrame}
                         totalFrames={totalFrames}
                         isPlaying={isPlaying}
                         onPlayPause={() => onPlayingChange(!isPlaying)}
                         onFrameChange={onFrameChange}
+                        onSceneFrameChange={onRightSceneFrameChange}
                         playbackSpeed={playbackSpeed}
                         onSpeedChange={onSpeedChange}
+                        sceneId="right"
                       >
                         <div className="floating-section">
                           <label className="floating-label">Scene Controls</label>

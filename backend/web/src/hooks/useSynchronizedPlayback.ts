@@ -36,7 +36,7 @@ export function useSynchronizedPlayback(
 
   // Playback loop
   useEffect(() => {
-    if (!state.isPlaying || !riderMesh || !referenceMesh || !riderMesh.frames || !referenceMesh.frames) {
+    if (!state.isPlaying) {
       return;
     }
 
@@ -46,13 +46,13 @@ export function useSynchronizedPlayback(
       lastTimeRef.current = now;
 
       setState((prev) => {
-        const fps = riderMesh.fps || 30;
+        const fps = (riderMesh?.fps || referenceMesh?.fps || 30);
         const frameAdvance = prev.playbackSpeed * deltaTime * fps;
         const newFrame = prev.currentFrame + frameAdvance;
 
         const maxFrames = Math.max(
-          (riderMesh.frames?.length || 0) - prev.riderFrameOffset,
-          (referenceMesh.frames?.length || 0) - prev.referenceFrameOffset
+          (riderMesh?.frames?.length || 0),
+          (referenceMesh?.frames?.length || 0)
         );
 
         if (newFrame >= maxFrames) {

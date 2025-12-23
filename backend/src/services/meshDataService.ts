@@ -2,11 +2,13 @@ import { MongoClient, Db, Collection } from 'mongodb';
 import dotenv from 'dotenv';
 import path from 'path';
 import logger from '../logger';
+import { MeshSequence, SyncedFrame } from '../types';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env.local') });
 dotenv.config();
 
+// Legacy interface for backward compatibility
 interface MeshFrame {
   frameNumber: number;
   timestamp: number;
@@ -14,14 +16,22 @@ interface MeshFrame {
   skeleton: any;
 }
 
+// Updated interface for unified video + mesh storage
 interface MeshData {
   _id?: string;
   videoId: string;
-  role: 'rider' | 'coach';
+  videoUrl: string;
+  role?: 'rider' | 'coach';
   fps: number;
   videoDuration: number;
   frameCount: number;
-  frames: MeshFrame[];
+  totalFrames: number;
+  frames: SyncedFrame[] | MeshFrame[]; // Support both old and new formats
+  metadata?: {
+    uploadedAt: Date;
+    processingTime: number;
+    extractionMethod: string;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -103,12 +113,64 @@ class MeshDataService {
       logger.info(`Saved mesh data for video ${meshData.videoId}`, {
         videoId: meshData.videoId,
         frameCount: meshData.frameCount,
-        fps: meshData.fps
+        fps: meshData.fps,
+        hasVideoUrl: !!meshData.videoUrl
       });
 
       return meshData.videoId;
     } catch (err) {
       logger.error(`Failed to save mesh data for ${meshData.videoId}`, { error: err });
+      throw err;
+    }
+  }
+
+  /**
+   * Save unified MeshSequence data (video + mesh synchronized)
+   */
+  async saveMeshSequence(sequence: MeshSequence): Promise<string> {
+    if (!this.collection) {
+      throw new Error('MongoDB not connected');
+    }
+
+    try {
+      const existing = await this.collection.findOne({ videoId: sequence.videoId });
+      if (existing) {
+        logger.info(`Mesh sequence already exists for video ${sequence.videoId}`, {
+          videoId: sequence.videoId
+        });
+        return sequence.videoId;
+      }
+
+      const now = new Date();
+      const data: MeshData = {
+        videoId: sequence.videoId,
+        videoUrl: sequence.videoUrl,
+        fps: sequence.fps,
+        videoDuration: sequence.videoDuration,
+        frameCount: sequence.totalFrames,
+        totalFrames: sequence.totalFrames,
+        frames: sequence.frames,
+        metadata: sequence.metadata,
+        createdAt: now,
+        updatedAt: now
+      };
+
+      await this.collection.updateOne(
+        { videoId: sequence.videoId },
+        { $set: data },
+        { upsert: true }
+      );
+
+      logger.info(`Saved unified mesh sequence for video ${sequence.videoId}`, {
+        videoId: sequence.videoId,
+        totalFrames: sequence.totalFrames,
+        fps: sequence.fps,
+        videoDuration: sequence.videoDuration
+      });
+
+      return sequence.videoId;
+    } catch (err) {
+      logger.error(`Failed to save mesh sequence for ${sequence.videoId}`, { error: err });
       throw err;
     }
   }

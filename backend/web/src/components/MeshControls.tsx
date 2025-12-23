@@ -1,29 +1,21 @@
-import React from 'react';
-
 interface MeshControlsProps {
   meshName: string;
   isVisible: boolean;
-  frameOffset: number;
-  rotationX: number;
-  rotationY: number;
-  rotationZ: number;
-  currentFrame: number;
+  color?: string;
+  opacity?: number;
   onVisibilityChange: (visible: boolean) => void;
-  onFrameOffsetChange: (offset: number) => void;
-  onRotationChange: (axis: 'x' | 'y' | 'z', angle: number) => void;
+  onColorChange?: (color: string) => void;
+  onOpacityChange?: (opacity: number) => void;
 }
 
 export function MeshControls({
   meshName,
   isVisible,
-  frameOffset,
-  rotationX,
-  rotationY,
-  rotationZ,
-  currentFrame,
+  color = '#FF6B6B',
+  opacity = 1,
   onVisibilityChange,
-  onFrameOffsetChange,
-  onRotationChange,
+  onColorChange,
+  onOpacityChange,
 }: MeshControlsProps) {
   return (
     <div style={{ padding: '10px', background: '#222', color: '#fff' }}>
@@ -37,46 +29,23 @@ export function MeshControls({
         Visible
       </label>
       <div>
-        <label>Frame Offset: {frameOffset}</label>
+        <label>Color:</label>
         <input
-          type="range"
-          min="-10"
-          max="10"
-          value={frameOffset}
-          onChange={(e) => onFrameOffsetChange(parseInt(e.target.value))}
-          style={{ width: '100%' }}
+          type="color"
+          value={color}
+          onChange={(e) => onColorChange?.(e.target.value)}
+          style={{ width: '100%', height: '30px', cursor: 'pointer' }}
         />
       </div>
       <div>
-        <label>Rotation X: {rotationX.toFixed(0)}°</label>
+        <label>Opacity: {(opacity * 100).toFixed(0)}%</label>
         <input
           type="range"
-          min="-180"
-          max="180"
-          value={rotationX}
-          onChange={(e) => onRotationChange('x', parseInt(e.target.value))}
-          style={{ width: '100%' }}
-        />
-      </div>
-      <div>
-        <label>Rotation Y: {rotationY.toFixed(0)}°</label>
-        <input
-          type="range"
-          min="-180"
-          max="180"
-          value={rotationY}
-          onChange={(e) => onRotationChange('y', parseInt(e.target.value))}
-          style={{ width: '100%' }}
-        />
-      </div>
-      <div>
-        <label>Rotation Z: {rotationZ.toFixed(0)}°</label>
-        <input
-          type="range"
-          min="-180"
-          max="180"
-          value={rotationZ}
-          onChange={(e) => onRotationChange('z', parseInt(e.target.value))}
+          min="0"
+          max="1"
+          step="0.1"
+          value={opacity}
+          onChange={(e) => onOpacityChange?.(parseFloat(e.target.value))}
           style={{ width: '100%' }}
         />
       </div>

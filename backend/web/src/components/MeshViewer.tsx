@@ -1,14 +1,23 @@
-import { MeshFrame } from '../types';
+import { MeshFrame, SyncedFrame } from '../types';
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
+import { CameraService } from '../services/cameraService';
 
 interface MeshViewerProps {
-  riderMesh: MeshFrame | null;
-  referenceMesh: MeshFrame | null;
+  riderMesh: (MeshFrame | SyncedFrame) | null;
+  referenceMesh: (MeshFrame | SyncedFrame) | null;
   showRider: boolean;
   showReference: boolean;
   riderRotation: { x: number; y: number; z: number };
   referenceRotation: { x: number; y: number; z: number };
+  riderColor?: string;
+  riderOpacity?: number;
+  referenceColor?: string;
+  referenceOpacity?: number;
+  showTrackingLines?: boolean;
+  enabledKeypoints?: Set<number>;
+  showAngles?: boolean;
+  onCameraServiceReady?: (service: CameraService) => void;
 }
 
 export function MeshViewer({
@@ -18,11 +27,29 @@ export function MeshViewer({
   showReference,
   riderRotation,
   referenceRotation,
+  riderColor = '#FF6B6B',
+  riderOpacity = 1,
+  referenceColor = '#4ECDC4',
+  referenceOpacity = 1,
+  showTrackingLines = false,
+  enabledKeypoints = new Set(),
+  showAngles = false, // TODO: Implement joint angle visualization
+  onCameraServiceReady,
 }: MeshViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
-  const cameraRef = useRef<THREE.Camera | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
+  const cameraServiceRef = useRef<CameraService | null>(null);
+  const controlsRef = useRef<{ theta: number; phi: number; radius: number }>({
+    theta: 0,
+    phi: Math.PI / 4,
+    radius: 5,
+  });
+  const isDraggingRef = useRef(false);
+  const lastMouseRef = useRef({ x: 0, y: 0 });
+  const meshesRef = useRef<Map<string, THREE.Mesh>>(new Map());
+  const trackingLinesRef = useRef<THREE.LineSegments[]>([]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -44,6 +71,10 @@ export function MeshViewer({
       camera.lookAt(0, 0, 0);
       cameraRef.current = camera;
 
+      // Initialize camera service
+      cameraServiceRef.current = new CameraService(camera);
+      onCameraServiceReady?.(cameraServiceRef.current);
+
       // Renderer setup
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
@@ -59,13 +90,60 @@ export function MeshViewer({
       directionalLight.position.set(5, 5, 5);
       scene.add(directionalLight);
 
+      // Grid Floor
+      const gridHelper = new THREE.GridHelper(10, 20, 0x444444, 0x222222);
+      gridHelper.position.y = 0;
+      scene.add(gridHelper);
+
+      // Mouse drag for camera rotation
+      const onMouseDown = (e: MouseEvent) => {
+        isDraggingRef.current = true;
+        lastMouseRef.current = { x: e.clientX, y: e.clientY };
+      };
+
+      const onMouseMove = (e: MouseEvent) => {
+        if (!isDraggingRef.current || !cameraRef.current) return;
+
+        const deltaX = e.clientX - lastMouseRef.current.x;
+        const deltaY = e.clientY - lastMouseRef.current.y;
+
+        controlsRef.current.theta -= deltaX * 0.01;
+        controlsRef.current.phi += deltaY * 0.01;
+        controlsRef.current.phi = Math.max(0.1, Math.min(Math.PI - 0.1, controlsRef.current.phi));
+
+        const { theta, phi, radius } = controlsRef.current;
+        cameraRef.current.position.x = radius * Math.sin(phi) * Math.sin(theta);
+        cameraRef.current.position.y = radius * Math.cos(phi);
+        cameraRef.current.position.z = radius * Math.sin(phi) * Math.cos(theta);
+        cameraRef.current.lookAt(0, 0, 0);
+
+        lastMouseRef.current = { x: e.clientX, y: e.clientY };
+      };
+
+      const onMouseUp = () => {
+        isDraggingRef.current = false;
+      };
+
+      // Mouse wheel zoom
+      const onMouseWheel = (e: WheelEvent) => {
+        e.preventDefault();
+        if (!cameraServiceRef.current) return;
+        const direction = e.deltaY > 0 ? 1 : -1;
+        cameraServiceRef.current.zoom(direction);
+      };
+
+      renderer.domElement.addEventListener('mousedown', onMouseDown);
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
+      renderer.domElement.addEventListener('wheel', onMouseWheel, { passive: false });
+
       // Handle window resize
       const handleResize = () => {
         if (!containerRef.current || !renderer || !camera) return;
         const width = containerRef.current.clientWidth;
         const height = containerRef.current.clientHeight;
         camera.aspect = width / height;
-        (camera as THREE.PerspectiveCamera).updateProjectionMatrix();
+        camera.updateProjectionMatrix();
         renderer.setSize(width, height);
       };
 
@@ -82,6 +160,10 @@ export function MeshViewer({
 
       return () => {
         window.removeEventListener('resize', handleResize);
+        renderer.domElement.removeEventListener('mousedown', onMouseDown);
+        window.removeEventListener('mousemove', onMouseMove);
+        window.removeEventListener('mouseup', onMouseUp);
+        renderer.domElement.removeEventListener('wheel', onMouseWheel);
         if (containerRef.current && renderer.domElement.parentNode === containerRef.current) {
           containerRef.current.removeChild(renderer.domElement);
         }
@@ -96,55 +178,93 @@ export function MeshViewer({
   useEffect(() => {
     if (!sceneRef.current) return;
 
-    // Clear existing meshes
+    // Clear existing meshes and tracking lines
     const meshesToRemove = sceneRef.current.children.filter(
       (child) => child instanceof THREE.Mesh && child.name.startsWith('mesh-')
     );
     meshesToRemove.forEach((mesh) => sceneRef.current!.remove(mesh));
 
+    trackingLinesRef.current.forEach((line) => sceneRef.current!.remove(line));
+    trackingLinesRef.current = [];
+    meshesRef.current.clear();
+
     // Add rider mesh
     if (riderMesh && showRider) {
-      const mesh = createMeshFromFrame(riderMesh, 0xFF6B6B);
+      const mesh = createMeshFromFrame(riderMesh, riderColor);
       if (mesh) {
         mesh.name = 'mesh-rider';
-        // Position at origin, rotation happens around center
         mesh.position.set(0, 0, 0);
         mesh.rotation.set(
           (riderRotation.x * Math.PI) / 180,
           (riderRotation.y * Math.PI) / 180,
           (riderRotation.z * Math.PI) / 180
         );
+        // Apply opacity
+        mesh.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshPhongMaterial) {
+            child.material.opacity = riderOpacity;
+            child.material.transparent = riderOpacity < 1;
+          }
+        });
         sceneRef.current.add(mesh);
+        meshesRef.current.set('rider', mesh);
+
+        // Add tracking lines if enabled
+        if (showTrackingLines && enabledKeypoints.size > 0) {
+          addTrackingLines(riderMesh, enabledKeypoints, sceneRef.current, riderColor);
+        }
       }
     }
 
     // Add reference mesh
     if (referenceMesh && showReference) {
-      const mesh = createMeshFromFrame(referenceMesh, 0x4ECDC4);
+      const mesh = createMeshFromFrame(referenceMesh, referenceColor);
       if (mesh) {
         mesh.name = 'mesh-reference';
-        // Position offset from rider, rotation happens around center
         mesh.position.set(2, 0, 0);
         mesh.rotation.set(
           (referenceRotation.x * Math.PI) / 180,
           (referenceRotation.y * Math.PI) / 180,
           (referenceRotation.z * Math.PI) / 180
         );
+        // Apply opacity
+        mesh.traverse((child) => {
+          if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshPhongMaterial) {
+            child.material.opacity = referenceOpacity;
+            child.material.transparent = referenceOpacity < 1;
+          }
+        });
         sceneRef.current.add(mesh);
+        meshesRef.current.set('reference', mesh);
       }
     }
-  }, [riderMesh, referenceMesh, showRider, showReference, riderRotation, referenceRotation]);
+
+    // Note: showAngles is reserved for future joint angle visualization
+    void showAngles;
+  }, [riderMesh, referenceMesh, showRider, showReference, riderRotation, referenceRotation, riderColor, riderOpacity, referenceColor, referenceOpacity, showTrackingLines, enabledKeypoints, showAngles]);
 
   return <div ref={containerRef} className="w-full h-full" />;
 }
 
-function createMeshFromFrame(frame: MeshFrame, color: number): THREE.Mesh | null {
-  if (!frame.vertices || frame.vertices.length === 0) return null;
+function createMeshFromFrame(frame: MeshFrame | SyncedFrame, colorHex: string): THREE.Mesh | null {
+  // Extract vertices from either frame type
+  let vertices: number[][];
+  let faces: number[][];
+  
+  if ('meshData' in frame) {
+    // SyncedFrame type
+    vertices = frame.meshData.vertices;
+    faces = frame.meshData.faces;
+  } else {
+    // MeshFrame type
+    vertices = frame.vertices;
+    faces = frame.faces;
+  }
+  
+  if (!vertices || vertices.length === 0) return null;
 
   const geometry = new THREE.BufferGeometry();
 
-  // Normalize vertices
-  const vertices = frame.vertices;
   let minX = Infinity, maxX = -Infinity;
   let minY = Infinity, maxY = -Infinity;
   let minZ = Infinity, maxZ = -Infinity;
@@ -177,11 +297,11 @@ function createMeshFromFrame(frame: MeshFrame, color: number): THREE.Mesh | null
     let ny = (y - centerY) * scale;
     let nz = (z - centerZ) * scale;
     
-    // Rotate 90 degrees around X axis: Y becomes -Z, Z becomes Y
+    // Rotate 90 degrees around X axis: Y becomes Z, Z becomes -Y
     // This converts camera space (Y down) to world space (Y up)
     const tempY = ny;
-    ny = nz;
-    nz = -tempY;
+    ny = -nz;
+    nz = tempY;
     
     // Position feet on ground (add back the height offset)
     ny = ny + (sizeY * scale) / 2;
@@ -191,22 +311,46 @@ function createMeshFromFrame(frame: MeshFrame, color: number): THREE.Mesh | null
 
   geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(normalizedVertices.flat()), 3));
 
-  if (frame.faces && frame.faces.length > 0) {
-    const flatFaces = frame.faces.flat();
+  if (faces && faces.length > 0) {
+    const flatFaces = faces.flat();
     geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(flatFaces), 1));
   }
 
   geometry.computeVertexNormals();
 
+  // Convert hex color string to number
+  const colorNum = parseInt(colorHex.replace('#', ''), 16);
+
   const material = new THREE.MeshPhongMaterial({
-    color,
+    color: colorNum,
     side: THREE.DoubleSide,
   });
 
   const mesh = new THREE.Mesh(geometry, material);
   
-  // Center the mesh's geometry so rotations happen around the center
-  geometry.center();
-  
   return mesh;
+}
+
+function addTrackingLines(frame: MeshFrame | SyncedFrame, enabledKeypoints: Set<number>, scene: THREE.Scene, meshColor: string): void {
+  // Add point visualization for enabled keypoints
+  let keypoints: any[] = [];
+  if ('meshData' in frame && frame.meshData) {
+    keypoints = frame.meshData.keypoints || [];
+  }
+
+  enabledKeypoints.forEach((index) => {
+    if (keypoints && keypoints[index]) {
+      const kp = keypoints[index];
+      const pos = Array.isArray(kp) ? kp : (kp.position || [0, 0, 0]);
+      
+      // Create a small sphere for each keypoint
+      const geometry = new THREE.SphereGeometry(0.05, 8, 8);
+      const colorNum = parseInt(meshColor.replace('#', ''), 16);
+      const material = new THREE.MeshBasicMaterial({ color: colorNum });
+      const sphere = new THREE.Mesh(geometry, material);
+      
+      sphere.position.set(pos[0], pos[1], pos[2]);
+      scene.add(sphere);
+    }
+  });
 }
