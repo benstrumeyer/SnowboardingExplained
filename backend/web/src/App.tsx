@@ -5,6 +5,7 @@ import { ModelsCardList } from './components/ModelsCardList';
 import { ViewMode } from './components/ViewMode';
 import { PlaybackControls } from './components/PlaybackControls';
 import { SyncScenesButton } from './components/SyncScenesButton';
+import { FrameDataTest } from './pages/FrameDataTest';
 import './styles/App.css';
 
 function App() {
@@ -12,6 +13,7 @@ function App() {
   const [referenceVideoId, setReferenceVideoId] = useState('');
   const [uploadModalOpen, setUploadModalOpen] = useState<'rider' | 'reference' | null>(null);
   const [viewMode, setViewMode] = useState<'side-by-side' | 'overlay' | 'comparison' | 'single-scene'>('side-by-side');
+  const [showFrameDataTest, setShowFrameDataTest] = useState(false);
   
   // Playback state
   const [isPlaying, setIsPlaying] = useState(false);
@@ -53,25 +55,62 @@ function App() {
 
   return (
     <div className="app-container">
-      <div className="app-header">
-        <h1>Pose Overlay Viewer</h1>
-        <div className="header-controls">
+      {showFrameDataTest ? (
+        <div>
           <button
-            className="upload-btn rider-btn"
-            onClick={() => setUploadModalOpen('rider')}
-            title="Upload rider video"
+            onClick={() => setShowFrameDataTest(false)}
+            style={{
+              position: 'fixed',
+              top: '10px',
+              right: '10px',
+              zIndex: 1000,
+              padding: '8px 16px',
+              backgroundColor: '#333',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '4px',
+              cursor: 'pointer'
+            }}
           >
-            🏂 Upload Rider
+            ← Back to Main
           </button>
-          <button
-            className="upload-btn reference-btn"
-            onClick={() => setUploadModalOpen('reference')}
-            title="Upload reference/coach video"
-          >
-            👨‍🏫 Upload Reference
-          </button>
+          <FrameDataTest />
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="app-header">
+            <h1>Pose Overlay Viewer</h1>
+            <div className="header-controls">
+              <button
+                className="upload-btn rider-btn"
+                onClick={() => setUploadModalOpen('rider')}
+                title="Upload rider video"
+              >
+                🏂 Upload Rider
+              </button>
+              <button
+                className="upload-btn reference-btn"
+                onClick={() => setUploadModalOpen('reference')}
+                title="Upload reference/coach video"
+              >
+                👨‍🏫 Upload Reference
+              </button>
+              <button
+                onClick={() => setShowFrameDataTest(true)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#666',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  marginLeft: '10px'
+                }}
+              >
+                🧪 Test Frame API
+              </button>
+            </div>
+          </div>
 
       <div className="app-content">
         <div className="sidebar">
@@ -168,6 +207,8 @@ function App() {
           onClose={() => setUploadModalOpen(null)}
           onVideoLoaded={handleVideoLoaded}
         />
+      )}
+        </>
       )}
     </div>
   );
