@@ -69,30 +69,54 @@
 4. Playback pauses
 5. Scenes are now synchronized and ready for comparison
 
+## Recently Completed
+
+### 5. FloatingControlPanel Updates
+- Added `onSceneFrameChange` prop for scene-specific frame control
+- Updated frame slider to use scene-specific handler when available
+- Maintains backward compatibility with shared frame handler
+
+### 6. PoseOverlayViewer Updates
+- Updated all 6 FloatingControlPanel instances to pass scene-specific frame handlers
+- Updated frame display logic to use independent scene frames (`leftSceneFrame`, `rightSceneFrame`)
+- Updated playback animation loop to advance independent scene frames
+- Updated keyboard shortcuts to work with independent frames
+- Integrated VideoDisplay component for synced video playback
+
+### 7. VideoDisplay Component
+- **File**: `VideoDisplay.tsx`
+- **Styling**: `VideoDisplay.css`
+- Syncs video playback with scene frame position
+- Shows frame counter overlay
+- Handles play/pause state synchronization
+- Integrated into side-by-side view for both left and right scenes
+
 ## Next Steps
 
 ### To Complete Implementation:
-1. Update FloatingControlPanel to use scene-specific frame handlers
-2. Update PoseOverlayViewer to pass scene-specific handlers to FloatingControlPanel
-3. Add video display next to 3D scenes
-4. Implement video frame sync with scene playback
-5. Add option to show 2D overlay of model on video
+1. Test independent frame control in browser
+2. Test synchronized playback timing
+3. Test sync scenes button functionality
+4. Add option to show 2D overlay of model on video (if available)
+5. Add video display to overlay and comparison modes
 
 ### Video Display Options:
-- **Option 1**: Show original video frame-by-frame synced with scene
-- **Option 2**: Show 2D overlay of model on video (if available)
-- **Option 3**: Show both with toggle
+- **Option 1**: Show original video frame-by-frame synced with scene (✓ Implemented)
+- **Option 2**: Show 2D overlay of model on video (if available) - TODO
+- **Option 3**: Show both with toggle - TODO
 
 ## Files Created
 - `sceneSyncService.ts` - Synchronization logic
 - `SyncScenesButton.tsx` - Sync button component
 - `SyncScenesButton.css` - Button styling
+- `VideoDisplay.tsx` - Video display component
+- `VideoDisplay.css` - Video display styling
 - `INDEPENDENT_SCENE_PLAYBACK_SPEC.md` - Detailed specification
 
 ## Files Modified
 - `App.tsx` - Added state and sync handler
-- `PoseOverlayViewer.tsx` - Updated interface and props
-- `FloatingControlPanel.tsx` - Added sceneId prop
+- `PoseOverlayViewer.tsx` - Updated interface, props, and frame logic
+- `FloatingControlPanel.tsx` - Added scene-specific frame handler support
 
 ## Testing Checklist
 - [ ] Each scene's slider controls its frame independently
@@ -101,5 +125,6 @@
 - [ ] Sync button resets both scenes to frame 1
 - [ ] Sync button resets camera to front view
 - [ ] Sync button pauses playback
-- [ ] Video displays next to scenes
+- [ ] Video displays next to scenes in side-by-side mode
 - [ ] Video syncs with scene playback
+- [ ] Frame counter shows correct frame numbers
