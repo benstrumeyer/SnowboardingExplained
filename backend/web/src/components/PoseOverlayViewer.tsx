@@ -407,10 +407,11 @@ export function PoseOverlayViewer({
             ) : viewMode === 'overlay' && leftScreen.mesh && leftScreen.isVisible ? (
               <div className="w-full h-full bg-black flex items-center justify-center relative">
                 <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-                  <video
-                    src={leftScreen.mesh.videoUrl}
-                    style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                    controls
+                  <VideoDisplay
+                    videoUrl={leftScreen.mesh.videoUrl}
+                    currentFrame={leftSceneFrame}
+                    totalFrames={totalFrames}
+                    isPlaying={isPlaying}
                   />
                   <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }}>
                     {currentLeftFrame && (
