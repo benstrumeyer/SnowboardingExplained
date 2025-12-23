@@ -1,4 +1,4 @@
-﻿"""
+"""
 Flask HTTP Server for 4D-Humans Pose Detection (WSL)
 Exposes HMR2 pose detection as a REST API
 

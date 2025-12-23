@@ -123,9 +123,32 @@ export class FrameExtractionService {
           }
 
           const duration = metadata.format.duration || 0;
-          const totalFrames = Math.ceil(duration * framesPerSecond);
           
-          console.log(`[FRAME_EXTRACTION] 📹 Video duration: ${duration}s, extracting ${totalFrames} frames`);
+          // Get actual video frame rate from metadata
+          let videoFrameRate = FRAMES_PER_SECOND;
+          if (metadata.streams && metadata.streams.length > 0) {
+            const videoStream = metadata.streams.find((s: any) => s.codec_type === 'video');
+            if (videoStream && videoStream.r_frame_rate) {
+              // r_frame_rate is in format "num/den" like "30/1" or "24000/1001"
+              const [num, den] = videoStream.r_frame_rate.split('/').map(Number);
+              videoFrameRate = num / (den || 1);
+            }
+          }
+          
+          // Calculate how many frames to extract at target FPS
+          const targetFps = fps || FRAMES_PER_SECOND;
+          let totalFrames = Math.ceil(duration * targetFps);
+          
+          // Cap frames to avoid Windows command line length limits
+          // Windows has ~32KB command line limit, each frame adds ~50 chars
+          // So max ~600 frames safely, we'll use 500 as safe limit
+          const MAX_FRAMES = 500;
+          if (totalFrames > MAX_FRAMES) {
+            console.log(`[FRAME_EXTRACTION] ⚠️  Capping frames from ${totalFrames} to ${MAX_FRAMES} to avoid path length limits`);
+            totalFrames = MAX_FRAMES;
+          }
+          
+          console.log(`[FRAME_EXTRACTION] 📹 Video: ${duration}s @ ${videoFrameRate.toFixed(2)} fps, extracting ${totalFrames} frames @ ${targetFps} fps`);
 
           ffmpeg(videoPath)
             .on('filenames', (filenames: any) => {

@@ -302,6 +302,11 @@ export async function detectPoseHybrid(
   const startTime = Date.now();
   
   try {
+    console.log(`[4D-HUMANS] Starting request for frame ${frameNumber}`);
+    console.log(`[4D-HUMANS] URL: ${POSE_SERVICE_URL}/pose/hybrid`);
+    console.log(`[4D-HUMANS] Image base64 length: ${imageBase64.length}`);
+    console.log(`[4D-HUMANS] Timeout: 120000ms`);
+    
     logger.info(`[4D-HUMANS] Detecting 3D pose for frame ${frameNumber}`, { visualize });
     
     const response = await axios.post(
@@ -318,6 +323,8 @@ export async function detectPoseHybrid(
         }
       }
     );
+    
+    console.log(`[4D-HUMANS] Got response for frame ${frameNumber}: status ${response.status}`);
     
     const data = response.data;
     
@@ -351,6 +358,18 @@ export async function detectPoseHybrid(
     return result;
     
   } catch (error: any) {
+    console.error(`[4D-HUMANS] Error for frame ${frameNumber}:`, {
+      message: error.message,
+      code: error.code,
+      errno: error.errno,
+      syscall: error.syscall,
+      address: error.address,
+      port: error.port,
+      timeout: error.timeout,
+      responseStatus: error.response?.status,
+      responseData: error.response?.data
+    });
+    
     logger.error(`[4D-HUMANS] Error`, { frameNumber, error: error.message });
     
     return {

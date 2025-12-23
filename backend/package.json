@@ -6,7 +6,12 @@
     "dev": "ts-node src/server.ts",
     "build": "tsc --outDir dist",
     "start": "node dist/src/server.js",
-    "deploy": "vercel --prod"
+    "deploy": "vercel --prod",
+    "db:init": "ts-node scripts/init-mongodb.ts",
+    "db:test": "ts-node test-mongodb.ts",
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f mongodb"
   },
   "dependencies": {
     "@google/generative-ai": "^0.1.3",
