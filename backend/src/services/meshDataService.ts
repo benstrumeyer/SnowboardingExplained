@@ -241,7 +241,9 @@ class MeshDataService {
 
     try {
       const data = await this.collection.find({}).sort({ createdAt: -1 }).toArray();
-      logger.info(`Retrieved ${data.length} mesh data entries`);
+      if (data.length > 0) {
+        logger.info(`✓ Retrieved ${data.length} mesh data entries`);
+      }
       return data;
     } catch (err) {
       logger.error('Failed to retrieve all mesh data', { error: err });
