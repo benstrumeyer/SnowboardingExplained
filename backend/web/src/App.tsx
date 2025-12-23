@@ -4,6 +4,7 @@ import { VideoUploadModal } from './components/VideoUploadModal';
 import { ModelsCardList } from './components/ModelsCardList';
 import { ViewMode } from './components/ViewMode';
 import { PlaybackControls } from './components/PlaybackControls';
+import { SyncScenesButton } from './components/SyncScenesButton';
 import './styles/App.css';
 
 function App() {
@@ -17,6 +18,10 @@ function App() {
   const [currentFrame, setCurrentFrame] = useState(0);
   const [totalFrames, setTotalFrames] = useState(0);
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  
+  // Independent scene frames
+  const [leftSceneFrame, setLeftSceneFrame] = useState(0);
+  const [rightSceneFrame, setRightSceneFrame] = useState(0);
   
   // Shared camera preset
   const [sharedCameraPreset, setSharedCameraPreset] = useState<'top' | 'front' | 'back' | 'left' | 'right'>('front');
@@ -36,6 +41,14 @@ function App() {
     } else {
       setReferenceVideoId(videoId);
     }
+  };
+
+  const handleSyncScenes = () => {
+    // Reset both scenes to frame 1 and front camera view
+    setLeftSceneFrame(0);
+    setRightSceneFrame(0);
+    setSharedCameraPreset('front');
+    setIsPlaying(false);
   };
 
   return (
@@ -96,6 +109,9 @@ function App() {
                   </button>
                 ))}
               </div>
+              <div style={{ marginTop: '8px' }}>
+                <SyncScenesButton onSync={handleSyncScenes} />
+              </div>
             </div>
             
             {/* Global Playback Controls */}
@@ -136,6 +152,11 @@ function App() {
             sharedCameraPreset={sharedCameraPreset}
             onRiderVideoChange={setRiderVideoId}
             onReferenceVideoChange={setReferenceVideoId}
+            leftSceneFrame={leftSceneFrame}
+            onLeftSceneFrameChange={setLeftSceneFrame}
+            rightSceneFrame={rightSceneFrame}
+            onRightSceneFrameChange={setRightSceneFrame}
+            onSyncScenes={handleSyncScenes}
           />
         </div>
       </div>

@@ -33,6 +33,11 @@ interface PoseOverlayViewerProps {
   sharedCameraPreset: 'top' | 'front' | 'back' | 'left' | 'right';
   onRiderVideoChange?: (videoId: string) => void;
   onReferenceVideoChange?: (videoId: string) => void;
+  leftSceneFrame: number;
+  onLeftSceneFrameChange: (frame: number) => void;
+  rightSceneFrame: number;
+  onRightSceneFrameChange: (frame: number) => void;
+  onSyncScenes: () => void;
 }
 
 export function PoseOverlayViewer({
@@ -51,6 +56,11 @@ export function PoseOverlayViewer({
   sharedCameraPreset,
   onRiderVideoChange,
   onReferenceVideoChange,
+  leftSceneFrame,
+  onLeftSceneFrameChange,
+  rightSceneFrame,
+  onRightSceneFrameChange,
+  onSyncScenes,
 }: PoseOverlayViewerProps) {
   const [error, setError] = useState<string | null>(null);
 
