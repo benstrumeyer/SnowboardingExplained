@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useDraggable } from '../hooks/useDraggable';
 import { ModelsCardList } from './ModelsCardList';
 import '../styles/FloatingControlPanel.css';
@@ -30,6 +30,7 @@ export const FloatingControlPanel: React.FC<FloatingControlPanelProps> = ({
   children,
 }) => {
   const { position, elementRef, handlers } = useDraggable(12, 12);
+  const [isMinimized, setIsMinimized] = useState(false);
 
   useEffect(() => {
     if (handlers.onMouseMove) {
@@ -45,7 +46,7 @@ export const FloatingControlPanel: React.FC<FloatingControlPanelProps> = ({
   return (
     <div
       ref={elementRef}
-      className="floating-control-panel"
+      className={`floating-control-panel ${isMinimized ? 'minimized' : ''}`}
       style={{
         position: 'absolute',
         top: `${position.y}px`,
@@ -57,7 +58,18 @@ export const FloatingControlPanel: React.FC<FloatingControlPanelProps> = ({
     >
       <div className="floating-panel-header">
         <span className="floating-panel-title">⋮⋮ Drag to move</span>
+        <div className="floating-panel-controls">
+          <button
+            className="floating-panel-btn"
+            onClick={() => setIsMinimized(!isMinimized)}
+            title={isMinimized ? 'Maximize' : 'Minimize'}
+          >
+            {isMinimized ? '▲' : '▼'}
+          </button>
+        </div>
       </div>
+
+      {isMinimized && <div className="floating-minimize-bar" />}
 
       <div className="floating-panel-content">
         {/* Model Selector */}

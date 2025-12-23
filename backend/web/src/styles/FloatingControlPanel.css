@@ -10,6 +10,13 @@
   font-size: 12px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
   user-select: none;
+  transition: all 0.3s ease;
+}
+
+.floating-control-panel.minimized {
+  max-width: 200px;
+  max-height: auto;
+  overflow: hidden;
 }
 
 .floating-panel-header {
@@ -20,6 +27,10 @@
   font-weight: 600;
   font-size: 10px;
   color: #aaa;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 }
 
 .floating-panel-header:active {
@@ -30,6 +41,35 @@
   display: flex;
   align-items: center;
   gap: 4px;
+  flex: 1;
+}
+
+.floating-panel-controls {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.floating-panel-btn {
+  background: none;
+  border: none;
+  color: #aaa;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.floating-panel-btn:hover {
+  color: #4ECDC4;
+  transform: scale(1.1);
+}
+
+.floating-panel-btn:active {
+  transform: scale(0.95);
 }
 
 .floating-panel-content {
@@ -37,6 +77,30 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+  transition: all 0.3s ease;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.floating-control-panel.minimized .floating-panel-content {
+  display: none;
+}
+
+.floating-minimize-bar {
+  height: 4px;
+  background: linear-gradient(90deg, #4ECDC4, #45b8b0);
+  border-radius: 2px;
+  margin: 0 12px 12px 12px;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
 }
 
 .floating-section {
