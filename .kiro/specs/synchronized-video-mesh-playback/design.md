@@ -2,7 +2,7 @@
 
 ## Overview
 
-This design implements frame-by-frame synchronized playback of original video, 2D mesh-overlaid video, and 3D mesh models across multiple scenes. The system leverages Redis for high-performance frame caching, shared mesh transposition code from React Native, and atomic frame synchronization to ensure zero drift between scenes.
+This design implements frame-by-frame synchronized playback of original video, 2D mesh-overlaid video, and 3D mesh models across multiple scenes. Each scene maintains its independent frame position while all scenes advance at the same playback speed. Videos are always synced with their corresponding 3D meshes at the same frame index. The system leverages Redis for high-performance frame caching, shared mesh transposition code from React Native, and ensures zero drift between video and mesh within each scene.
 
 ## Architecture
 
@@ -11,18 +11,21 @@ This design implements frame-by-frame synchronized playback of original video, 2
 │                     Frontend (React)                         │
 │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
 │  │ Scene 1      │  │ Scene 2      │  │ Scene N      │      │
+│  │ Frame: 5     │  │ Frame: 12    │  │ Frame: 8     │      │
 │  │ - 3D Mesh    │  │ - 3D Mesh    │  │ - 3D Mesh    │      │
 │  │ - Video      │  │ - Video      │  │ - Video      │      │
 │  │ - Overlay    │  │ - Overlay    │  │ - Overlay    │      │
 │  └──────────────┘  └──────────────┘  └──────────────┘      │
 │         ▲                  ▲                  ▲              │
 │         └──────────────────┼──────────────────┘              │
-│                    PlaybackSync Service                      │
+│              PlaybackSync Service                           │
+│         (Advances all by 1 frame/tick)                      │
 └─────────────────────────────────────────────────────────────┘
                               │
                     ┌─────────▼─────────┐
                     │  Frame API        │
                     │  /api/video/frame │
+                    │  (per scene)      │
                     └─────────┬─────────┘
                               │
         ┌─────────────────────┼─────────────────────┐
@@ -36,37 +39,39 @@ This design implements frame-by-frame synchronized playback of original video, 2
    └─────────┘          └──────────┘          └─────────┘
 ```
 
+**Key Principle:** Each scene maintains its own frame index. Global playback controls advance all scenes by the same amount per tick, but scenes can be at different frame positions. Videos are always displayed at the frame index matching the 3D mesh in that scene.
+
 ## Components and Interfaces
 
 ### 1. PlaybackSyncService (Frontend)
 
-Manages synchronized playback across all scenes.
+Manages synchronized playback speed across all scenes while maintaining independent frame positions.
 
 ```typescript
 interface PlaybackSyncService {
-  // Initialize playback for multiple scenes
+  // Initialize playback for multiple scenes with independent frame tracking
   initializePlayback(videoIds: string[], fps: number): Promise<void>;
   
-  // Advance all scenes by one frame
+  // Advance all scenes by one frame (maintains independent positions)
   advanceFrame(): void;
   
-  // Seek all scenes to specific frame
-  seekToFrame(frameIndex: number): Promise<void>;
+  // Seek all scenes by the same frame offset (maintains independent positions)
+  seekByOffset(frameOffset: number): Promise<void>;
   
   // Set playback speed for all scenes
   setPlaybackSpeed(speed: number): void;
   
-  // Pause all scenes
+  // Pause all scenes at their current independent frame positions
   pause(): void;
   
-  // Resume all scenes
+  // Resume all scenes from their current independent frame positions
   play(): void;
   
-  // Get current frame index
-  getCurrentFrameIndex(): number;
+  // Get current frame index for a specific scene
+  getSceneFrameIndex(sceneId: string): number;
   
-  // Subscribe to frame changes
-  onFrameChange(callback: (frameIndex: number) => void): void;
+  // Subscribe to frame changes for a specific scene
+  onSceneFrameChange(sceneId: string, callback: (frameIndex: number) => void): void;
 }
 ```
 
@@ -100,6 +105,8 @@ interface FrameDataService {
 
 ### 3. Frame API Endpoint (Backend)
 
+Returns frame data for a specific scene at a specific frame index. Videos are always synced with their corresponding 3D mesh.
+
 ```
 GET /api/video/{videoId}/frame/{frameIndex}
   Query params:
@@ -109,15 +116,18 @@ GET /api/video/{videoId}/frame/{frameIndex}
   
   Response:
   {
+    videoId: string,
     frameIndex: number,
     timestamp: number,
-    originalFrame?: string,
-    overlayFrame?: string,
-    meshData?: {
+    originalFrame?: string,      // JPEG at frameIndex
+    overlayFrame?: string,        // JPEG with mesh at frameIndex
+    meshData?: {                  // 3D mesh at frameIndex
       keypoints: [],
       skeleton: {}
     }
   }
+  
+  Guarantee: originalFrame, overlayFrame, and meshData all correspond to frameIndex
 ```
 
 ### 4. Redis Cache Layer (Backend)
@@ -188,7 +198,7 @@ export function generateMeshOverlay(
     {
       frameIndex: number,
       timestamp: number,
-      meshData: {
+      meshData: {https://trakt.tv/
         keypoints: Keypoint[],
         skeleton: Skeleton
       }
@@ -218,41 +228,41 @@ export function generateMeshOverlay(
 
 A property is a characteristic or behavior that should hold true across all valid executions of a system—essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.
 
-### Property 1: Frame Synchronization Invariant
+### Property 1: Independent Frame Position Maintenance
 
-*For any* set of scenes playing simultaneously, all scenes SHALL display the same frame index at any given moment in time.
+*For any* set of scenes playing simultaneously, each scene SHALL maintain its own independent frame index while advancing at the same rate as other scenes.
 
-**Validates: Requirements 3.1, 3.2, 3.3, 6.1, 6.3**
+**Validates: Requirements 6.1, 6.3**
 
-### Property 2: Frame Data Consistency
-
-*For any* frame request, the returned original frame, overlay frame, and mesh data SHALL correspond to the same frame index and timestamp.
-
-**Validates: Requirements 2.1, 2.2, 7.1**
-
-### Property 3: Overlay Toggle Idempotence
-
-*For any* scene with overlay toggled on then off then on again, the displayed frame SHALL be identical to the initial overlay frame without frame index change.
-
-**Validates: Requirements 5.1, 5.2, 5.3**
-
-### Property 4: Playback Speed Consistency
+### Property 2: Playback Speed Consistency
 
 *For any* playback speed change, all scenes SHALL advance frames at the same rate proportional to the speed multiplier, while maintaining their independent frame positions.
 
 **Validates: Requirements 6.2**
 
-### Property 5: Frame Seek Atomicity
+### Property 3: Frame Seek Offset Consistency
 
 *For any* frame seek operation, all scenes SHALL advance by the same frame offset without forcing them to the same frame index.
 
 **Validates: Requirements 6.5**
 
-### Property 6: Video-Mesh Frame Correspondence
+### Property 4: Video-Mesh Frame Correspondence
 
-*For any* scene at frame index N, the displayed video frame SHALL always correspond to the 3D mesh frame index N, regardless of overlay toggle or other scenes' positions.
+*For any* scene at frame index N, the displayed video frame (original or overlay) SHALL always correspond to the 3D mesh frame index N, regardless of other scenes' positions.
 
 **Validates: Requirements 6.6, 7.1**
+
+### Property 5: Frame Data Consistency
+
+*For any* frame request, the returned original frame, overlay frame, and mesh data SHALL all correspond to the same frame index and timestamp.
+
+**Validates: Requirements 2.1, 2.2, 7.1**
+
+### Property 6: Overlay Toggle Idempotence
+
+*For any* scene with overlay toggled on then off then on again, the displayed frame SHALL be identical to the initial overlay frame without frame index change.
+
+**Validates: Requirements 5.1, 5.2, 5.3**
 
 ### Property 7: Redis Cache Hit Rate
 
@@ -283,7 +293,7 @@ A property is a characteristic or behavior that should hold true across all vali
 - Mesh transposition equivalence
 
 ### Property-Based Tests
-- Frame synchronization across N scenes (Property 1)
+- Playback speed synchronization across N scenes (Property 1)
 - Frame data consistency (Property 2)
 - Overlay toggle idempotence (Property 3)
 - Playback speed consistency (Property 4)
