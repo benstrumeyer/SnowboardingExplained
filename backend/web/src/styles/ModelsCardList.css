@@ -54,6 +54,12 @@
   margin-top: 2px;
 }
 
+.model-card-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
 .model-card-btn {
   padding: 4px 8px;
   font-size: 10px;
@@ -68,8 +74,26 @@
   white-space: nowrap;
 }
 
-.model-card-btn:hover {
+.model-card-btn.load-btn {
+  background: #4ECDC4;
+  color: #000;
+}
+
+.model-card-btn.load-btn:hover {
   background: #45b8b0;
+  transform: scale(1.05);
+}
+
+.model-card-btn.remove-btn {
+  background: #FF6B6B;
+  color: #fff;
+  padding: 4px 6px;
+  min-width: 24px;
+  text-align: center;
+}
+
+.model-card-btn.remove-btn:hover {
+  background: #ee5a52;
   transform: scale(1.05);
 }
 

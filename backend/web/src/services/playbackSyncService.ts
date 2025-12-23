@@ -56,7 +56,6 @@ export class PlaybackSyncService {
   advanceFrame(): void {
     for (const [sceneId, state] of this.sceneStates.entries()) {
       if (state.isPlaying) {
-        const oldFrameIndex = state.frameIndex;
         state.frameIndex += 1;
 
         // Notify subscribers
