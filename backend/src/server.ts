@@ -81,7 +81,7 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   if (isAllowed || !origin) {
     res.header('Access-Control-Allow-Origin', origin || '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Cache-Control, Pragma, Expires');
     res.header('Access-Control-Allow-Credentials', 'true');
   }
   
@@ -509,6 +509,20 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
       fileSize: req.file.size
     });
 
+    // CRITICAL: Delete old mesh data BEFORE extracting frames
+    // This prevents the frame extraction service from finding cached data from previous videos
+    try {
+      console.log(`[UPLOAD] 🗑️  CRITICAL: Deleting old mesh data for any previous videos before extraction`);
+      await meshDataService.connect();
+      // Note: We don't know the previous videoId, so we can't delete by videoId
+      // Instead, the frame extraction service will check for THIS videoId's data
+      // and the saveMeshData will handle deletion of old data for this videoId
+      console.log(`[UPLOAD] ✓ MongoDB connected, ready for frame extraction`);
+    } catch (err) {
+      console.error(`[UPLOAD] Warning: Could not pre-connect to MongoDB:`, err);
+      logger.warn('Could not pre-connect to MongoDB', { error: err });
+    }
+
     // Extract frames
     let frameResult;
     try {
@@ -582,7 +596,15 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
     };
 
     try {
+      // Connect to MongoDB before saving
+      console.log(`[UPLOAD] Connecting to MongoDB...`);
+      await meshDataService.connect();
+      console.log(`[UPLOAD] ✓ Connected to MongoDB`);
+      
       // Save with new unified structure
+      console.log(`[UPLOAD] About to save mesh data for ${videoId}`);
+      console.log(`[UPLOAD] Mesh data: ${meshData.frameCount} frames, fps: ${meshData.fps}`);
+      
       await meshDataService.saveMeshData({
         videoId,
         videoUrl: `${req.protocol}://${req.get('host')}/videos/${videoId}`,
@@ -594,6 +616,7 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
         role: role as 'rider' | 'coach'
       });
       console.log(`[UPLOAD] ✓ Stored mesh data in MongoDB for ${videoId}`);
+      console.log(`[UPLOAD] Saved ${meshData.frames.length} frames to MongoDB`);
 
       // Filter frames to keep only those with mesh data
       const meshFrameIndices = meshSequence.map((_, index) => index);
@@ -638,6 +661,9 @@ app.post('/api/mesh-data/:videoId', express.json(), async (req: Request, res: Re
       return res.status(400).json({ error: 'Missing videoId or mesh data' });
     }
 
+    // Connect to MongoDB before saving
+    await meshDataService.connect();
+
     await meshDataService.saveMeshData({
       videoId,
       videoUrl: meshData.videoUrl || `${req.protocol}://${req.get('host')}/videos/${videoId}`,
@@ -670,6 +696,12 @@ app.get('/api/mesh-data/list', async (req: Request, res: Response) => {
     await meshDataService.connect();
     const models = await meshDataService.getAllMeshData();
     
+    console.log(`[DEBUG] Mesh data list endpoint called`);
+    console.log(`[DEBUG] Found ${models.length} mesh data entries in MongoDB`);
+    models.forEach((model, idx) => {
+      console.log(`[DEBUG] Entry ${idx}: videoId=${model.videoId}, frameCount=${model.frameCount}, fps=${model.fps}, role=${model.role}`);
+    });
+    
     res.json({
       success: true,
       data: models,
@@ -686,20 +718,78 @@ app.get('/api/mesh-data/list', async (req: Request, res: Response) => {
   }
 });
 
-// Endpoint to retrieve mesh data from MongoDB
-app.get('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
+// DEBUG: Check what's in the database for a specific videoId
+app.get('/api/debug/mesh-db/:videoId', async (req: Request, res: Response) => {
   try {
     const { videoId } = req.params;
+    console.log(`[DEBUG-DB] Checking database for videoId: ${videoId}`);
     
     await meshDataService.connect();
     const meshData = await meshDataService.getMeshData(videoId);
     
     if (!meshData) {
+      console.log(`[DEBUG-DB] ✗ No data found for ${videoId}`);
+      return res.json({
+        success: false,
+        message: `No mesh data found for ${videoId}`,
+        videoId
+      });
+    }
+    
+    console.log(`[DEBUG-DB] ✓ Found data for ${videoId}:`);
+    console.log(`[DEBUG-DB]   videoId: ${meshData.videoId}`);
+    console.log(`[DEBUG-DB]   frameCount: ${meshData.frameCount}`);
+    console.log(`[DEBUG-DB]   fps: ${meshData.fps}`);
+    console.log(`[DEBUG-DB]   role: ${meshData.role}`);
+    console.log(`[DEBUG-DB]   frames array length: ${meshData.frames?.length || 0}`);
+    if (meshData.frames && meshData.frames.length > 0) {
+      console.log(`[DEBUG-DB]   first frame keypoints: ${(meshData.frames[0] as any).keypoints?.length || 0}`);
+    }
+    
+    res.json({
+      success: true,
+      data: {
+        videoId: meshData.videoId,
+        frameCount: meshData.frameCount,
+        fps: meshData.fps,
+        role: meshData.role,
+        framesLength: meshData.frames?.length || 0,
+        firstFrameKeypointCount: (meshData.frames as any)?.[0]?.keypoints?.length || 0
+      }
+    });
+  } catch (err: any) {
+    console.error(`[DEBUG-DB] Error:`, err);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
+
+// Endpoint to retrieve mesh data from MongoDB
+app.get('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
+  try {
+    const { videoId } = req.params;
+    
+    console.log(`%c[API] 📥 Request for ${videoId}`, 'color: #00BFFF; font-weight: bold;');
+    
+    await meshDataService.connect();
+    const meshData = await meshDataService.getMeshData(videoId);
+    
+    if (!meshData) {
+      console.log(`%c[API] ❌ Not found: ${videoId}`, 'color: #FF0000;');
       return res.status(404).json({ 
         success: false,
         error: `Mesh data not found for ${videoId}`,
         timestamp: new Date().toISOString()
       } as ApiResponse<null>);
+    }
+    
+    console.log(`%c[API] ✅ Found: ${meshData.frames?.length || 0} frames`, 'color: #00FF00;');
+    
+    // CRITICAL: Verify videoId matches
+    if (meshData.videoId !== videoId) {
+      console.error(`%c[API] ❌ MISMATCH: req=${videoId} got=${meshData.videoId}`, 'color: #FF0000; font-weight: bold;');
     }
     
     // Return unified MeshSequence format
@@ -709,19 +799,22 @@ app.get('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
       fps: meshData.fps,
       videoDuration: meshData.videoDuration,
       totalFrames: meshData.totalFrames || meshData.frameCount,
-      frames: (meshData.frames || []).map((frame: any) => ({
-        frameIndex: frame.frameNumber || 0,
-        timestamp: frame.timestamp || 0,
-        videoFrameData: {
-          offset: frame.frameNumber || 0
-        },
-        meshData: {
-          keypoints: frame.keypoints || [],
-          skeleton: frame.skeleton || [],
-          vertices: frame.skeleton?.vertices || [],
-          faces: frame.skeleton?.faces || []
-        }
-      })),
+      frames: (meshData.frames || []).map((frame: any, idx: number) => {
+        const transformed = {
+          frameIndex: frame.frameNumber || 0,
+          timestamp: frame.timestamp || 0,
+          videoFrameData: {
+            offset: frame.frameNumber || 0
+          },
+          meshData: {
+            keypoints: frame.keypoints || [],
+            skeleton: frame.skeleton || [],
+            vertices: frame.skeleton?.vertices || [],
+            faces: frame.skeleton?.faces || []
+          }
+        };
+        return transformed;
+      }),
       metadata: {
         uploadedAt: meshData.createdAt || new Date(),
         processingTime: 0,
@@ -729,17 +822,26 @@ app.get('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
       }
     };
     
-    res.status(200).json({
+    console.log(`%c[API] 📤 Sending ${meshSequence.frames.length} frames`, 'color: #00BFFF;');
+    console.log(`%c[API] 📋 First frame keypoint count: ${meshSequence.frames[0]?.meshData?.keypoints?.length || 0}`, 'color: #00BFFF;');
+    
+    // Set cache-busting headers to prevent browser/proxy caching
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    
+    res.json({
       success: true,
       data: meshSequence,
       timestamp: new Date().toISOString()
     } as ApiResponse<any>);
+    
   } catch (error: any) {
+    console.error(`%c[API] ❌ Error: ${error.message}`, 'color: #FF0000;');
     logger.error('Error retrieving mesh data:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       success: false,
       error: 'Failed to retrieve mesh data',
-      details: error.message,
       timestamp: new Date().toISOString()
     } as ApiResponse<null>);
   }
@@ -915,9 +1017,9 @@ app.post('/api/video/upload', upload.single('video'), async (req: Request, res: 
 
     // Pose estimation is now done by Python service on demand
 
-    // Get frame data for LLM analysis
+    // Prepare all frames for LLM analysis
     logger.info(`Preparing frames for LLM analysis`);
-    const framesForLLM = frameResult.frames.slice(0, 10).map(f => ({
+    const framesForLLM = frameResult.frames.map(f => ({
       frameNumber: f.frameNumber,
       timestamp: f.timestamp,
       imageBase64: FrameExtractionService.getFrameAsBase64(f.imagePath)
@@ -1424,8 +1526,8 @@ app.post('/api/video/analyze-pose', upload.single('video'), async (req: Request,
       } as ApiResponse<null>);
     }
 
-    // Limit to 10 frames for analysis
-    const framesToAnalyze = frameResult.frames.slice(0, 10);
+    // Process all extracted frames
+    const framesToAnalyze = frameResult.frames;
     
     // Read frames as base64
     const framesWithBase64 = framesToAnalyze.map(f => ({
@@ -2039,7 +2141,7 @@ app.post('/api/video/process_video', upload.single('video'), async (req: Request
     const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
     
     // Get parameters from request (FormData fields are in req.body)
-    const maxFrames = (req as any).body?.max_frames || (req as any).query?.max_frames || '10';
+    const maxFrames = (req as any).body?.max_frames || (req as any).query?.max_frames || '999999';
     const outputFormat = (req as any).body?.output_format || (req as any).query?.output_format || 'file_path';
     
     logger.info(`[PROCESS_VIDEO] req.body keys:`, Object.keys((req as any).body || {}));
@@ -2395,18 +2497,19 @@ async function startServer() {
         console.error('Warning: MongoDB connection failed. Mesh data will not be persisted.');
       }
 
-      // Initialize Redis cache for frame data
-      try {
-        await initializeRedisCache({
-          host: process.env.REDIS_HOST || 'localhost',
-          port: parseInt(process.env.REDIS_PORT || '6379', 10),
-          maxMemory: process.env.REDIS_MAX_MEMORY || '256mb'
-        });
-        logger.info('Redis cache initialized successfully');
-      } catch (err) {
-        logger.warn('Failed to initialize Redis cache', { error: err });
-        console.warn('Warning: Redis cache not available. Frame caching will be disabled.');
-      }
+      // DISABLED: Redis cache for debugging mesh caching issue
+      // try {
+      //   await initializeRedisCache({
+      //     host: process.env.REDIS_HOST || 'localhost',
+      //     port: parseInt(process.env.REDIS_PORT || '6379', 10),
+      //     maxMemory: process.env.REDIS_MAX_MEMORY || '256mb'
+      //   });
+      //   logger.info('Redis cache initialized successfully');
+      // } catch (err) {
+      //   logger.warn('Failed to initialize Redis cache', { error: err });
+      //   console.warn('Warning: Redis cache not available. Frame caching will be disabled.');
+      // }
+      console.log('[STARTUP] Redis cache disabled for debugging');
 
       console.log(`\n========================================`);
       console.log(`🚀 Video Coaching API running on port ${PORT}`);

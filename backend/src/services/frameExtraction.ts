@@ -31,9 +31,9 @@ if (!fs.existsSync(TEMP_DIR)) {
  * Generate a short hash from videoId to avoid path length issues on Windows
  */
 function getShortVideoPath(videoId: string): string {
-  // Use first 8 chars of videoId to keep paths short
-  const shortId = videoId.substring(0, 8);
-  return shortId;
+  // Use full videoId for unique cache directories
+  // Windows path limit is 260 chars, and our paths are short enough
+  return videoId;
 }
 
 export class FrameExtractionService {
