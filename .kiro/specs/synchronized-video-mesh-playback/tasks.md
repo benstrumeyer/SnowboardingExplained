@@ -139,6 +139,7 @@
   - Handle frame data updates in scene rendering
   - Implement error handling for frame retrieval failures
 
+
   - _Requirements: 7.1, 7.2, 7.3_
 
 - [ ] 11. Checkpoint - Ensure all tests pass
@@ -146,6 +147,9 @@
 
 - [ ]* 11.1 Write unit tests for PlaybackSyncService
   - Test frame advancement logic
+
+
+
   - Test playback speed calculations
   - Test pause/play functionality
   - Test frame change event emissions

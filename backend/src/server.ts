@@ -19,11 +19,13 @@ import { processVideoUpload, getVideoAnalysis } from './services/videoAnalysisPi
 // New imports for Python pose service
 import { detectPose, detectPoseParallel, detectPoseHybrid, detectPoseHybridBatch, checkPoseServiceHealth, PoseFrame, HybridPoseFrame } from './services/pythonPoseService';
 import { AnalysisLogBuilder, analyzeFrame, AnalysisLog, FrameAnalysis } from './services/analysisLogService';
+import { initializeFrameDataService } from './services/frameDataService';
 // API routes
 import perfectPhasesRouter from '../api/perfect-phases';
 import comparisonRouter from '../api/comparison';
 import stackedPositionRouter from '../api/stacked-position';
 import referenceLibraryRouter from '../api/reference-library';
+import frameDataRouter from '../api/frame-data';
 
 // Load environment variables from .env.local
 const envPath = path.join(__dirname, '../.env.local');
@@ -323,6 +325,7 @@ app.use('/api/perfect-phases', perfectPhasesRouter);
 app.use('/api', comparisonRouter);
 app.use('/api', stackedPositionRouter);
 app.use('/api', referenceLibraryRouter);
+app.use('/api', frameDataRouter);
 
 // Chunked Video Upload Endpoints
 const chunksDir = path.join(os.tmpdir(), 'video-chunks');
@@ -2333,6 +2336,11 @@ async function startServer() {
   try {
     // Initialize knowledge base
     await KnowledgeBaseService.initialize();
+    
+    // Initialize frame data service
+    initializeFrameDataService({
+      uploadDir: uploadDir
+    });
     
     // Initialize database connection
     const { connectToDatabase } = await import('./db/connection');
