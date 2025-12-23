@@ -58,6 +58,19 @@ export const ModelsCardList: React.FC<ModelsCardListProps> = ({ onModelSelect, m
     }
   };
 
+  const handleRemoveModel = async (videoId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await axios.delete(`${API_URL}/api/mesh-data/${videoId}`, {
+        timeout: 5000,
+      });
+      setModels(models.filter(m => m.videoId !== videoId));
+    } catch (err) {
+      console.error('[MODELS] Error removing model:', err);
+      alert('Failed to remove model');
+    }
+  };
+
   if (loading && models.length === 0) {
     return <div className="models-card-list loading">Loading models...</div>;
   }
@@ -83,13 +96,22 @@ export const ModelsCardList: React.FC<ModelsCardListProps> = ({ onModelSelect, m
               {model.frameCount} frames • {model.fps} fps
             </div>
           </div>
-          <button
-            className="model-card-btn"
-            onClick={() => onModelSelect(model.videoId, model.role)}
-            title="Load this model"
-          >
-            Load
-          </button>
+          <div className="model-card-actions">
+            <button
+              className="model-card-btn load-btn"
+              onClick={() => onModelSelect(model.videoId, model.role)}
+              title="Load this model"
+            >
+              Load
+            </button>
+            <button
+              className="model-card-btn remove-btn"
+              onClick={(e) => handleRemoveModel(model.videoId, e)}
+              title="Remove this model"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       ))}
     </div>
