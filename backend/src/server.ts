@@ -431,7 +431,7 @@ app.post('/api/finalize-upload', upload.single('video'), async (req: Request, re
         const cachedFrames = FrameExtractionService.getCachedFrames(videoId);
         
         if (cachedFrames) {
-          for (let i = 0; i < Math.min(cachedFrames.frameCount, 60); i++) {
+          for (let i = 0; i < cachedFrames.frameCount; i++) {
             const frame = cachedFrames.frames[i];
             if (frame) {
               try {
@@ -615,7 +615,7 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
       videoId,
       role,
       frameCount: meshSequence.length,
-      meshSequence: meshSequence.slice(0, 60) // Return first 60 frames
+      meshSequence: meshSequence // Return all frames
     });
   } catch (error: any) {
     console.error(`[UPLOAD] Caught error in upload endpoint:`, error);
