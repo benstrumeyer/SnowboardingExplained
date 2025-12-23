@@ -242,6 +242,12 @@ app.get('/videos/:videoId', (req: Request, res: Response) => {
   try {
     const { videoId } = req.params;
     
+    // Ensure CORS headers are set for video responses
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
+    
     // Look for the video file in the uploads directory
     const videoPath = path.join(uploadDir, videoId);
     
