@@ -159,8 +159,9 @@ export class FrameExtractionService {
             totalFrames = frameIndices.length;
             console.log(`[FRAME_EXTRACTION] 🎯 Extracting ${totalFrames} specific frames aligned with mesh data`);
           } else {
-            // Extract at fixed FPS
-            const targetFps = fps || FRAMES_PER_SECOND;
+            // Use video's native FPS, capped at 60 FPS max
+            const MAX_FPS = 60;
+            const targetFps = Math.min(videoFrameRate, MAX_FPS);
             totalFrames = Math.ceil(duration * targetFps);
             
             // Cap frames to avoid Windows command line length limits
@@ -172,7 +173,7 @@ export class FrameExtractionService {
             
             // Generate frame indices for fixed FPS extraction
             framesToExtract = Array.from({ length: totalFrames }, (_, i) => i);
-            console.log(`[FRAME_EXTRACTION] 📹 Video: ${duration}s @ ${videoFrameRate.toFixed(2)} fps, extracting ${totalFrames} frames @ ${targetFps} fps`);
+            console.log(`[FRAME_EXTRACTION] 📹 Video: ${duration}s @ ${videoFrameRate.toFixed(2)} fps, extracting ${totalFrames} frames @ ${targetFps.toFixed(2)} fps`);
           }
 
           ffmpeg(videoPath)
