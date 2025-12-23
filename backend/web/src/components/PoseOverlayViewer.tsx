@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { TrackingVisualization } from './TrackingVisualization';
 import { MeshViewer } from './MeshViewer';
-import { ModelsCardList } from './ModelsCardList';
 import { FloatingControlPanel } from './FloatingControlPanel';
 import { VideoDisplay } from './VideoDisplay';
 import { fetchRiderMesh, fetchReferenceMesh } from '../services/meshDataService';
@@ -48,20 +47,20 @@ export function PoseOverlayViewer({
   onViewModeChange: _onViewModeChange,
   isPlaying,
   onPlayingChange,
-  currentFrame,
+  currentFrame: _currentFrame,
   onFrameChange,
   totalFrames,
   onTotalFramesChange,
   playbackSpeed,
   onSpeedChange,
-  sharedCameraPreset,
+  sharedCameraPreset: _sharedCameraPreset,
   onRiderVideoChange,
   onReferenceVideoChange,
   leftSceneFrame,
   onLeftSceneFrameChange,
   rightSceneFrame,
   onRightSceneFrameChange,
-  onSyncScenes,
+  onSyncScenes: _onSyncScenes,
 }: PoseOverlayViewerProps) {
   const [error, setError] = useState<string | null>(null);
 
@@ -715,258 +714,6 @@ export function PoseOverlayViewer({
             )}
           </div>
         </div>
-
-        {/* Right Screen Section (only in side-by-side and comparison modes) */}
-        {(viewMode === 'side-by-side' || viewMode === 'comparison') && (
-          <div className="flex-1 flex flex-col border-r border-gray-700">
-            {/* Right Screen Viewer */}
-            <div className="flex-1 bg-gray-950 overflow-hidden relative">
-              {viewMode === 'side-by-side' && rightScreen.mesh ? (
-                <div className="w-full h-full flex">
-                  {/* Video */}
-                  <div className="w-1/2 bg-black flex items-center justify-center border-r border-gray-700">
-                    <VideoDisplay
-                      videoUrl={rightScreen.mesh.videoUrl}
-                      currentFrame={rightSceneFrame}
-                      totalFrames={totalFrames}
-                      isPlaying={isPlaying}
-                    />
-                  </div>
-                  {/* Mesh */}
-                  <div className="w-1/2 bg-gray-950 relative">
-                    {currentRightFrame ? (
-                      <>
-                        <MeshViewer
-                          riderMesh={currentRightFrame}
-                          referenceMesh={null}
-                          showRider={true}
-                          showReference={false}
-                          riderRotation={{ x: 0, y: 0, z: 0 }}
-                          referenceRotation={{ x: 0, y: 0, z: 0 }}
-                          riderColor={rightScreen.color}
-                          riderOpacity={rightScreen.opacity}
-                          referenceColor={rightScreen.color}
-                          referenceOpacity={rightScreen.opacity}
-                          showTrackingLines={rightScreen.showTrackingLines}
-                          enabledKeypoints={rightScreen.enabledKeypoints}
-                          onCameraServiceReady={(service) => setRightScreen(prev => ({ ...prev, cameraService: service }))}
-                        />
-                        {/* Floating Control Panel */}
-                        <FloatingControlPanel
-                          onModelSelect={(videoId, role) => {
-                            if (role === 'rider' || role === 'coach') {
-                              onReferenceVideoChange?.(videoId);
-                            }
-                          }}
-                          currentFrame={rightSceneFrame}
-                          totalFrames={totalFrames}
-                          isPlaying={isPlaying}
-                          onPlayPause={() => onPlayingChange(!isPlaying)}
-                          onFrameChange={onFrameChange}
-                          onSceneFrameChange={onRightSceneFrameChange}
-                          playbackSpeed={playbackSpeed}
-                          onSpeedChange={onSpeedChange}
-                          sceneId="right"
-                        >
-                          <div className="floating-section">
-                            <label className="floating-label">Scene Controls</label>
-                            
-                            {/* Color */}
-                            <div style={{ marginBottom: '10px' }}>
-                              <label style={{ display: 'block', marginBottom: '4px', fontSize: '10px', fontWeight: '600' }}>Color</label>
-                              <input
-                                type="color"
-                                value={rightScreen.color}
-                                onChange={(e) => setRightScreen(prev => ({ ...prev, color: e.target.value }))}
-                                style={{ width: '100%', height: '28px', cursor: 'pointer', borderRadius: '4px', border: 'none' }}
-                              />
-                            </div>
-
-                            {/* Opacity */}
-                            <div style={{ marginBottom: '10px' }}>
-                              <label style={{ display: 'block', marginBottom: '4px', fontSize: '10px', fontWeight: '600' }}>
-                                Opacity: {(rightScreen.opacity * 100).toFixed(0)}%
-                              </label>
-                              <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.1"
-                                value={rightScreen.opacity}
-                                onChange={(e) => setRightScreen(prev => ({ ...prev, opacity: parseFloat(e.target.value) }))}
-                                style={{ width: '100%' }}
-                              />
-                            </div>
-
-                            {/* Camera Presets */}
-                            <div style={{ marginBottom: '10px' }}>
-                              <label style={{ display: 'block', marginBottom: '4px', fontSize: '10px', fontWeight: '600' }}>Camera (Shared)</label>
-                              <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
-                                {(['top', 'front', 'back', 'left', 'right'] as const).map((preset) => (
-                                  <button
-                                    key={preset}
-                                    onClick={() => rightScreen.cameraService?.setPreset(preset)}
-                                    style={{
-                                      flex: '1 1 calc(50% - 1.5px)',
-                                      padding: '4px',
-                                      background: '#333',
-                                      color: '#fff',
-                                      border: '1px solid #555',
-                                      borderRadius: '3px',
-                                      cursor: 'pointer',
-                                      fontSize: '9px',
-                                      textTransform: 'capitalize',
-                                    }}
-                                  >
-                                    {preset}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-
-                            {/* Tracking Lines */}
-                            <div>
-                              <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', marginBottom: '8px' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={rightScreen.showTrackingLines}
-                                  onChange={(e) => setRightScreen(prev => ({ ...prev, showTrackingLines: e.target.checked }))}
-                                  style={{ marginRight: '6px' }}
-                                />
-                                <span style={{ fontSize: '10px' }}>Tracking Lines</span>
-                              </label>
-                              {rightScreen.showTrackingLines && (
-                                <TrackingVisualization
-                                  onTrackingToggle={(index, enabled) => {
-                                    const newSet = new Set(rightScreen.enabledKeypoints);
-                                    if (enabled) newSet.add(index);
-                                    else newSet.delete(index);
-                                    setRightScreen(prev => ({ ...prev, enabledKeypoints: newSet }));
-                                  }}
-                                />
-                              )}
-                            </div>
-                          </div>
-                        </FloatingControlPanel>
-                      </>
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-gray-500">Loading...</div>
-                    )}
-                  </div>
-                </div>
-              ) : viewMode === 'comparison' && rightScreen.mesh ? (
-                <div className="w-full h-full relative">
-                  {currentRightFrame ? (
-                    <>
-                      <MeshViewer
-                        riderMesh={currentRightFrame}
-                        referenceMesh={null}
-                        showRider={true}
-                        showReference={false}
-                        riderRotation={{ x: 0, y: 0, z: 0 }}
-                        referenceRotation={{ x: 0, y: 0, z: 0 }}
-                        riderColor={rightScreen.color}
-                        riderOpacity={rightScreen.opacity}
-                        referenceColor={rightScreen.color}
-                        referenceOpacity={rightScreen.opacity}
-                        showTrackingLines={rightScreen.showTrackingLines}
-                        enabledKeypoints={rightScreen.enabledKeypoints}
-                        onCameraServiceReady={(service) => setRightScreen(prev => ({ ...prev, cameraService: service }))}
-                      />
-                      {/* Floating Control Panel */}
-                      <FloatingControlPanel
-                        onModelSelect={(videoId, role) => {
-                          if (role === 'rider' || role === 'coach') {
-                            onReferenceVideoChange?.(videoId);
-                          }
-                        }}
-                        currentFrame={rightSceneFrame}
-                        totalFrames={totalFrames}
-                        isPlaying={isPlaying}
-                        onPlayPause={() => onPlayingChange(!isPlaying)}
-                        onFrameChange={onFrameChange}
-                        onSceneFrameChange={onRightSceneFrameChange}
-                        playbackSpeed={playbackSpeed}
-                        onSpeedChange={onSpeedChange}
-                        sceneId="right"
-                      >
-                        <div className="floating-section">
-                          <label className="floating-label">Scene Controls</label>
-                          
-                          {/* Color */}
-                          <div style={{ marginBottom: '10px' }}>
-                            <label style={{ display: 'block', marginBottom: '4px', fontSize: '10px', fontWeight: '600' }}>Color</label>
-                            <input
-                              type="color"
-                              value={rightScreen.color}
-                              onChange={(e) => setRightScreen(prev => ({ ...prev, color: e.target.value }))}
-                              style={{ width: '100%', height: '28px', cursor: 'pointer', borderRadius: '4px', border: 'none' }}
-                            />
-                          </div>
-
-                          {/* Opacity */}
-                          <div style={{ marginBottom: '10px' }}>
-                            <label style={{ display: 'block', marginBottom: '4px', fontSize: '10px', fontWeight: '600' }}>
-                              Opacity: {(rightScreen.opacity * 100).toFixed(0)}%
-                            </label>
-                            <input
-                              type="range"
-                              min="0"
-                              max="1"
-                              step="0.1"
-                              value={rightScreen.opacity}
-                              onChange={(e) => setRightScreen(prev => ({ ...prev, opacity: parseFloat(e.target.value) }))}
-                              style={{ width: '100%' }}
-                            />
-                          </div>
-
-                          {/* Camera Presets */}
-                          <div style={{ marginBottom: '10px' }}>
-                            <label style={{ display: 'block', marginBottom: '4px', fontSize: '10px', fontWeight: '600' }}>Camera (Shared)</label>
-                            <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
-                              {(['top', 'front', 'back', 'left', 'right'] as const).map((preset) => (
-                                <button
-                                  key={preset}
-                                  onClick={() => rightScreen.cameraService?.setPreset(preset)}
-                                  style={{
-                                    flex: '1 1 calc(50% - 1.5px)',
-                                    padding: '4px',
-                                    background: '#333',
-                                    color: '#fff',
-                                    border: '1px solid #555',
-                                    borderRadius: '3px',
-                                    cursor: 'pointer',
-                                    fontSize: '9px',
-                                    textTransform: 'capitalize',
-                                  }}
-                                >
-                                  {preset}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      </FloatingControlPanel>
-                    </>
-                  ) : (
-                    <div className="w-full h-full flex items-center justify-center text-gray-500">Loading...</div>
-                  )}
-                </div>
-              ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-500">
-                  <div style={{ textAlign: 'center' }}>
-                    <div style={{ marginBottom: '12px' }}>Load a model from the sidebar</div>
-                    <ModelsCardList onModelSelect={(videoId, role) => {
-                      if (role === 'rider' || role === 'coach') {
-                        onReferenceVideoChange?.(videoId);
-                      }
-                    }} />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
