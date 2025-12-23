@@ -307,7 +307,7 @@ export async function detectPoseHybrid(
     console.log(`[4D-HUMANS] Image base64 length: ${imageBase64.length}`);
     console.log(`[4D-HUMANS] Timeout: 120000ms`);
     
-    logger.info(`[4D-HUMANS] Detecting 3D pose for frame ${frameNumber}`, { visualize });
+    logger.debug(`[4D-HUMANS] Detecting 3D pose for frame ${frameNumber}`);
     
     const response = await axios.post(
       `${POSE_SERVICE_URL}/pose/hybrid`,

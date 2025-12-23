@@ -4,7 +4,7 @@
  * Ensures high cache hit rate for preloaded frames
  */
 
-import redis from 'redis';
+import { createClient, RedisClientType } from 'redis';
 import logger from '../logger';
 
 export interface RedisCacheConfig {
@@ -24,7 +24,7 @@ export interface CacheStats {
 }
 
 export class RedisCacheService {
-  private client: redis.RedisClient | null = null;
+  private client: RedisClientType | null = null;
   private stats: CacheStats = {
     hits: 0,
     misses: 0,
@@ -41,32 +41,23 @@ export class RedisCacheService {
    */
   async connect(): Promise<void> {
     try {
-      const options: any = {
-        host: this.config.host || 'localhost',
-        port: this.config.port || 6379,
-        db: this.config.db || 0,
-        retry_strategy: (options: any) => {
-          if (options.error && options.error.code === 'ECONNREFUSED') {
-            logger.warn('Redis connection refused, retrying...');
-            return new Error('Redis connection refused');
+      const url = `redis://${this.config.host || 'localhost'}:${this.config.port || 6379}`;
+      
+      this.client = createClient({
+        url,
+        password: this.config.password,
+        socket: {
+          reconnectStrategy: (retries: number) => {
+            if (retries > 10) {
+              logger.error('Redis reconnection failed after 10 attempts');
+              return new Error('Redis reconnection failed');
+            }
+            return Math.min(retries * 100, 3000);
           }
-          if (options.total_retry_time > 1000 * 60 * 60) {
-            return new Error('Redis retry time exhausted');
-          }
-          if (options.attempt > 10) {
-            return undefined;
-          }
-          return Math.min(options.attempt * 100, 3000);
         }
-      };
+      }) as RedisClientType;
 
-      if (this.config.password) {
-        options.password = this.config.password;
-      }
-
-      this.client = redis.createClient(options);
-
-      this.client.on('error', (err) => {
+      this.client.on('error', (err: Error) => {
         logger.error('Redis error:', err);
       });
 
@@ -74,32 +65,27 @@ export class RedisCacheService {
         logger.info('Redis connected');
       });
 
+      await this.client.connect();
+
       // Configure Redis for LRU eviction
       if (this.config.maxMemory) {
-        this.client.config('SET', 'maxmemory', this.config.maxMemory, (err) => {
-          if (err) logger.warn('Failed to set maxmemory:', err);
-        });
+        try {
+          await this.client.configSet('maxmemory', this.config.maxMemory);
+        } catch (err) {
+          logger.warn('Failed to set maxmemory:', err);
+        }
       }
 
       if (this.config.maxMemoryPolicy) {
-        this.client.config('SET', 'maxmemory-policy', this.config.maxMemoryPolicy, (err) => {
-          if (err) logger.warn('Failed to set maxmemory-policy:', err);
-        });
+        try {
+          await this.client.configSet('maxmemory-policy', this.config.maxMemoryPolicy);
+        } catch (err) {
+          logger.warn('Failed to set maxmemory-policy:', err);
+        }
       }
 
-      await new Promise<void>((resolve, reject) => {
-        if (!this.client) {
-          reject(new Error('Redis client not initialized'));
-          return;
-        }
-        this.client.ping((err, reply) => {
-          if (err) reject(err);
-          else {
-            logger.info('Redis ping successful:', reply);
-            resolve();
-          }
-        });
-      });
+      const pong = await this.client.ping();
+      logger.info('Redis ping successful:', pong);
     } catch (error) {
       logger.error('Failed to connect to Redis:', error);
       throw error;
@@ -117,7 +103,7 @@ export class RedisCacheService {
 
     try {
       const key = this.getCacheKey(videoId, frameIndex);
-      const data = await this.getAsync(key);
+      const data = await this.client.get(key);
 
       if (data) {
         this.stats.hits++;
@@ -145,7 +131,7 @@ export class RedisCacheService {
       const key = this.getCacheKey(videoId, frameIndex);
       const base64Data = data.toString('base64');
 
-      await this.setexAsync(key, this.FRAME_TTL, base64Data);
+      await this.client.setEx(key, this.FRAME_TTL, base64Data);
       this.stats.totalFramesCached++;
       logger.debug(`Cached frame: ${key}`);
     } catch (error) {
@@ -164,20 +150,21 @@ export class RedisCacheService {
     if (!this.client) return;
 
     try {
-      const preloadPromises = [];
+      const preloadPromises: Promise<void>[] = [];
 
       for (let i = 0; i < this.PRELOAD_COUNT; i++) {
         const frameIndex = startFrame + i;
         preloadPromises.push(
-          frameLoader(frameIndex)
-            .then(data => {
+          (async () => {
+            try {
+              const data = await frameLoader(frameIndex);
               if (data) {
-                return this.setFrame(videoId, frameIndex, data);
+                await this.setFrame(videoId, frameIndex, data);
               }
-            })
-            .catch(err => {
+            } catch (err) {
               logger.warn(`Failed to preload frame ${frameIndex}:`, err);
-            })
+            }
+          })()
         );
       }
 
@@ -197,13 +184,16 @@ export class RedisCacheService {
     try {
       if (frameIndex !== undefined) {
         const key = this.getCacheKey(videoId, frameIndex);
-        await this.delAsync(key);
+        await this.client.del(key);
         logger.info(`Cleared cache for ${key}`);
       } else {
         // Clear all frames for video
         const pattern = `video:${videoId}:frame:*`;
-        await this.delPatternAsync(pattern);
-        logger.info(`Cleared all cache for ${videoId}`);
+        const keys = await this.client.keys(pattern);
+        if (keys.length > 0) {
+          await this.client.del(keys);
+          logger.info(`Cleared ${keys.length} cache entries for ${videoId}`);
+        }
       }
     } catch (error) {
       logger.warn(`Error clearing cache:`, error);
@@ -236,12 +226,8 @@ export class RedisCacheService {
    */
   async disconnect(): Promise<void> {
     if (this.client) {
-      await new Promise<void>((resolve) => {
-        this.client?.quit(() => {
-          logger.info('Redis disconnected');
-          resolve();
-        });
-      });
+      await this.client.quit();
+      logger.info('Redis disconnected');
     }
   }
 
@@ -250,80 +236,6 @@ export class RedisCacheService {
    */
   private getCacheKey(videoId: string, frameIndex: number): string {
     return `video:${videoId}:frame:${frameIndex}`;
-  }
-
-  /**
-   * Helper: Promisified Redis GET
-   */
-  private getAsync(key: string): Promise<string | null> {
-    return new Promise((resolve, reject) => {
-      if (!this.client) {
-        reject(new Error('Redis client not initialized'));
-        return;
-      }
-      this.client.get(key, (err, data) => {
-        if (err) reject(err);
-        else resolve(data);
-      });
-    });
-  }
-
-  /**
-   * Helper: Promisified Redis SETEX
-   */
-  private setexAsync(key: string, ttl: number, value: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (!this.client) {
-        reject(new Error('Redis client not initialized'));
-        return;
-      }
-      this.client.setex(key, ttl, value, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-  }
-
-  /**
-   * Helper: Promisified Redis DEL
-   */
-  private delAsync(key: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (!this.client) {
-        reject(new Error('Redis client not initialized'));
-        return;
-      }
-      this.client.del(key, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-  }
-
-  /**
-   * Helper: Delete all keys matching pattern
-   */
-  private delPatternAsync(pattern: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (!this.client) {
-        reject(new Error('Redis client not initialized'));
-        return;
-      }
-      this.client.keys(pattern, (err, keys) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        if (keys.length === 0) {
-          resolve();
-          return;
-        }
-        this.client!.del(...keys, (err) => {
-          if (err) reject(err);
-          else resolve();
-        });
-      });
-    });
   }
 }
 
