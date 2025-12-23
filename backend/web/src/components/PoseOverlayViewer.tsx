@@ -3,6 +3,7 @@ import { TrackingVisualization } from './TrackingVisualization';
 import { MeshViewer } from './MeshViewer';
 import { ModelsCardList } from './ModelsCardList';
 import { FloatingControlPanel } from './FloatingControlPanel';
+import { VideoDisplay } from './VideoDisplay';
 import { fetchRiderMesh, fetchReferenceMesh } from '../services/meshDataService';
 import { MeshSequence } from '../types';
 import { CameraService } from '../services/cameraService';
@@ -257,10 +258,11 @@ export function PoseOverlayViewer({
               <div className="w-full h-full flex">
                 {/* Video */}
                 <div className="w-1/2 bg-black flex items-center justify-center border-r border-gray-700">
-                  <video
-                    src={leftScreen.mesh.videoUrl}
-                    style={{ maxWidth: '100%', maxHeight: '100%' }}
-                    controls
+                  <VideoDisplay
+                    videoUrl={leftScreen.mesh.videoUrl}
+                    currentFrame={leftSceneFrame}
+                    totalFrames={totalFrames}
+                    isPlaying={isPlaying}
                   />
                 </div>
                 {/* Mesh */}
@@ -722,10 +724,11 @@ export function PoseOverlayViewer({
                 <div className="w-full h-full flex">
                   {/* Video */}
                   <div className="w-1/2 bg-black flex items-center justify-center border-r border-gray-700">
-                    <video
-                      src={rightScreen.mesh.videoUrl}
-                      style={{ maxWidth: '100%', maxHeight: '100%' }}
-                      controls
+                    <VideoDisplay
+                      videoUrl={rightScreen.mesh.videoUrl}
+                      currentFrame={rightSceneFrame}
+                      totalFrames={totalFrames}
+                      isPlaying={isPlaying}
                     />
                   </div>
                   {/* Mesh */}
