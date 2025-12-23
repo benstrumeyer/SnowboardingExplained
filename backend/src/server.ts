@@ -237,6 +237,63 @@ app.get('/api/health', (req: Request, res: Response) => {
   } as ApiResponse<any>);
 });
 
+// Video serving endpoint - serves uploaded videos with proper CORS headers
+app.get('/videos/:videoId', (req: Request, res: Response) => {
+  try {
+    const { videoId } = req.params;
+    
+    // Look for the video file in the uploads directory
+    const videoPath = path.join(uploadDir, videoId);
+    
+    // Check if file exists
+    if (!fs.existsSync(videoPath)) {
+      logger.warn(`Video not found: ${videoId}`);
+      return res.status(404).json({
+        success: false,
+        error: `Video not found: ${videoId}`,
+        timestamp: new Date().toISOString()
+      } as ApiResponse<null>);
+    }
+    
+    // Get file stats
+    const stats = fs.statSync(videoPath);
+    const fileSize = stats.size;
+    
+    // Set proper headers for video streaming
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Content-Length', fileSize);
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    
+    // Handle range requests for seeking
+    const range = req.headers.range;
+    if (range) {
+      const parts = range.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader('Content-Length', end - start + 1);
+      
+      const stream = fs.createReadStream(videoPath, { start, end });
+      stream.pipe(res);
+    } else {
+      const stream = fs.createReadStream(videoPath);
+      stream.pipe(res);
+    }
+    
+    logger.info(`Video served: ${videoId}`, { fileSize });
+  } catch (error: any) {
+    logger.error(`Error serving video: ${error.message}`, { error });
+    res.status(500).json({
+      success: false,
+      error: 'Failed to serve video',
+      timestamp: new Date().toISOString()
+    } as ApiResponse<null>);
+  }
+});
+
 // Mount API routes
 app.use('/api/perfect-phases', perfectPhasesRouter);
 app.use('/api', comparisonRouter);
