@@ -2,7 +2,7 @@
 
 ## Overview
 
-This design implements frame-by-frame synchronized playback of original video, 2D mesh-overlaid video, and 3D mesh models across multiple scenes. Each scene maintains its independent frame position while all scenes advance at the same playback speed. Videos are always synced with their corresponding 3D meshes at the same frame index. The system leverages Redis for high-performance frame caching, shared mesh transposition code from React Native, and ensures zero drift between video and mesh within each scene.
+This design implements frame-by-frame synchronized playback of original video, 2D mesh-overlaid video, and 3D mesh models across multiple scenes. The key innovation is **aligned frame indexing**: video frames are extracted and stored using the exact same frame indices as the mesh service, eliminating the need for runtime synchronization logic. When the frontend requests frame N, it receives video and mesh data that are already aligned at that index. Each scene maintains its independent frame position while all scenes advance at the same playback speed. The system leverages Redis for high-performance frame caching, shared mesh transposition code from React Native, and ensures zero drift between video and mesh within each scene.
 
 ## Architecture
 
@@ -130,6 +130,74 @@ GET /api/video/{videoId}/frame/{frameIndex}
   Guarantee: originalFrame, overlayFrame, and meshData all correspond to frameIndex
 ```
 
+### 3.1 Video Extraction Service (Backend)
+
+Extracts video frames using mesh frame indices for automatic alignment.
+
+```typescript
+interface VideoExtractionService {
+  // Query mesh service for frame indices that have mesh data
+  getMeshFrameIndices(videoId: string): Promise<number[]>;
+  
+  // Extract video frames at specific mesh indices
+  extractFramesAtIndices(
+    videoPath: string,
+    meshFrameIndices: number[],
+    outputDir: string
+  ): Promise<ExtractionResult>;
+  
+  // Generate frame index mapping (original timestamp -> mesh index)
+  generateFrameIndexMapping(
+    videoPath: string,
+    meshFrameIndices: number[]
+  ): Promise<FrameIndexMapping>;
+}
+
+interface ExtractionResult {
+  videoId: string;
+  extractedFrames: number; // Count of frames extracted
+  frameIndexMapping: FrameIndexMapping;
+  storageLocation: string;
+}
+
+interface FrameIndexMapping {
+  // Maps mesh frame index to original video timestamp
+  [meshFrameIndex: number]: {
+    timestamp: number;
+    originalFrameNumber: number;
+  };
+}
+```
+
+**Key Principle:** Instead of extracting all frames sequentially (0, 1, 2, 3...), the video extraction service queries the mesh service to find which frame indices have mesh data, then extracts ONLY those frames and stores them with the mesh frame indices. This ensures frame N in video storage corresponds to frame N in mesh storage.
+
+### 4. Frame API Endpoint (Backend)
+
+Returns frame data for a specific scene at a specific frame index. Videos are always synced with their corresponding 3D mesh.
+
+```
+GET /api/video/{videoId}/frame/{frameIndex}
+  Query params:
+    - includeOverlay: boolean (default: true)
+    - includeOriginal: boolean (default: true)
+    - includeMesh: boolean (default: true)
+  
+  Response:
+  {
+    videoId: string,
+    frameIndex: number,
+    timestamp: number,
+    originalFrame?: string,      // JPEG at frameIndex
+    overlayFrame?: string,        // JPEG with mesh at frameIndex
+    meshData?: {                  // 3D mesh at frameIndex
+      keypoints: [],
+      skeleton: {}
+    }
+  }
+  
+  Guarantee: originalFrame, overlayFrame, and meshData all correspond to frameIndex
+```
+
 ### 4. Redis Cache Layer (Backend)
 
 ```
@@ -228,49 +296,55 @@ export function generateMeshOverlay(
 
 A property is a characteristic or behavior that should hold true across all valid executions of a system—essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.
 
-### Property 1: Independent Frame Position Maintenance
+### Property 1: Frame Index Alignment
+
+*For any* video and mesh pair, frame index N in video storage SHALL correspond to frame index N in mesh storage, with identical timestamps.
+
+**Validates: Requirements 4.1, 4.2, 4.3, 4.4, 4.5**
+
+### Property 2: Independent Frame Position Maintenance
 
 *For any* set of scenes playing simultaneously, each scene SHALL maintain its own independent frame index while advancing at the same rate as other scenes.
 
-**Validates: Requirements 6.1, 6.3**
+**Validates: Requirements 7.1, 7.3**
 
-### Property 2: Playback Speed Consistency
+### Property 3: Playback Speed Consistency
 
 *For any* playback speed change, all scenes SHALL advance frames at the same rate proportional to the speed multiplier, while maintaining their independent frame positions.
 
-**Validates: Requirements 6.2**
+**Validates: Requirements 7.2**
 
-### Property 3: Frame Seek Offset Consistency
+### Property 4: Frame Seek Offset Consistency
 
 *For any* frame seek operation, all scenes SHALL advance by the same frame offset without forcing them to the same frame index.
 
-**Validates: Requirements 6.5**
+**Validates: Requirements 7.5**
 
-### Property 4: Video-Mesh Frame Correspondence
+### Property 5: Video-Mesh Frame Correspondence
 
 *For any* scene at frame index N, the displayed video frame (original or overlay) SHALL always correspond to the 3D mesh frame index N, regardless of other scenes' positions.
 
-**Validates: Requirements 6.6, 7.1**
+**Validates: Requirements 3.2, 7.6, 8.1**
 
-### Property 5: Frame Data Consistency
+### Property 6: Frame Data Consistency
 
 *For any* frame request, the returned original frame, overlay frame, and mesh data SHALL all correspond to the same frame index and timestamp.
 
-**Validates: Requirements 2.1, 2.2, 7.1**
+**Validates: Requirements 2.1, 2.2, 8.1**
 
-### Property 6: Overlay Toggle Idempotence
+### Property 7: Overlay Toggle Idempotence
 
 *For any* scene with overlay toggled on then off then on again, the displayed frame SHALL be identical to the initial overlay frame without frame index change.
 
-**Validates: Requirements 5.1, 5.2, 5.3**
+**Validates: Requirements 6.1, 6.2, 6.3**
 
-### Property 7: Redis Cache Hit Rate
+### Property 8: Redis Cache Hit Rate
 
 *For any* frame request during playback, the frame SHALL be retrieved from Redis cache with 100% hit rate for preloaded frames.
 
-**Validates: Requirements 4.1, 4.2, 4.3**
+**Validates: Requirements 5.1, 5.2, 5.3**
 
-### Property 8: Mesh Transposition Equivalence
+### Property 9: Mesh Transposition Equivalence
 
 *For any* video frame and pose data, the 3D mesh generated by web transposition SHALL be identical to React Native transposition for the same input.
 
