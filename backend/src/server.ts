@@ -8,11 +8,13 @@ import FormData from 'form-data';
 import axios from 'axios';
 import logger from './logger';
 import { FrameExtractionService } from './services/frameExtraction';
+import { VideoExtractionService } from './services/videoExtractionService';
 import { TrickDetectionService } from './services/trickDetection';
 import { LLMTrickDetectionService } from './services/llmTrickDetection';
 import { ChatService } from './services/chatService';
 import { KnowledgeBaseService } from './services/knowledgeBase';
 import { meshDataService } from './services/meshDataService';
+import { initializeRedisCache } from './services/redisCacheService';
 import { ApiResponse } from './types';
 import { connectDB } from '../mcp-server/src/db/connection';
 import { processVideoUpload, getVideoAnalysis } from './services/videoAnalysisPipelineImpl';
@@ -415,34 +417,41 @@ app.post('/api/finalize-upload', upload.single('video'), async (req: Request, re
     // Trigger pose extraction asynchronously
     (async () => {
       try {
-        logger.info(`Starting pose extraction for ${videoId}`);
+        logger.info(`Starting mesh-aligned frame extraction for ${videoId}`);
         
-        // Extract frames and get pose data
-        const frameResult = await FrameExtractionService.extractFrames(videoPath, videoId);
-        logger.info(`Extracted ${frameResult.frameCount} frames from video ${videoId}`);
+        // Extract frames aligned with mesh indices
+        const extractionResult = await VideoExtractionService.extractFramesAtMeshIndices(videoPath, videoId);
+        logger.info(`Mesh-aligned frame extraction completed for ${videoId}`, {
+          extractedFrames: extractionResult.extractedFrames,
+          meshAligned: extractionResult.meshAligned
+        });
 
         // Get pose data for each frame from the pose service
         const poseFrames: any[] = [];
-        for (let i = 0; i < Math.min(frameResult.frameCount, 60); i++) {
-          const frame = frameResult.frames[i];
-          if (frame) {
-            try {
-              const imageBase64 = FrameExtractionService.getFrameAsBase64(frame.imagePath);
-              const poseResult = await detectPoseHybrid(imageBase64);
-              poseFrames.push({
-                frameNumber: i,
-                timestamp: frame.timestamp,
-                pose: poseResult
-              });
-            } catch (err) {
-              logger.warn(`Failed to extract pose for frame ${i}:`, err);
+        const cachedFrames = FrameExtractionService.getCachedFrames(videoId);
+        
+        if (cachedFrames) {
+          for (let i = 0; i < Math.min(cachedFrames.frameCount, 60); i++) {
+            const frame = cachedFrames.frames[i];
+            if (frame) {
+              try {
+                const imageBase64 = FrameExtractionService.getFrameAsBase64(frame.imagePath);
+                const poseResult = await detectPoseHybrid(imageBase64);
+                poseFrames.push({
+                  frameNumber: i,
+                  timestamp: frame.timestamp,
+                  pose: poseResult
+                });
+              } catch (err) {
+                logger.warn(`Failed to extract pose for frame ${i}:`, err);
+              }
             }
           }
         }
 
         logger.info(`Pose extraction complete for ${videoId}: ${poseFrames.length} frames with pose data`);
       } catch (err) {
-        logger.error(`Pose extraction failed for ${videoId}:`, err);
+        logger.error(`Mesh-aligned frame extraction failed for ${videoId}:`, err);
       }
     })();
 
@@ -585,6 +594,16 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
         role: role as 'rider' | 'coach'
       });
       console.log(`[UPLOAD] ✓ Stored mesh data in MongoDB for ${videoId}`);
+
+      // Filter frames to keep only those with mesh data
+      const meshFrameIndices = meshSequence.map((_, index) => index);
+      console.log(`[UPLOAD] Filtering frames: keeping ${meshFrameIndices.length} frames with mesh data`);
+      FrameExtractionService.filterFramesToMeshData(videoId, meshFrameIndices);
+      
+      // Rename frames to be sequential
+      console.log(`[UPLOAD] Renaming frames to sequential order`);
+      FrameExtractionService.renameFramesToSequential(videoId, meshFrameIndices);
+      
     } catch (err) {
       console.error(`[UPLOAD] Failed to store mesh data in MongoDB:`, err);
       logger.error('Failed to store mesh data in MongoDB', { error: err });
@@ -2374,6 +2393,19 @@ async function startServer() {
       } catch (err) {
         logger.error('Failed to connect to MongoDB', { error: err });
         console.error('Warning: MongoDB connection failed. Mesh data will not be persisted.');
+      }
+
+      // Initialize Redis cache for frame data
+      try {
+        await initializeRedisCache({
+          host: process.env.REDIS_HOST || 'localhost',
+          port: parseInt(process.env.REDIS_PORT || '6379', 10),
+          maxMemory: process.env.REDIS_MAX_MEMORY || '256mb'
+        });
+        logger.info('Redis cache initialized successfully');
+      } catch (err) {
+        logger.warn('Failed to initialize Redis cache', { error: err });
+        console.warn('Warning: Redis cache not available. Frame caching will be disabled.');
       }
 
       console.log(`\n========================================`);

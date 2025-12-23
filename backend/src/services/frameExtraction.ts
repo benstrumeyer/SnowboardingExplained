@@ -52,10 +52,20 @@ export class FrameExtractionService {
   }
 
   /**
-   * Extract frames from video at specified FPS
+   * Extract frames from video at specified FPS or specific frame indices
    * Checks MongoDB cache first before extracting
+   * 
+   * @param videoPath - Path to video file
+   * @param videoId - Video ID for caching
+   * @param fps - Frames per second (default: 4)
+   * @param frameIndices - Optional: specific frame indices to extract (for mesh-aligned extraction)
    */
-  static async extractFrames(videoPath: string, videoId: string, fps: number = FRAMES_PER_SECOND): Promise<FrameExtractionResult> {
+  static async extractFrames(
+    videoPath: string,
+    videoId: string,
+    fps: number = FRAMES_PER_SECOND,
+    frameIndices?: number[]
+  ): Promise<FrameExtractionResult> {
     return new Promise(async (resolve, reject) => {
       try {
         // Check MongoDB cache first
@@ -102,6 +112,9 @@ export class FrameExtractionService {
         console.log(`[FRAME_EXTRACTION] 🎬 Starting extraction for ${videoId}`);
         console.log(`[FRAME_EXTRACTION] 📁 Output dir: ${outputDir}`);
         console.log(`[FRAME_EXTRACTION] 📊 FPS: ${framesPerSecond}`);
+        if (frameIndices) {
+          console.log(`[FRAME_EXTRACTION] 🎯 Extracting specific frame indices: ${frameIndices.length} frames`);
+        }
         
         if (!fs.existsSync(outputDir)) {
           fs.mkdirSync(outputDir, { recursive: true });
@@ -111,7 +124,8 @@ export class FrameExtractionService {
         logger.info(`Starting frame extraction for video: ${videoId}`, {
           videoPath,
           outputDir,
-          fps: framesPerSecond
+          fps: framesPerSecond,
+          specificFrameIndices: frameIndices ? frameIndices.length : 'none'
         });
 
         // Get video metadata to calculate total frames needed
@@ -135,20 +149,31 @@ export class FrameExtractionService {
             }
           }
           
-          // Calculate how many frames to extract at target FPS
-          const targetFps = fps || FRAMES_PER_SECOND;
-          let totalFrames = Math.ceil(duration * targetFps);
+          // Determine which frames to extract
+          let framesToExtract: number[];
+          let totalFrames: number;
           
-          // Cap frames to avoid Windows command line length limits
-          // Windows has ~32KB command line limit, each frame adds ~50 chars
-          // So max ~600 frames safely, we'll use 500 as safe limit
-          const MAX_FRAMES = 500;
-          if (totalFrames > MAX_FRAMES) {
-            console.log(`[FRAME_EXTRACTION] ⚠️  Capping frames from ${totalFrames} to ${MAX_FRAMES} to avoid path length limits`);
-            totalFrames = MAX_FRAMES;
+          if (frameIndices && frameIndices.length > 0) {
+            // Extract only specific frame indices (mesh-aligned)
+            framesToExtract = frameIndices;
+            totalFrames = frameIndices.length;
+            console.log(`[FRAME_EXTRACTION] 🎯 Extracting ${totalFrames} specific frames aligned with mesh data`);
+          } else {
+            // Extract at fixed FPS
+            const targetFps = fps || FRAMES_PER_SECOND;
+            totalFrames = Math.ceil(duration * targetFps);
+            
+            // Cap frames to avoid Windows command line length limits
+            const MAX_FRAMES = 500;
+            if (totalFrames > MAX_FRAMES) {
+              console.log(`[FRAME_EXTRACTION] ⚠️  Capping frames from ${totalFrames} to ${MAX_FRAMES} to avoid path length limits`);
+              totalFrames = MAX_FRAMES;
+            }
+            
+            // Generate frame indices for fixed FPS extraction
+            framesToExtract = Array.from({ length: totalFrames }, (_, i) => i);
+            console.log(`[FRAME_EXTRACTION] 📹 Video: ${duration}s @ ${videoFrameRate.toFixed(2)} fps, extracting ${totalFrames} frames @ ${targetFps} fps`);
           }
-          
-          console.log(`[FRAME_EXTRACTION] 📹 Video: ${duration}s @ ${videoFrameRate.toFixed(2)} fps, extracting ${totalFrames} frames @ ${targetFps} fps`);
 
           ffmpeg(videoPath)
             .on('filenames', (filenames: any) => {
@@ -165,7 +190,10 @@ export class FrameExtractionService {
               logger.info(`Frame extraction completed for video: ${videoId}`);
               
               // Read extracted frames
-              const files = fs.readdirSync(outputDir).sort();
+              const files = fs.readdirSync(outputDir)
+                .filter(f => f.endsWith('.png'))
+                .sort();
+              
               const frames = files.map((file, index) => ({
                 frameNumber: index,
                 timestamp: index / framesPerSecond,
@@ -178,14 +206,17 @@ export class FrameExtractionService {
                 fps: framesPerSecond,
                 duration: duration,
                 frameCount: frames.length,
-                extractedAt: new Date().toISOString()
+                extractedAt: new Date().toISOString(),
+                meshAligned: frameIndices ? true : false,
+                requestedFrameIndices: frameIndices || null
               }, null, 2));
 
               logger.info(`Frame extraction result: ${frames.length} frames from ${duration}s video`, {
                 videoId,
                 frameCount: frames.length,
                 duration,
-                fps: framesPerSecond
+                fps: framesPerSecond,
+                meshAligned: frameIndices ? true : false
               });
 
               resolve({
@@ -220,13 +251,15 @@ export class FrameExtractionService {
       return null;
     }
 
-    // Try to read metadata to get the correct FPS
+    // Try to read metadata to get the correct FPS and other info
     let framesPerSecond = FRAMES_PER_SECOND;
+    let videoDuration = 0;
     const metadataPath = path.join(outputDir, 'metadata.json');
     if (fs.existsSync(metadataPath)) {
       try {
         const metadata = JSON.parse(fs.readFileSync(metadataPath, 'utf-8'));
         framesPerSecond = metadata.fps || FRAMES_PER_SECOND;
+        videoDuration = metadata.duration || 0;
       } catch (err) {
         logger.warn(`Failed to read metadata for ${videoId}, using default FPS`, { error: err });
       }
@@ -249,12 +282,13 @@ export class FrameExtractionService {
     logger.info(`Retrieved cached frames for video: ${videoId}`, {
       videoId,
       frameCount: frames.length,
-      fps: framesPerSecond
+      fps: framesPerSecond,
+      videoDuration
     });
 
     return {
       frameCount: frames.length,
-      videoDuration: frames.length / framesPerSecond,
+      videoDuration: videoDuration || frames.length / framesPerSecond,
       fps: framesPerSecond,
       frames,
       cacheHit: true
@@ -262,15 +296,101 @@ export class FrameExtractionService {
   }
 
   /**
-   * Clear cached frames for a video
+   * Filter and keep only frames that have corresponding mesh data
+   * Deletes frames without mesh data to save storage
+   * 
+   * @param videoId - Video ID
+   * @param meshFrameIndices - Array of frame indices that have mesh data
    */
-  static clearCache(videoId: string): void {
-    const outputDir = path.join(TEMP_DIR, videoId);
+  static filterFramesToMeshData(videoId: string, meshFrameIndices: number[]): void {
+    const shortPath = getShortVideoPath(videoId);
+    const outputDir = path.join(TEMP_DIR, shortPath);
     
-    if (fs.existsSync(outputDir)) {
-      fs.rmSync(outputDir, { recursive: true, force: true });
-      logger.info(`Cleared frame cache for video: ${videoId}`, { videoId });
+    if (!fs.existsSync(outputDir)) {
+      logger.warn(`Output directory not found for ${videoId}`, { outputDir });
+      return;
     }
+
+    const files = fs.readdirSync(outputDir)
+      .filter(f => f.endsWith('.png'))
+      .sort();
+    
+    if (files.length === 0) {
+      return;
+    }
+
+    // Create a set of indices to keep for faster lookup
+    const indicesToKeep = new Set(meshFrameIndices);
+    let deletedCount = 0;
+
+    // Delete frames that don't have mesh data
+    for (let i = 0; i < files.length; i++) {
+      if (!indicesToKeep.has(i)) {
+        const filePath = path.join(outputDir, files[i]);
+        try {
+          fs.unlinkSync(filePath);
+          deletedCount++;
+        } catch (err) {
+          logger.warn(`Failed to delete frame ${i}:`, err);
+        }
+      }
+    }
+
+    logger.info(`Filtered frames for ${videoId}: kept ${meshFrameIndices.length}, deleted ${deletedCount}`, {
+      videoId,
+      keptFrames: meshFrameIndices.length,
+      deletedFrames: deletedCount
+    });
+  }
+
+  /**
+   * Rename frames to match mesh frame indices
+   * After filtering, renames frames so they're sequential (0, 1, 2, ...)
+   * 
+   * @param videoId - Video ID
+   * @param meshFrameIndices - Original frame indices that have mesh data
+   */
+  static renameFramesToSequential(videoId: string, meshFrameIndices: number[]): void {
+    const shortPath = getShortVideoPath(videoId);
+    const outputDir = path.join(TEMP_DIR, shortPath);
+    
+    if (!fs.existsSync(outputDir)) {
+      logger.warn(`Output directory not found for ${videoId}`, { outputDir });
+      return;
+    }
+
+    const files = fs.readdirSync(outputDir)
+      .filter(f => f.endsWith('.png'))
+      .sort();
+    
+    if (files.length === 0) {
+      return;
+    }
+
+    // Create a mapping from old index to new index
+    const indexMapping = new Map<number, number>();
+    meshFrameIndices.forEach((oldIndex, newIndex) => {
+      indexMapping.set(oldIndex, newIndex);
+    });
+
+    // Rename files to be sequential
+    for (let i = 0; i < files.length; i++) {
+      const oldPath = path.join(outputDir, files[i]);
+      const newPath = path.join(outputDir, `frame-${i + 1}.png`);
+      
+      if (oldPath !== newPath) {
+        try {
+          fs.renameSync(oldPath, newPath);
+        } catch (err) {
+          logger.warn(`Failed to rename frame ${i}:`, err);
+        }
+      }
+    }
+
+    logger.info(`Renamed frames to sequential for ${videoId}`, {
+      videoId,
+      totalFrames: files.length
+    });
   }
 
   /**
@@ -283,6 +403,19 @@ export class FrameExtractionService {
     } catch (err) {
       logger.error(`Failed to read frame: ${framePath}`, { error: err });
       throw err;
+    }
+  }
+
+  /**
+   * Clear cached frames for a video
+   */
+  static clearCache(videoId: string): void {
+    const shortPath = getShortVideoPath(videoId);
+    const outputDir = path.join(TEMP_DIR, shortPath);
+    
+    if (fs.existsSync(outputDir)) {
+      fs.rmSync(outputDir, { recursive: true, force: true });
+      logger.info(`Cleared frame cache for video: ${videoId}`, { videoId });
     }
   }
 }
