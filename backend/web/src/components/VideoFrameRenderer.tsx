@@ -4,7 +4,7 @@
  * Integrates with PlaybackSyncService for synchronized playback
  */
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useFrameData } from '../hooks/useFrameData';
 
 export interface VideoFrameRendererProps {

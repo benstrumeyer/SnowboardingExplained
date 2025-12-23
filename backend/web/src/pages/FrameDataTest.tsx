@@ -3,7 +3,7 @@
  * Simple page to test the frame-data API integration
  */
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { VideoFrameRenderer } from '../components/VideoFrameRenderer';
 
 export function FrameDataTest() {
