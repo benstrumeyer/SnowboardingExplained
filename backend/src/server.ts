@@ -1392,7 +1392,7 @@ app.post('/api/video/analyze-pose', upload.single('video'), async (req: Request,
 
     const videoId = Date.now().toString();
     const videoPath = req.file.path;
-    const fps = parseInt(req.body.fps) || 4; // Default 4 FPS
+    const fps = parseInt(req.body.fps) || 30; // Default 30 FPS for better frame density
 
     logger.info(`[POSE ANALYSIS] Video uploaded: ${req.file.originalname}`, {
       videoId,

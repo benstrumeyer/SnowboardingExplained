@@ -80,7 +80,7 @@ export class VideoExtractionService {
   static async extractFramesAtMeshIndices(
     videoPath: string,
     videoId: string,
-    fps: number = 4
+    fps: number = 30
   ): Promise<VideoExtractionResult> {
     try {
       logger.info(`Starting mesh-aligned frame extraction for video: ${videoId}`, {
