@@ -1,15 +1,25 @@
 import { useState } from 'react';
 import { PoseOverlayViewer } from './components/PoseOverlayViewer';
 import { VideoUploadModal } from './components/VideoUploadModal';
-import { ModelsBrowser } from './components/ModelsBrowser';
+import { ModelsCardList } from './components/ModelsCardList';
+import { ViewMode } from './components/ViewMode';
+import { PlaybackControls } from './components/PlaybackControls';
 import './styles/App.css';
 
 function App() {
-  const [riderVideoId, setRiderVideoId] = useState('rider-video-1');
-  const [referenceVideoId, setReferenceVideoId] = useState('coach-video-1');
-  const [phase, setPhase] = useState('takeoff');
+  const [riderVideoId, setRiderVideoId] = useState('');
+  const [referenceVideoId, setReferenceVideoId] = useState('');
   const [uploadModalOpen, setUploadModalOpen] = useState<'rider' | 'reference' | null>(null);
-  const [sidebarTab, setSidebarTab] = useState<'models' | 'settings'>('models');
+  const [viewMode, setViewMode] = useState<'side-by-side' | 'overlay' | 'comparison' | 'single-scene'>('side-by-side');
+  
+  // Playback state
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentFrame, setCurrentFrame] = useState(0);
+  const [totalFrames, setTotalFrames] = useState(0);
+  const [playbackSpeed, setPlaybackSpeed] = useState(1);
+  
+  // Shared camera preset
+  const [sharedCameraPreset, setSharedCameraPreset] = useState<'top' | 'front' | 'back' | 'left' | 'right'>('front');
 
   const handleVideoLoaded = (videoId: string, role: 'rider' | 'coach') => {
     if (role === 'rider') {
@@ -52,33 +62,60 @@ function App() {
 
       <div className="app-content">
         <div className="sidebar">
-          <div className="sidebar-tabs">
-            <button
-              className={`tab-btn ${sidebarTab === 'models' ? 'active' : ''}`}
-              onClick={() => setSidebarTab('models')}
-              title="Browse loaded models"
-            >
-              📦 Models
-            </button>
-            <button
-              className={`tab-btn ${sidebarTab === 'settings' ? 'active' : ''}`}
-              onClick={() => setSidebarTab('settings')}
-              title="Settings"
-            >
-              ⚙️ Settings
-            </button>
-          </div>
-
-          <div className="sidebar-content">
-            {sidebarTab === 'models' && (
-              <ModelsBrowser onModelSelect={handleModelSelect} />
-            )}
-            {sidebarTab === 'settings' && (
-              <div className="settings-panel">
-                <h3>Settings</h3>
-                <p>Settings coming soon...</p>
+          <div className="sidebar-section">
+            <h3 className="sidebar-title">Shared Camera Controls</h3>
+            
+            {/* View Mode */}
+            <div>
+              <h4 className="sidebar-subtitle">View Mode</h4>
+              <ViewMode currentMode={viewMode} onModeChange={setViewMode} />
+            </div>
+            
+            {/* Shared Camera Presets */}
+            <div>
+              <h4 className="sidebar-subtitle">Camera Presets</h4>
+              <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                {(['top', 'front', 'back', 'left', 'right'] as const).map((preset) => (
+                  <button
+                    key={preset}
+                    onClick={() => setSharedCameraPreset(preset)}
+                    style={{
+                      flex: '1 1 calc(50% - 2px)',
+                      padding: '6px 8px',
+                      background: sharedCameraPreset === preset ? '#4ECDC4' : '#333',
+                      color: sharedCameraPreset === preset ? '#000' : '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '10px',
+                      fontWeight: sharedCameraPreset === preset ? '600' : '500',
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {preset}
+                  </button>
+                ))}
               </div>
-            )}
+            </div>
+            
+            {/* Global Playback Controls */}
+            <div>
+              <h4 className="sidebar-subtitle">Playback</h4>
+              <PlaybackControls
+                isPlaying={isPlaying}
+                currentFrame={currentFrame}
+                totalFrames={totalFrames}
+                speed={playbackSpeed}
+                onPlayPause={() => setIsPlaying(!isPlaying)}
+                onScrub={setCurrentFrame}
+                onSpeedChange={setPlaybackSpeed}
+              />
+            </div>
+          </div>
+          
+          <div className="sidebar-section">
+            <h3 className="sidebar-title">Models</h3>
+            <ModelsCardList onModelSelect={handleModelSelect} maxCards={6} />
           </div>
         </div>
 
@@ -86,7 +123,19 @@ function App() {
           <PoseOverlayViewer
             riderVideoId={riderVideoId}
             referenceVideoId={referenceVideoId}
-            phase={phase}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            isPlaying={isPlaying}
+            onPlayingChange={setIsPlaying}
+            currentFrame={currentFrame}
+            onFrameChange={setCurrentFrame}
+            totalFrames={totalFrames}
+            onTotalFramesChange={setTotalFrames}
+            playbackSpeed={playbackSpeed}
+            onSpeedChange={setPlaybackSpeed}
+            sharedCameraPreset={sharedCameraPreset}
+            onRiderVideoChange={setRiderVideoId}
+            onReferenceVideoChange={setReferenceVideoId}
           />
         </div>
       </div>
