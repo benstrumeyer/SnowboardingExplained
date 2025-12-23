@@ -249,10 +249,28 @@ app.get('/videos/:videoId', (req: Request, res: Response) => {
     res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
     
     // Look for the video file in the uploads directory
-    const videoPath = path.join(uploadDir, videoId);
+    // Try with common video extensions
+    const extensions = ['.mp4', '.mov', '.webm', '.avi', '.mkv'];
+    let videoPath: string | null = null;
+    
+    for (const ext of extensions) {
+      const testPath = path.join(uploadDir, videoId + ext);
+      if (fs.existsSync(testPath)) {
+        videoPath = testPath;
+        break;
+      }
+    }
+    
+    // Also try without extension (for backward compatibility)
+    if (!videoPath) {
+      const testPath = path.join(uploadDir, videoId);
+      if (fs.existsSync(testPath)) {
+        videoPath = testPath;
+      }
+    }
     
     // Check if file exists
-    if (!fs.existsSync(videoPath)) {
+    if (!videoPath) {
       logger.warn(`Video not found: ${videoId}`);
       return res.status(404).json({
         success: false,
@@ -460,6 +478,10 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
     // Use simple ID format: v_{timestamp}_{counter}
     const videoId = generateVideoId();
     const videoPath = req.file.path;
+    const newVideoPath = path.join(uploadDir, videoId + path.extname(req.file.originalname));
+    
+    // Rename the file to match the videoId
+    fs.renameSync(videoPath, newVideoPath);
     
     console.log(`[UPLOAD] ========================================`);
     console.log(`[UPLOAD] Generated videoId: ${videoId}`);
@@ -470,7 +492,7 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
     
     logger.info(`Processing video for pose extraction: ${videoId}`, {
       role,
-      videoPath,
+      videoPath: newVideoPath,
       filename: req.file.originalname,
       fileSize: req.file.size
     });
@@ -478,7 +500,7 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
     // Extract frames
     let frameResult;
     try {
-      frameResult = await FrameExtractionService.extractFrames(videoPath, videoId);
+      frameResult = await FrameExtractionService.extractFrames(newVideoPath, videoId);
       logger.info(`Extracted ${frameResult.frameCount} frames`);
     } catch (err: any) {
       logger.error(`Frame extraction failed for ${videoId}:`, err);
