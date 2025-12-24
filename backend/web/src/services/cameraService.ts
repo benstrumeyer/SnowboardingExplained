@@ -27,15 +27,15 @@ export class CameraService {
       case 'top':
         return new THREE.Vector3(0, distance * 2, 0);
       case 'front':
-        return new THREE.Vector3(0, 0, distance);
-      case 'back':
         return new THREE.Vector3(0, 0, -distance);
+      case 'back':
+        return new THREE.Vector3(0, 0, distance);
       case 'left':
         return new THREE.Vector3(-distance, 0, 0);
       case 'right':
         return new THREE.Vector3(distance, 0, 0);
       default:
-        return new THREE.Vector3(0, 0, distance);
+        return new THREE.Vector3(0, 0, -distance);
     }
   }
 

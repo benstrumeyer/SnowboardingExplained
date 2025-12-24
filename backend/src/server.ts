@@ -22,6 +22,10 @@ import { processVideoUpload, getVideoAnalysis } from './services/videoAnalysisPi
 import { detectPose, detectPoseParallel, detectPoseHybrid, detectPoseHybridBatch, checkPoseServiceHealth, PoseFrame, HybridPoseFrame } from './services/pythonPoseService';
 import { AnalysisLogBuilder, analyzeFrame, AnalysisLog, FrameAnalysis } from './services/analysisLogService';
 import { initializeFrameDataService } from './services/frameDataService';
+// Process pool imports
+import { ProcessPoolManager } from './services/processPoolManager';
+import { loadPosePoolConfig } from './services/posePoolConfig';
+import { createPoseRouter } from './api/pose';
 // API routes
 import perfectPhasesRouter from '../api/perfect-phases';
 import comparisonRouter from '../api/comparison';
@@ -323,6 +327,9 @@ app.get('/videos/:videoId', (req: Request, res: Response) => {
   }
 });
 
+// Global process pool manager instance
+let poolManager: ProcessPoolManager | null = null;
+
 // Mount API routes
 app.use('/api/perfect-phases', perfectPhasesRouter);
 app.use('/api', comparisonRouter);
@@ -330,6 +337,11 @@ app.use('/api', stackedPositionRouter);
 app.use('/api', referenceLibraryRouter);
 app.use('/api', frameDataRouter);
 app.use('/api', smoothingControlRouter);
+
+// Mount pose detection endpoints (requires pool manager)
+if (poolManager) {
+  app.use('/api/pose', createPoseRouter(poolManager));
+}
 
 // Chunked Video Upload Endpoints
 const chunksDir = path.join(os.tmpdir(), 'video-chunks');
@@ -2512,6 +2524,10 @@ async function startServer() {
       uploadDir: uploadDir
     });
     
+    // Initialize process pool manager for pose detection
+    const posePoolConfig = loadPosePoolConfig();
+    poolManager = new ProcessPoolManager(posePoolConfig);
+    
     // Initialize database connection
     const { connectToDatabase } = await import('./db/connection');
     await connectToDatabase();
@@ -2590,6 +2606,27 @@ async function startServer() {
     // Graceful shutdown
     process.on('SIGINT', async () => {
       console.log('\n\nShutting down gracefully...');
+      
+      // Shutdown process pool
+      if (poolManager) {
+        await poolManager.shutdown();
+      }
+      
+      await meshDataService.disconnect();
+      server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+      });
+    });
+    
+    process.on('SIGTERM', async () => {
+      console.log('\n\nShutting down gracefully (SIGTERM)...');
+      
+      // Shutdown process pool
+      if (poolManager) {
+        await poolManager.shutdown();
+      }
+      
       await meshDataService.disconnect();
       server.close(() => {
         console.log('Server closed');

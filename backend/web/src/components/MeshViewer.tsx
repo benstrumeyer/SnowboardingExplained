@@ -297,11 +297,82 @@ function createMeshFromFrame(frame: MeshFrame | SyncedFrame, colorHex: string): 
     let ny = (y - centerY) * scale;
     let nz = (z - centerZ) * scale;
     
-    // Rotate 90 degrees around X axis: Y becomes Z, Z becomes -Y
+    // Rotate 90 degrees around X axis: Y becomes -Z, Z becomes Y
     // This converts camera space (Y down) to world space (Y up)
     const tempY = ny;
-    ny = -nz;
-    nz = tempY;
+    ny = nz;
+    nz = -tempY;
+    
+    // Rotate 90 degrees around Z axis: X becomes -Y, Y becomes X
+    const tempX = nx;
+    nx = -ny;
+    ny = tempX;
+    
+    // Rotate 90 degrees around Y axis: X becomes Z, Z becomes -X
+    const tempX2 = nx;
+    nx = nz;
+    nz = -tempX2;
+    
+    // Rotate another 90 degrees around Y axis: X becomes Z, Z becomes -X
+    const tempX3 = nx;
+    nx = nz;
+    nz = -tempX3;
+    
+    // Rotate another 90 degrees around Y axis: X becomes Z, Z becomes -X
+    const tempX4 = nx;
+    nx = nz;
+    nz = -tempX4;
+    
+    // Rotate another 90 degrees around Y axis: X becomes Z, Z becomes -X
+    const tempX5 = nx;
+    nx = nz;
+    nz = -tempX5;
+    
+    // Rotate 180 degrees around Y axis (two 90-degree rotations)
+    const tempX6 = nx;
+    nx = nz;
+    nz = -tempX6;
+    
+    const tempX7 = nx;
+    nx = nz;
+    nz = -tempX7;
+    
+    // Rotate 90 degrees around X axis: Y becomes -Z, Z becomes Y
+    const tempY4 = ny;
+    ny = nz;
+    nz = -tempY4;
+    
+    // Rotate another 180 degrees around Y axis (two 90-degree rotations)
+    const tempX8 = nx;
+    nx = nz;
+    nz = -tempX8;
+    
+    const tempX9 = nx;
+    nx = nz;
+    nz = -tempX9;
+    
+    // Rotate 180 degrees around X axis (two 90-degree rotations)
+    const tempY5 = ny;
+    ny = nz;
+    nz = -tempY5;
+    
+    const tempY6 = ny;
+    ny = nz;
+    nz = -tempY6;
+    
+    // Rotate 90 degrees around Y axis: X becomes Z, Z becomes -X
+    const tempX10 = nx;
+    nx = nz;
+    nz = -tempX10;
+    
+    // Rotate 180 degrees around Y axis (two 90-degree rotations)
+    const tempX11 = nx;
+    nx = nz;
+    nz = -tempX11;
+    
+    const tempX12 = nx;
+    nx = nz;
+    nz = -tempX12;
     
     // Position feet on ground (add back the height offset)
     ny = ny + (sizeY * scale) / 2;

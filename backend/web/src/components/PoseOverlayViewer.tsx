@@ -87,13 +87,22 @@ export function PoseOverlayViewer({
   });
 
   // Load rider mesh into left screen
+  // CRITICAL: Reload mesh when riderVideoId changes, even if mesh is already loaded
+  // This fixes the stale mesh data issue where old mesh displays when switching videos
   useEffect(() => {
-    if (!riderVideoId || leftScreen.mesh) return;
+    if (!riderVideoId) return;
     
-    console.log(`[VIEWER] Loading rider mesh for ${riderVideoId}`);
+    console.log(`%c[VIEWER] 🎬 Loading rider mesh for ${riderVideoId}`, 'color: #FF6B6B; font-weight: bold;');
+    
+    // Clear previous mesh when videoId changes
+    if (leftScreen.mesh && leftScreen.mesh.videoId !== riderVideoId) {
+      console.log(`%c[VIEWER] 🗑️  Clearing old mesh (videoId: ${leftScreen.mesh.videoId})`, 'color: #FF6B6B;');
+      setLeftScreen(prev => ({ ...prev, mesh: null }));
+    }
+    
     fetchRiderMesh(riderVideoId)
       .then((mesh) => {
-        console.log(`[VIEWER] Loaded rider mesh:`, mesh);
+        console.log(`%c[VIEWER] ✅ Loaded rider mesh for ${riderVideoId}:`, 'color: #00FF00; font-weight: bold;', mesh);
         setLeftScreen(prev => ({ ...prev, mesh }));
       })
       .catch((err) => {
@@ -102,16 +111,25 @@ export function PoseOverlayViewer({
           setError(err instanceof Error ? err.message : 'Failed to load rider mesh');
         }
       });
-  }, [riderVideoId, leftScreen.mesh]);
+  }, [riderVideoId]); // Only depend on riderVideoId, not leftScreen.mesh
 
   // Load reference mesh into right screen
+  // CRITICAL: Reload mesh when referenceVideoId changes, even if mesh is already loaded
+  // This fixes the stale mesh data issue where old mesh displays when switching videos
   useEffect(() => {
-    if (!referenceVideoId || rightScreen.mesh) return;
+    if (!referenceVideoId) return;
     
-    console.log(`[VIEWER] Loading reference mesh for ${referenceVideoId}`);
+    console.log(`%c[VIEWER] 🎬 Loading reference mesh for ${referenceVideoId}`, 'color: #4ECDC4; font-weight: bold;');
+    
+    // Clear previous mesh when videoId changes
+    if (rightScreen.mesh && rightScreen.mesh.videoId !== referenceVideoId) {
+      console.log(`%c[VIEWER] 🗑️  Clearing old mesh (videoId: ${rightScreen.mesh.videoId})`, 'color: #4ECDC4;');
+      setRightScreen(prev => ({ ...prev, mesh: null }));
+    }
+    
     fetchReferenceMesh(referenceVideoId)
       .then((mesh) => {
-        console.log(`[VIEWER] Loaded reference mesh:`, mesh);
+        console.log(`%c[VIEWER] ✅ Loaded reference mesh for ${referenceVideoId}:`, 'color: #00FF00; font-weight: bold;', mesh);
         setRightScreen(prev => ({ ...prev, mesh }));
       })
       .catch((err) => {
@@ -120,7 +138,7 @@ export function PoseOverlayViewer({
           setError(err instanceof Error ? err.message : 'Failed to load reference mesh');
         }
       });
-  }, [referenceVideoId, rightScreen.mesh]);
+  }, [referenceVideoId]); // Only depend on referenceVideoId, not rightScreen.mesh
 
   // Get current frames using independent scene frames
   const currentLeftFrame = leftScreen.mesh && leftScreen.mesh.frames && leftSceneFrame < leftScreen.mesh.frames.length
@@ -349,7 +367,7 @@ export function PoseOverlayViewer({
 
                           {/* Camera Presets */}
                           <div style={{ marginBottom: '10px' }}>
-                            <label style={{ display: 'block', marginBottom: '4px', fontSize: '10px', fontWeight: '600' }}>Camera (Shared)</label>
+                            <label style={{ display: 'block', marginBottom: '4px', fontSize: '10px', fontWeight: '600' }}>Camera</label>
                             <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
                               {(['top', 'front', 'back', 'left', 'right'] as const).map((preset) => (
                                 <button
@@ -540,7 +558,7 @@ export function PoseOverlayViewer({
 
                         {/* Camera Presets */}
                         <div style={{ marginBottom: '10px' }}>
-                          <label style={{ display: 'block', marginBottom: '4px', fontSize: '10px', fontWeight: '600' }}>Camera (Shared)</label>
+                          <label style={{ display: 'block', marginBottom: '4px', fontSize: '10px', fontWeight: '600' }}>Camera</label>
                           <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
                             {(['top', 'front', 'back', 'left', 'right'] as const).map((preset) => (
                               <button

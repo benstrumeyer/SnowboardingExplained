@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import logger from '../logger';
 import { MeshSequence, SyncedFrame } from '../types';
+import { kalmanSmoothingService } from './kalmanSmoothingService';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env.local') });
@@ -42,6 +43,7 @@ class MeshDataService {
   private collection: Collection<MeshData> | null = null;
   private framesCollection: Collection<any> | null = null;
   private mongoUrl: string;
+  private smoothingEnabled: boolean = true;
 
   constructor() {
     this.mongoUrl = process.env.MONGODB_URI || 'mongodb://localhost:27017/snowboarding';
@@ -130,6 +132,10 @@ class MeshDataService {
         role: meshData.role
       });
 
+      // CRITICAL: Disable smoothing during save to avoid data loss
+      const wasSmoothing = this.smoothingEnabled;
+      this.smoothingEnabled = false;
+
       // CRITICAL: Always delete old data for this videoId first to ensure fresh data
       console.log(`%c[MESH-SERVICE] 🗑️  CRITICAL: Deleting ALL old data for ${meshData.videoId}`, 'color: #FF0000; font-weight: bold; font-size: 14px;');
       
@@ -145,6 +151,7 @@ class MeshDataService {
       const verifyCount = await this.framesCollection.countDocuments({ videoId: meshData.videoId });
       if (verifyCount > 0) {
         console.error(`%c[MESH-SERVICE] ❌ CRITICAL ERROR: ${verifyCount} frames still exist after deletion!`, 'color: #FF0000; font-weight: bold; font-size: 14px;');
+        this.smoothingEnabled = wasSmoothing; // Restore smoothing state
         throw new Error(`Failed to delete old frames for ${meshData.videoId}: ${verifyCount} frames still exist`);
       }
       console.log(`%c[MESH-SERVICE] ✅ Verified: 0 frames remain for ${meshData.videoId}`, 'color: #00FF00; font-weight: bold;');
@@ -215,6 +222,7 @@ class MeshDataService {
           // Log the error but don't fail - might be duplicate key errors
           console.error(`%c[MESH-SERVICE] ⚠️  Insert error (may be duplicates):`, 'color: #FF6B6B;', err.message);
           if (err.code !== 11000) {
+            this.smoothingEnabled = wasSmoothing; // Restore smoothing state
             throw err;
           }
         }
@@ -226,6 +234,9 @@ class MeshDataService {
           console.warn(`%c[MESH-SERVICE] ⚠️  Expected ${frameDocuments.length} frames but found ${savedCount}`, 'color: #FFAA00;');
         }
       }
+
+      // Restore smoothing state
+      this.smoothingEnabled = wasSmoothing;
 
       console.log(`[MESH-SERVICE] ========== SAVE MESH DATA COMPLETE ==========`);
       logger.info(`Saved mesh data for video ${meshData.videoId}`, {
@@ -383,7 +394,54 @@ class MeshDataService {
     }
 
     try {
-      return await this.framesCollection.findOne({ videoId, frameNumber });
+      const frame = await this.framesCollection.findOne({ videoId, frameNumber });
+      
+      // Apply Kalman smoothing directly to keypoints if enabled
+      if (frame && this.smoothingEnabled && frame.keypoints && Array.isArray(frame.keypoints) && frame.keypoints.length > 0) {
+        try {
+          // Smooth each keypoint's coordinates directly
+          const smoothedKeypoints = frame.keypoints.map((kp: any) => {
+            // Create a temporary SyncedFrame just for this keypoint
+            const tempFrame: SyncedFrame = {
+              frameIndex: frame.frameNumber,
+              timestamp: frame.timestamp,
+              meshData: {
+                keypoints: [{
+                  index: kp.index || 0,
+                  name: kp.name || '',
+                  position: [kp.x || 0, kp.y || 0, kp.z || 0],
+                  confidence: kp.confidence || 0
+                }],
+                skeleton: [],
+                vertices: [],
+                faces: []
+              }
+            };
+
+            const smoothed = kalmanSmoothingService.smoothFrame(tempFrame);
+            const smoothedKp = smoothed.meshData.keypoints[0];
+
+            // Return in original format
+            return {
+              ...kp,
+              x: smoothedKp.position[0],
+              y: smoothedKp.position[1],
+              z: smoothedKp.position[2],
+              confidence: smoothedKp.confidence
+            };
+          });
+
+          return {
+            ...frame,
+            keypoints: smoothedKeypoints
+          };
+        } catch (smoothingErr) {
+          logger.warn(`Kalman smoothing failed for frame ${videoId}/${frameNumber}, returning unsmoothed:`, smoothingErr);
+          return frame;
+        }
+      }
+      
+      return frame;
     } catch (err) {
       logger.error(`Failed to retrieve frame ${videoId}/${frameNumber}`, { error: err });
       throw err;
@@ -490,6 +548,39 @@ class MeshDataService {
       this.collection = null;
       logger.info('Disconnected from MongoDB');
     }
+  }
+
+  /**
+   * Enable or disable Kalman smoothing for keypoints
+   */
+  setSmoothingEnabled(enabled: boolean): void {
+    this.smoothingEnabled = enabled;
+    logger.info(`Kalman smoothing ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Check if smoothing is enabled
+   */
+  isSmoothingEnabled(): boolean {
+    return this.smoothingEnabled;
+  }
+
+  /**
+   * Reset Kalman filters (call when loading a new video)
+   */
+  resetSmoothing(): void {
+    kalmanSmoothingService.reset();
+    logger.info('Kalman filters reset');
+  }
+
+  /**
+   * Adjust Kalman filter parameters
+   * @param processNoise Lower = smoother but more lag (default: 0.01)
+   * @param measurementNoise Higher = more smoothing (default: 4.0)
+   */
+  setSmoothingParameters(processNoise: number, measurementNoise: number): void {
+    kalmanSmoothingService.setParameters(processNoise, measurementNoise);
+    logger.info(`Kalman parameters updated: processNoise=${processNoise}, measurementNoise=${measurementNoise}`);
   }
 }
 

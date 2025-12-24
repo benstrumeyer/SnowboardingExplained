@@ -2,13 +2,14 @@ import ffmpeg from 'fluent-ffmpeg';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import crypto from 'crypto';
 import logger from '../logger';
 import { FrameExtractionResult } from '../types';
 import { meshDataService } from './meshDataService';
 
 // Import static ffmpeg/ffprobe paths
 import ffmpegStatic from 'ffmpeg-static';
-const ffprobeStatic = require('ffprobe-static');
+const ffprobeStatic = require('ffprobe-static') as any;
 
 const FRAMES_PER_SECOND = 30; // Extract at higher frame rate for better quality
 // Use system temp directory to keep paths short (Windows has 260 char limit)
@@ -29,11 +30,13 @@ if (!fs.existsSync(TEMP_DIR)) {
 
 /**
  * Generate a short hash from videoId to avoid path length issues on Windows
+ * Uses MD5 hash to create a unique 8-character identifier
  */
 function getShortVideoPath(videoId: string): string {
-  // Use full videoId for unique cache directories
-  // Windows path limit is 260 chars, and our paths are short enough
-  return videoId;
+  // Create an 8-character hash from the videoId to keep paths short
+  // This prevents Windows ENAMETOOLONG errors while maintaining uniqueness
+  const hash = crypto.createHash('md5').update(videoId).digest('hex').substring(0, 8);
+  return hash;
 }
 
 export class FrameExtractionService {

@@ -72,3 +72,6 @@ __pycache__/
 *.pyc
 venv/
 *.task
+
+# Development scripts (local only)
+dev-kiro.ps1
