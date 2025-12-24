@@ -10,6 +10,7 @@ interface VideoUploadModalProps {
 }
 
 const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3001';
+const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
 
 export const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
   isOpen,
@@ -35,6 +36,45 @@ export const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
     }
   };
 
+  const uploadChunks = async (file: File, sessionId: string): Promise<boolean> => {
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    console.log(`[CHUNKED-UPLOAD] Starting chunked upload: ${totalChunks} chunks`);
+
+    for (let i = 0; i < totalChunks; i++) {
+      try {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunk = file.slice(start, end);
+
+        const formData = new FormData();
+        formData.append('chunk', chunk);
+        formData.append('sessionId', sessionId);
+        formData.append('chunkIndex', i.toString());
+        formData.append('totalChunks', totalChunks.toString());
+
+        console.log(`[CHUNKED-UPLOAD] Uploading chunk ${i + 1}/${totalChunks}`);
+
+        await axios.post(`${API_URL}/api/upload-chunk`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 60000, // 60 seconds per chunk
+          onUploadProgress: (progressEvent) => {
+            const chunkProgress = (progressEvent.loaded / (progressEvent.total || 1)) * 100;
+            const overallProgress = ((i + chunkProgress / 100) / totalChunks) * 100;
+            setUploadProgress(Math.round(overallProgress));
+          },
+        });
+
+        console.log(`[CHUNKED-UPLOAD] ✓ Chunk ${i + 1}/${totalChunks} uploaded`);
+      } catch (err) {
+        console.error(`[CHUNKED-UPLOAD] Error uploading chunk ${i + 1}:`, err);
+        setError(`Failed to upload chunk ${i + 1}/${totalChunks}`);
+        return false;
+      }
+    }
+
+    return true;
+  };
+
   const handleUpload = async () => {
     if (!selectedFile) {
       setError('Please select a video file');
@@ -43,39 +83,44 @@ export const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
 
     setUploading(true);
     setError(null);
-    setUploadProgress(10);
+    setUploadProgress(0);
 
     try {
-      const formData = new FormData();
-      formData.append('video', selectedFile);
-      formData.append('role', role);
+      const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      console.log(`[UPLOAD] Starting upload with sessionId: ${sessionId}`);
+      console.log(`[UPLOAD] File: ${selectedFile.name}, Size: ${(selectedFile.size / 1024 / 1024).toFixed(2)}MB`);
 
-      console.log('[UPLOAD] Starting video upload...');
+      // Upload chunks
+      const chunksSuccess = await uploadChunks(selectedFile, sessionId);
+      if (!chunksSuccess) {
+        setUploading(false);
+        return;
+      }
 
-      // Upload video - fire and forget
-      axios.post(`${API_URL}/api/upload-video-with-pose`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 300000, // 5 minute timeout
-        onUploadProgress: (progressEvent) => {
-          const progress = 10 + Math.round((progressEvent.loaded / (progressEvent.total || 1)) * 40);
-          setUploadProgress(progress);
-        },
-      }).then((uploadResponse) => {
-        console.log('[UPLOAD] Upload response:', uploadResponse.data);
-        const { videoId } = uploadResponse.data;
-        console.log(`[UPLOAD] ✓ Video sent for processing: ${videoId}`);
-      }).catch((err) => {
-        console.error('[UPLOAD] Background error:', err);
+      setUploadProgress(95);
+      console.log('[UPLOAD] All chunks uploaded, finalizing...');
+
+      // Finalize upload (assemble chunks, don't re-upload the file)
+      const finalizeResponse = await axios.post(`${API_URL}/api/finalize-upload`, {
+        role,
+        sessionId,
+        filename: selectedFile.name,
+        filesize: selectedFile.size
+      }, {
+        timeout: 300000, // 5 minute timeout for finalization
       });
 
-      // Close dialog immediately
       setUploadProgress(100);
-      console.log('[UPLOAD] Dialog closing - processing continues in background');
+      console.log('[UPLOAD] ✓ Upload complete:', finalizeResponse.data);
+
+      const { videoId } = finalizeResponse.data;
       resetForm();
       onClose();
+      onVideoLoaded(videoId, role === 'rider' ? 'rider' : 'coach');
 
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
+    } catch (err: any) {
+      const errorMsg = err.response?.data?.error || err.message || 'Upload failed';
+      setError(errorMsg);
       console.error('[UPLOAD] Error:', err);
     } finally {
       setUploading(false);
@@ -93,6 +138,7 @@ export const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
 
   const roleLabel = role === 'rider' ? 'Rider' : 'Reference/Coach';
   const roleColor = role === 'rider' ? '#FF6B6B' : '#4ECDC4';
+  const fileSizeMB = selectedFile ? (selectedFile.size / 1024 / 1024).toFixed(2) : '0';
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -117,7 +163,7 @@ export const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
               className="file-input"
             />
             <label className="file-label">
-              {selectedFile ? selectedFile.name : 'Choose video file...'}
+              {selectedFile ? `${selectedFile.name} (${fileSizeMB}MB)` : 'Choose video file...'}
             </label>
           </div>
 
@@ -131,7 +177,11 @@ export const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
                   style={{ width: `${uploadProgress}%`, backgroundColor: roleColor }}
                 />
               </div>
-              <p className="progress-text">Uploading... Processing will continue in background</p>
+              <p className="progress-text">
+                {uploadProgress < 95 
+                  ? `Uploading... ${uploadProgress}%` 
+                  : 'Finalizing upload...'}
+              </p>
             </div>
           )}
         </div>
@@ -146,7 +196,7 @@ export const VideoUploadModal: React.FC<VideoUploadModalProps> = ({
             disabled={!selectedFile || uploading}
             style={{ backgroundColor: roleColor }}
           >
-            {uploading ? 'Processing...' : 'Upload'}
+            {uploading ? `Uploading... ${uploadProgress}%` : 'Upload'}
           </button>
         </div>
       </div>

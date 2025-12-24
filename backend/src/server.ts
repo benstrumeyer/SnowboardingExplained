@@ -28,6 +28,7 @@ import comparisonRouter from '../api/comparison';
 import stackedPositionRouter from '../api/stacked-position';
 import referenceLibraryRouter from '../api/reference-library';
 import frameDataRouter from '../api/frame-data';
+import smoothingControlRouter from '../api/smoothing-control';
 
 // Load environment variables from .env.local
 const envPath = path.join(__dirname, '../.env.local');
@@ -52,8 +53,8 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // CORS configuration for ngrok tunnel and local development
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -118,7 +119,7 @@ const upload = multer({
       cb(new Error('Invalid file type. Only MP4, MOV, and WebM are allowed.'));
     }
   },
-  limits: { fileSize: 500 * 1024 * 1024 } // 500MB
+  limits: { fileSize: 2 * 1024 * 1024 * 1024 } // 2GB - supports high-quality 60 FPS videos
 });
 
 // 4D-Humans SMPL skeleton connections (24 joints)
@@ -328,6 +329,7 @@ app.use('/api', comparisonRouter);
 app.use('/api', stackedPositionRouter);
 app.use('/api', referenceLibraryRouter);
 app.use('/api', frameDataRouter);
+app.use('/api', smoothingControlRouter);
 
 // Chunked Video Upload Endpoints
 const chunksDir = path.join(os.tmpdir(), 'video-chunks');
@@ -387,31 +389,75 @@ app.post('/api/upload-chunk', chunkUpload.single('chunk'), (req: Request, res: R
   }
 });
 
-app.post('/api/finalize-upload', upload.single('video'), async (req: Request, res: Response) => {
+app.post('/api/finalize-upload', express.json(), async (req: Request, res: Response) => {
   try {
-    const { role } = req.body;
+    const { role, sessionId, filename, filesize } = req.body;
 
-    if (!role) {
-      return res.status(400).json({ error: 'Missing role field' });
+    if (!role || !sessionId) {
+      return res.status(400).json({ error: 'Missing role or sessionId' });
     }
 
-    if (!req.file) {
-      return res.status(400).json({ error: 'No video file provided' });
-    }
-
-    // Use simple ID format: v_{timestamp}_{counter}
+    // Generate video ID
     const videoId = generateVideoId();
-    const videoPath = req.file.path;
     
     console.log(`[FINALIZE] ========================================`);
     console.log(`[FINALIZE] Generated videoId: ${videoId}`);
     console.log(`[FINALIZE] Role: ${role}`);
+    console.log(`[FINALIZE] SessionId: ${sessionId}`);
+    console.log(`[FINALIZE] Filename: ${filename}`);
+    console.log(`[FINALIZE] Filesize: ${filesize} bytes`);
 
+    // Assemble chunks into final video file
+    const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks (must match frontend)
+    const totalChunks = Math.ceil(filesize / CHUNK_SIZE);
+    
+    console.log(`[FINALIZE] Assembling ${totalChunks} chunks...`);
+
+    // Create output file path
+    const ext = path.extname(filename) || '.mp4';
+    const videoPath = path.join(uploadDir, videoId + ext);
+    const writeStream = fs.createWriteStream(videoPath);
+
+    let assembledSize = 0;
+
+    // Assemble chunks in order
+    for (let i = 0; i < totalChunks; i++) {
+      const chunkPath = path.join(chunksDir, `${sessionId}-chunk-${i}`);
+      
+      if (!fs.existsSync(chunkPath)) {
+        console.error(`[FINALIZE] ✗ Missing chunk ${i}: ${chunkPath}`);
+        return res.status(400).json({ 
+          error: `Missing chunk ${i}/${totalChunks}. Upload may have been interrupted.` 
+        });
+      }
+
+      const chunkData = fs.readFileSync(chunkPath);
+      writeStream.write(chunkData);
+      assembledSize += chunkData.length;
+      
+      console.log(`[FINALIZE] ✓ Assembled chunk ${i + 1}/${totalChunks} (${chunkData.length} bytes)`);
+      
+      // Delete chunk after assembly
+      fs.unlinkSync(chunkPath);
+    }
+
+    writeStream.end();
+
+    // Wait for write to complete
+    await new Promise((resolve, reject) => {
+      writeStream.on('finish', resolve);
+      writeStream.on('error', reject);
+    });
+
+    console.log(`[FINALIZE] ✓ Video assembled: ${videoPath} (${assembledSize} bytes)`);
+    
     logger.info(`Video uploaded and ready for pose extraction: ${videoId}`, {
       role,
       videoPath,
-      filename: req.file.originalname,
-      size: req.file.size
+      filename,
+      filesize,
+      assembledSize,
+      chunksAssembled: totalChunks
     });
 
     // Trigger pose extraction asynchronously
@@ -476,19 +522,21 @@ function generateVideoId(): string {
 
 // Alternative endpoint for direct video upload with pose extraction
 app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Request, res: Response) => {
+  const videoId = generateVideoId();
+  
   try {
     const { role } = req.body;
 
     if (!role) {
-      return res.status(400).json({ error: 'Missing role field' });
+      console.error(`[UPLOAD] ${videoId} - Missing role field`);
+      return res.status(400).json({ error: 'Missing role field', videoId });
     }
 
     if (!req.file) {
-      return res.status(400).json({ error: 'No video file provided' });
+      console.error(`[UPLOAD] ${videoId} - No video file provided`);
+      return res.status(400).json({ error: 'No video file provided', videoId });
     }
 
-    // Use simple ID format: v_{timestamp}_{counter}
-    const videoId = generateVideoId();
     const videoPath = req.file.path;
     const newVideoPath = path.join(uploadDir, videoId + path.extname(req.file.originalname));
     
@@ -498,15 +546,16 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
     console.log(`[UPLOAD] ========================================`);
     console.log(`[UPLOAD] Generated videoId: ${videoId}`);
     console.log(`[UPLOAD] Role: ${role}`);
-
-    console.log(`[UPLOAD] Processing video for pose extraction`);
-    console.log(`[UPLOAD] File: ${req.file.originalname}, Size: ${req.file.size}`);
+    console.log(`[UPLOAD] File: ${req.file.originalname}`);
+    console.log(`[UPLOAD] Size: ${(req.file.size / 1024 / 1024).toFixed(2)}MB`);
+    console.log(`[UPLOAD] Path: ${newVideoPath}`);
     
     logger.info(`Processing video for pose extraction: ${videoId}`, {
       role,
       videoPath: newVideoPath,
       filename: req.file.originalname,
-      fileSize: req.file.size
+      fileSize: req.file.size,
+      fileSizeMB: (req.file.size / 1024 / 1024).toFixed(2)
     });
 
     // CRITICAL: Delete old mesh data BEFORE extracting frames
