@@ -5,6 +5,7 @@
 
 import axios from 'axios';
 import logger from '../logger';
+import { CameraParams } from '../types';
 
 const POSE_SERVICE_URL = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
 const POSE_SERVICE_TIMEOUT = parseInt(process.env.POSE_SERVICE_TIMEOUT || '10000');
@@ -283,7 +284,8 @@ export interface HybridPoseFrame extends PoseFrame {
   has3d: boolean;
   joints3dRaw?: number[][] | null;
   jointAngles3d?: Record<string, number>;
-  cameraTranslation?: number[] | null;
+  cameraTranslation?: number[] | null;  // Weak perspective camera [scale, tx_norm, ty_norm]
+  cameraParams?: CameraParams;
   meshVertices?: number;
   mesh_vertices_data?: number[][] | null;
   mesh_faces_data?: number[][] | null;
@@ -369,6 +371,7 @@ export async function detectPoseHybrid(
       joints3dRaw: data.joints_3d_raw,
       jointAngles3d: data.joint_angles_3d,
       cameraTranslation: data.camera_translation,
+      cameraParams: data.camera_params,  // New: weak perspective camera parameters
       meshVertices: data.mesh_vertices,
       mesh_vertices_data: data.mesh_vertices_data,
       mesh_faces_data: data.mesh_faces_data,

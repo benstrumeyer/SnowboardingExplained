@@ -137,6 +137,14 @@ export interface SkeletonConnection {
   to: number;   // keypoint index
 }
 
+// Weak perspective camera parameters from HMR2
+export interface CameraParams {
+  scale: number;  // Zoom factor
+  tx: number;     // Translation X in normalized image coords
+  ty: number;     // Translation Y in normalized image coords
+  type: string;   // Camera type (e.g., 'weak_perspective')
+}
+
 export interface SyncedFrame {
   frameIndex: number;
   timestamp: number; // milliseconds
@@ -144,10 +152,11 @@ export interface SyncedFrame {
     offset: number; // Reference to video frame
   };
   meshData: {
-    keypoints: Keypoint[]; // 33 keypoints from MediaPipe
-    skeleton: SkeletonConnection[];
-    vertices: [number, number, number][]; // 3D positions
-    faces: number[][]; // Triangle indices
+    keypoints: Keypoint[]; // Keypoints from HMR2/SMPL
+    skeleton?: SkeletonConnection[]; // Optional - not used for SMPL mesh
+    vertices: [number, number, number][]; // 3D positions (6890 for SMPL)
+    faces: number[][]; // Triangle indices (13776 for SMPL)
+    cameraParams?: CameraParams;
   };
 }
 

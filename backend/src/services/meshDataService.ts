@@ -2,7 +2,7 @@ import { MongoClient, Db, Collection } from 'mongodb';
 import dotenv from 'dotenv';
 import path from 'path';
 import logger from '../logger';
-import { MeshSequence, SyncedFrame } from '../types';
+import { MeshSequence, SyncedFrame, CameraParams, SkeletonConnection } from '../types';
 import { kalmanSmoothingService } from './kalmanSmoothingService';
 import FrameQualityAnalyzer from './frameQualityAnalyzer';
 import FrameFilterService from './frameFilterService';
@@ -14,18 +14,33 @@ import { FrameInterpolationService } from './frameInterpolation/frameInterpolati
 dotenv.config({ path: path.join(__dirname, '../../.env.local') });
 dotenv.config();
 
+// Keypoint structure from pose service
+interface PoseKeypoint {
+  name: string;
+  x: number;
+  y: number;
+  z: number;
+  confidence: number;
+}
+
+// Joint angles structure
+interface JointAngles3d {
+  [jointName: string]: number;
+}
+
 // Database frame interface - represents actual stored frame structure
 interface DatabaseFrame {
   videoId: string;
   frameNumber: number;
   timestamp: number;
-  keypoints: any[];
-  skeleton: any;
+  keypoints: PoseKeypoint[];
+  skeleton: SkeletonConnection[];
   has3d: boolean;
-  jointAngles3d: any;
+  jointAngles3d: JointAngles3d;
   mesh_vertices_data: number[][];
   mesh_faces_data: number[][];
-  cameraTranslation: any;
+  cameraTranslation: number[] | null;  // Weak perspective camera [scale, tx_norm, ty_norm]
+  cameraParams?: CameraParams;
   interpolated: boolean;
   createdAt: Date;
 }
@@ -224,6 +239,7 @@ class MeshDataService {
           mesh_vertices_data: frame.mesh_vertices_data || [],
           mesh_faces_data: frame.mesh_faces_data || [],
           cameraTranslation: frame.cameraTranslation || null,
+          cameraParams: frame.cameraParams || null,  // New: weak perspective camera parameters
           interpolated: false,
           createdAt: now
         }));
