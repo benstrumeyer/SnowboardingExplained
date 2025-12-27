@@ -220,7 +220,7 @@ export function MeshViewer({
         mesh.position.set(0, 0, 0);
         mesh.rotation.set(
           (riderRotation.x * Math.PI) / 180,
-          (riderRotation.y * Math.PI) / 180,
+          ((riderRotation.y * Math.PI) / 180) + Math.PI,
           (riderRotation.z * Math.PI) / 180
         );
         // Apply opacity
@@ -253,7 +253,7 @@ export function MeshViewer({
         mesh.position.set(2, 0, 0);
         mesh.rotation.set(
           (referenceRotation.x * Math.PI) / 180,
-          (referenceRotation.y * Math.PI) / 180,
+          ((referenceRotation.y * Math.PI) / 180) + Math.PI,
           (referenceRotation.z * Math.PI) / 180
         );
         // Apply opacity
