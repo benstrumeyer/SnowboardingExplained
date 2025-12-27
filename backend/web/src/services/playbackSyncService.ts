@@ -25,7 +25,10 @@ export class PlaybackSyncService {
   private isGloballyPlaying: boolean = false;
   private fps: number;
   private frameAdvanceInterval: NodeJS.Timeout | null = null;
-  private readonly FRAME_ADVANCE_INTERVAL = 33; // ~30 FPS
+  private videoElement: HTMLVideoElement | null = null;
+  private lastSyncedFrame: number = -1;
+  private readonly FRAME_ADVANCE_INTERVAL = 16; // ~60 FPS for smoother sync
+  private readonly FRAME_TOLERANCE = 0.5; // Only update if frame changed by at least this amount
 
   constructor(config: PlaybackSyncServiceConfig = {}) {
     this.fps = config.fps || 30;
@@ -60,6 +63,41 @@ export class PlaybackSyncService {
 
         // Notify subscribers
         this.notifyFrameChange(sceneId, state.frameIndex);
+      }
+    }
+  }**
+   * Sync playback to video element's current time
+   * This ensures mesh frames stay synchronized with video playback
+   */
+  syncToVideoElement(videoElement: HTMLVideoElement): void {
+    this.videoElement = videoElement;
+  }
+
+  /**
+   * Advance all scenes by one frame (maintains independent positions)
+   * If synced to video, uses video's currentTime instead of fixed interval
+   */
+  advanceFrame(): void {
+    for (const [sceneId, state] of this.sceneStates.entries()) {
+      if (state.isPlaying) {
+        let newFrameIndex = state.frameIndex;
+
+        // If synced to video element, calculate frame from video time
+        if (this.videoElement && !this.videoElement.paused) {
+          const videoTimeInSeconds = this.videoElement.currentTime;
+          newFrameIndex = Math.floor(videoTimeInSeconds * this.fps);
+
+          // Only update if frame actually changed significantly
+          if (Math.abs(newFrameIndex - this.lastSyncedFrame) >= this.FRAME_TOLERANCE) {
+            state.frameIndex = newFrameIndex;
+            this.lastSyncedFrame = newFrameIndex;
+            this.notifyFrameChange(sceneId, state.frameIndex);
+          }
+        } else {
+          // Manual frame advancement
+          state.frameIndex += 1;
+          this.notifyFrameChange(sceneId, state.frameIndex);
+        }
       }
     }
   }
@@ -212,6 +250,7 @@ export class PlaybackSyncService {
       this.frameAdvanceInterval = null;
     }
 
+    this.videoElement = null;
     this.sceneStates.clear();
     this.frameChangeCallbacks.clear();
   }

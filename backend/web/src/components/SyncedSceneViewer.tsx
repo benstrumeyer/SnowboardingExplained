@@ -21,30 +21,28 @@ export const SyncedSceneViewer: React.FC<SyncedSceneViewerProps> = ({
   width = 640,
   height = 480
 }) => {
-  const videoCanvasRef = useRef<HTMLCanvasElement>(null);
+  const videoElementRef = useRef<HTMLVideoElement>(null);
   const meshCanvasRef = useRef<HTMLCanvasElement>(null);
   const [frameIndex, setFrameIndex] = useState(0);
-  const [isOverlayEnabled, setIsOverlayEnabled] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
 
   const playbackService = useRef<PlaybackSyncService | null>(null);
   const frameDataService = useRef<FrameDataService | null>(null);
-  const overlayService = useRef<OverlayToggleService | null>(null);
   const unsubscribeFrame = useRef<(() => void) | null>(null);
-  const unsubscribeOverlay = useRef<(() => void) | null>(null);
 
   // Initialize services
   useEffect(() => {
     playbackService.current = getPlaybackSyncService();
     frameDataService.current = getFrameDataService();
-    overlayService.current = getOverlayToggleService();
+
+    // Sync playback service to video element when it's ready
+    if (videoElementRef.current && playbackService.current) {
+      playbackService.current.syncToVideoElement(videoElementRef.current);
+    }
 
     return () => {
       if (unsubscribeFrame.current) {
         unsubscribeFrame.current();
-      }
-      if (unsubscribeOverlay.current) {
-        unsubscribeOverlay.current();
       }
     };
   }, []);
@@ -54,7 +52,7 @@ export const SyncedSceneViewer: React.FC<SyncedSceneViewerProps> = ({
     if (!playbackService.current) return;
 
     // Subscribe to frame changes for main scene
-    unsubscribeFrame.current = playbackService.current.onSceneFrameChange('main', (newFrameIndex) => {
+    unsubscribeFrame.current = playbackService.current.onSceneFrameChange('main', (newFrameIndex: number) => {
       setFrameIndex(newFrameIndex);
     });
 
@@ -65,46 +63,21 @@ export const SyncedSceneViewer: React.FC<SyncedSceneViewerProps> = ({
     };
   }, []);
 
-  // Subscribe to overlay toggle changes
-  useEffect(() => {
-    if (!overlayService.current) return;
-
-    unsubscribeOverlay.current = overlayService.current.onOverlayToggle('main', (isEnabled) => {
-      setIsOverlayEnabled(isEnabled);
-    });
-
-    return () => {
-      if (unsubscribeOverlay.current) {
-        unsubscribeOverlay.current();
-      }
-    };
-  }, []);
-
   // Render frames when frameIndex or overlay state changes
   useEffect(() => {
     const renderFrames = async () => {
-      if (!videoCanvasRef.current || !meshCanvasRef.current || !frameDataService.current) return;
+      if (!meshCanvasRef.current || !frameDataService.current) return;
 
       setIsLoading(true);
       try {
         // Fetch frame data
         const frameData = await frameDataService.current.getFrame(videoId, frameIndex, {
-          includeOriginal: true,
-          includeOverlay: isOverlayEnabled,
+          includeOriginal: false,
+          includeOverlay: false,
           includeMesh: true
         });
 
-        // Render video frame on left canvas
-        const videoCtx = videoCanvasRef.current.getContext('2d');
-        if (videoCtx && frameData.originalFrame) {
-          const img = new Image();
-          img.onload = () => {
-            videoCtx.drawImage(img, 0, 0, width, height);
-          };
-          img.src = `data:image/jpeg;base64,${frameData.originalFrame}`;
-        }
-
-        // Render mesh on right canvas
+        // Render mesh on canvas
         const meshCtx = meshCanvasRef.current.getContext('2d');
         if (meshCtx && frameData.meshData) {
           // Clear canvas
@@ -124,7 +97,7 @@ export const SyncedSceneViewer: React.FC<SyncedSceneViewerProps> = ({
     };
 
     renderFrames();
-  }, [frameIndex, isOverlayEnabled, videoId, width, height]);
+  }, [frameIndex, videoId, width, height]);
 
   const handleToggleOverlay = () => {
     if (overlayService.current) {
@@ -139,10 +112,11 @@ export const SyncedSceneViewer: React.FC<SyncedSceneViewerProps> = ({
         {/* Video on left */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center' }}>
           <h3 style={{ margin: '0', color: '#fff' }}>Video</h3>
-          <canvas
-            ref={videoCanvasRef}
+          <video
+            ref={videoElementRef}
             width={width}
             height={height}
+            controls
             style={{ border: '2px solid #4ECDC4', backgroundColor: '#000', borderRadius: '4px' }}
           />
         </div>
@@ -162,21 +136,6 @@ export const SyncedSceneViewer: React.FC<SyncedSceneViewerProps> = ({
       {/* Controls */}
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center' }}>
         <span style={{ color: '#fff' }}>Frame: {frameIndex}</span>
-        <button
-          onClick={handleToggleOverlay}
-          disabled={isLoading}
-          style={{
-            padding: '6px 12px',
-            background: '#4ECDC4',
-            color: '#000',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer',
-            fontWeight: 'bold'
-          }}
-        >
-          {isOverlayEnabled ? 'Hide Overlay' : 'Show Overlay'}
-        </button>
         {isLoading && <span style={{ color: '#999' }}>Loading...</span>}
       </div>
     </div>
