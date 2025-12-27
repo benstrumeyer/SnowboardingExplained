@@ -8,8 +8,9 @@
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "outDir": "./dist",
-    "lib": ["ES2020"]
+    "lib": ["ES2020"],
+    "downlevelIteration": true
   },
-  "include": ["api/**/*", "lib/**/*", "data/**/*"],
+  "include": ["src/**/*", "api/**/*", "lib/**/*", "data/**/*"],
   "exclude": ["node_modules"]
 }
