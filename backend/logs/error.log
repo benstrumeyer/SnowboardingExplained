@@ -2322,3 +2322,104 @@
 {"error":"Request failed with status code 503","frameNumber":28,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 09:38:39"}
 {"error":"Request failed with status code 503","frameNumber":29,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 09:38:39"}
 {"error":"Request failed with status code 503","frameNumber":30,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 09:38:39"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":0,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:46:59"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":1,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:01"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":2,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:03"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":3,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:05"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":4,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:08"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":5,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:10"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":6,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:12"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":7,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:14"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":8,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:16"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":9,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:18"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":10,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:20"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":11,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:22"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":12,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:24"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":13,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:26"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":14,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:28"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":15,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:30"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":16,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:32"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":17,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:34"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":18,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:36"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":19,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:38"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":20,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:40"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":21,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:42"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":22,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:44"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":23,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:47"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":24,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:49"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":25,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:51"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":26,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:53"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":27,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:55"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":28,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:57"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":29,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:47:59"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":30,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:01"}
+{"error":"Request failed with status code 500","frameNumber":0,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:46"}
+{"error":"Request failed with status code 500","frameNumber":1,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:46"}
+{"error":"Request failed with status code 500","frameNumber":2,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:46"}
+{"error":"Request failed with status code 500","frameNumber":3,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:46"}
+{"error":"Request failed with status code 500","frameNumber":4,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:46"}
+{"error":"Request failed with status code 500","frameNumber":5,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:46"}
+{"error":"Request failed with status code 500","frameNumber":6,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:46"}
+{"error":"Request failed with status code 500","frameNumber":7,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:46"}
+{"error":"Request failed with status code 500","frameNumber":8,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:46"}
+{"error":"Request failed with status code 500","frameNumber":9,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:46"}
+{"error":"Request failed with status code 500","frameNumber":10,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:46"}
+{"error":"Request failed with status code 500","frameNumber":11,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:46"}
+{"error":"Request failed with status code 500","frameNumber":12,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":13,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":14,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":15,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":16,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":17,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":18,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":19,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":20,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":21,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":22,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":23,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":24,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":25,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":26,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":27,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":28,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:47"}
+{"error":"Request failed with status code 500","frameNumber":29,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:48"}
+{"error":"Request failed with status code 500","frameNumber":30,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:48:48"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":0,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:53:40"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":1,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:53:42"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":2,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:53:44"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":3,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:53:46"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":4,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:53:48"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":5,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:53:50"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":6,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:53:52"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":7,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:53:54"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":8,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:53:56"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":9,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:53:58"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":10,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:00"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":11,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:02"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":12,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:05"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":13,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:07"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":14,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:09"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":15,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:11"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":16,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:13"}
+{"error":"connect ECONNREFUSED 172.24.183.130:5000","frameNumber":17,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:15"}
+{"error":"Request failed with status code 500","frameNumber":18,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:17"}
+{"error":"Request failed with status code 500","frameNumber":19,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:17"}
+{"error":"Request failed with status code 500","frameNumber":20,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:17"}
+{"error":"Request failed with status code 500","frameNumber":21,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:17"}
+{"error":"Request failed with status code 500","frameNumber":22,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:17"}
+{"error":"Request failed with status code 500","frameNumber":23,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:17"}
+{"error":"Request failed with status code 500","frameNumber":24,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:17"}
+{"error":"Request failed with status code 500","frameNumber":25,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:17"}
+{"error":"Request failed with status code 500","frameNumber":26,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:18"}
+{"error":"Request failed with status code 500","frameNumber":27,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:18"}
+{"error":"Request failed with status code 500","frameNumber":28,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:18"}
+{"error":"Request failed with status code 500","frameNumber":29,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:18"}
+{"error":"Request failed with status code 500","frameNumber":30,"level":"error","message":"[4D-HUMANS] Error","service":"video-coach-api","timestamp":"2025-12-27 11:54:18"}
+{"error":{"errorLabelSet":{},"reason":{"commonWireVersion":0,"compatible":true,"heartbeatFrequencyMS":10000,"localThresholdMS":15,"logicalSessionTimeoutMinutes":null,"maxElectionId":null,"maxSetVersion":null,"servers":{"localhost:27017":{"$clusterTime":null,"address":"localhost:27017","arbiters":[],"electionId":null,"error":{"beforeHandshake":true,"errorLabelSet":{}},"hosts":[],"iscryptd":false,"lastUpdateTime":24020228,"lastWriteDate":0,"logicalSessionTimeoutMinutes":null,"maxBsonObjectSize":null,"maxMessageSizeBytes":null,"maxWireVersion":0,"maxWriteBatchSize":null,"me":null,"minRoundTripTime":0,"minWireVersion":0,"passives":[],"primary":null,"roundTripTime":-1,"setName":null,"setVersion":null,"tags":{},"topologyVersion":null,"type":"Unknown"}},"setName":null,"stale":false,"type":"Single"}},"level":"error","message":"Failed to retrieve all mesh data","service":"video-coach-api","timestamp":"2025-12-27 13:15:48"}
+{"error":{"errorLabelSet":{},"reason":{"commonWireVersion":0,"compatible":true,"heartbeatFrequencyMS":10000,"localThresholdMS":15,"logicalSessionTimeoutMinutes":null,"maxElectionId":null,"maxSetVersion":null,"servers":{"localhost:27017":{"$clusterTime":null,"address":"localhost:27017","arbiters":[],"electionId":null,"error":{"beforeHandshake":true,"errorLabelSet":{}},"hosts":[],"iscryptd":false,"lastUpdateTime":24020228,"lastWriteDate":0,"logicalSessionTimeoutMinutes":null,"maxBsonObjectSize":null,"maxMessageSizeBytes":null,"maxWireVersion":0,"maxWriteBatchSize":null,"me":null,"minRoundTripTime":0,"minWireVersion":0,"passives":[],"primary":null,"roundTripTime":-1,"setName":null,"setVersion":null,"tags":{},"topologyVersion":null,"type":"Unknown"}},"setName":null,"stale":false,"type":"Single"}},"level":"error","message":"[MESH-DATA-LIST] Error: connection <monitor> to [::1]:27017 timed out","service":"video-coach-api","timestamp":"2025-12-27 13:15:49"}
+{"error":{"beforeHandshake":true,"connectionGeneration":11,"errorLabelSet":{}},"level":"error","message":"Failed to retrieve all mesh data","service":"video-coach-api","timestamp":"2025-12-27 13:29:00"}
+{"error":{"beforeHandshake":true,"connectionGeneration":11,"errorLabelSet":{}},"level":"error","message":"[MESH-DATA-LIST] Error: connection 4 to [::1]:27017 timed out","service":"video-coach-api","timestamp":"2025-12-27 13:29:01"}
+{"error":{"beforeHandshake":true,"connectionGeneration":12,"errorLabelSet":{}},"level":"error","message":"Failed to retrieve all mesh data","service":"video-coach-api","timestamp":"2025-12-27 13:29:11"}
+{"error":{"beforeHandshake":true,"connectionGeneration":12,"errorLabelSet":{}},"level":"error","message":"[MESH-DATA-LIST] Error: connection 5 to [::1]:27017 timed out","service":"video-coach-api","timestamp":"2025-12-27 13:29:11"}
+{"error":{"beforeHandshake":true,"connectionGeneration":15,"errorLabelSet":{}},"level":"error","message":"Failed to retrieve all mesh data","service":"video-coach-api","timestamp":"2025-12-27 13:39:10"}
+{"error":{"beforeHandshake":true,"connectionGeneration":15,"errorLabelSet":{}},"level":"error","message":"[MESH-DATA-LIST] Error: connection 7 to [::1]:27017 timed out","service":"video-coach-api","timestamp":"2025-12-27 13:39:10"}
