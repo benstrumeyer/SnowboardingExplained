@@ -338,6 +338,29 @@ export async function detectPoseHybrid(
     
     const data = response.data;
     
+    // DEBUG: Log ALL keys in the response to see what Python is sending
+    console.log(`[4D-HUMANS] 🔍 RESPONSE KEYS for frame ${frameNumber}: ${Object.keys(data).join(', ')}`);
+    
+    // DEBUG: Log mesh data from Python service
+    console.log(`[4D-HUMANS] 🔍 MESH DATA DEBUG for frame ${frameNumber}:`);
+    console.log(`[4D-HUMANS]   mesh_vertices (count field): ${data.mesh_vertices}`);
+    console.log(`[4D-HUMANS]   mesh_vertices_data exists: ${!!data.mesh_vertices_data}`);
+    console.log(`[4D-HUMANS]   mesh_vertices_data type: ${typeof data.mesh_vertices_data}`);
+    console.log(`[4D-HUMANS]   mesh_vertices_data length: ${data.mesh_vertices_data?.length || 0}`);
+    console.log(`[4D-HUMANS]   mesh_faces_data exists: ${!!data.mesh_faces_data}`);
+    console.log(`[4D-HUMANS]   mesh_faces_data type: ${typeof data.mesh_faces_data}`);
+    console.log(`[4D-HUMANS]   mesh_faces_data length: ${data.mesh_faces_data?.length || 0}`);
+    if (data.mesh_vertices_data && data.mesh_vertices_data.length > 0) {
+      console.log(`[4D-HUMANS]   First vertex: ${JSON.stringify(data.mesh_vertices_data[0])}`);
+    }
+    // Check for alternative field names Python might be using
+    if (data.vertices) {
+      console.log(`[4D-HUMANS]   ⚠️  Found 'vertices' field (not mesh_vertices_data): length=${data.vertices?.length}`);
+    }
+    if (data.faces) {
+      console.log(`[4D-HUMANS]   ⚠️  Found 'faces' field (not mesh_faces_data): length=${data.faces?.length}`);
+    }
+    
     const result: HybridPoseFrame = {
       frameNumber: data.frame_number,
       frameWidth: data.frame_width,
