@@ -1,7 +1,20 @@
-import { MeshFrame, SyncedFrame } from '../types';
+import { MeshFrame, SyncedFrame, CameraParams } from '../types';
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CameraService } from '../services/cameraService';
+
+// Type guard to check if frame is SyncedFrame
+function isSyncedFrame(frame: MeshFrame | SyncedFrame): frame is SyncedFrame {
+  return 'meshData' in frame;
+}
+
+// Helper to extract camera params from either frame type
+function getCameraParams(frame: MeshFrame | SyncedFrame): CameraParams | undefined {
+  if (isSyncedFrame(frame)) {
+    return frame.meshData.cameraParams;
+  }
+  return frame.cameraParams;
+}
 
 interface MeshViewerProps {
   riderMesh: (MeshFrame | SyncedFrame) | null;
@@ -217,7 +230,22 @@ export function MeshViewer({
       if (mesh) {
         console.log('%c[MESH-UPDATE] ✅ RIDER MESH CREATED', 'color: #00FF00; font-weight: bold; font-size: 13px;');
         mesh.name = 'mesh-rider';
-        mesh.position.set(0, 0, 0);
+        
+        // Apply weak perspective camera positioning
+        // pred_cam = [scale, tx_norm, ty_norm] where tx, ty are in normalized image coordinates
+        const cameraParams = getCameraParams(riderMesh);
+        
+        if (cameraParams) {
+          console.log('%c[MESH-UPDATE] 📷 Applying weak perspective camera:', 'color: #00FF00;', cameraParams);
+          // Scale affects the size of the mesh
+          mesh.scale.set(cameraParams.scale, cameraParams.scale, cameraParams.scale);
+          // tx, ty are in normalized image coordinates [-1, 1], convert to world space
+          // Assuming image is 256x256 and we want to position in a reasonable 3D space
+          mesh.position.set(cameraParams.tx * 2, -cameraParams.ty * 2, 0);
+        } else {
+          mesh.position.set(0, 0, 0);
+        }
+        
         mesh.rotation.set(
           ((riderRotation.x * Math.PI) / 180) + Math.PI,
           (riderRotation.y * Math.PI) / 180,
@@ -250,7 +278,18 @@ export function MeshViewer({
       if (mesh) {
         console.log('%c[MESH-UPDATE] ✅ REFERENCE MESH CREATED', 'color: #00FFFF; font-weight: bold; font-size: 13px;');
         mesh.name = 'mesh-reference';
-        mesh.position.set(2, 0, 0);
+        
+        // Apply weak perspective camera positioning
+        const cameraParams = getCameraParams(referenceMesh);
+        
+        if (cameraParams) {
+          console.log('%c[MESH-UPDATE] 📷 Applying weak perspective camera:', 'color: #00FFFF;', cameraParams);
+          mesh.scale.set(cameraParams.scale, cameraParams.scale, cameraParams.scale);
+          mesh.position.set(cameraParams.tx * 2 + 2, -cameraParams.ty * 2, 0);  // Offset by 2 for reference
+        } else {
+          mesh.position.set(2, 0, 0);
+        }
+        
         mesh.rotation.set(
           ((referenceRotation.x * Math.PI) / 180) + Math.PI,
           (referenceRotation.y * Math.PI) / 180,
@@ -314,15 +353,16 @@ function createMeshFromFrame(frame: MeshFrame | SyncedFrame, colorHex: string): 
   } else {
     // MeshFrame type - check for both old and new property names
     console.log('%c[MESH-CREATE] ⚠️  Detected MeshFrame format (legacy)', 'color: #FFAA00;');
-    vertices = (frame as any).mesh_vertices_data || (frame as any).vertices || [];
-    faces = (frame as any).mesh_faces_data || (frame as any).faces || [];
+    const meshFrame = frame as MeshFrame;
+    vertices = meshFrame.mesh_vertices_data || meshFrame.vertices || [];
+    faces = meshFrame.mesh_faces_data || meshFrame.faces || [];
     console.log('%c[MESH-CREATE] MeshFrame data:', 'color: #FFAA00;', {
       verticesCount: vertices?.length || 0,
       facesCount: faces?.length || 0,
-      hasMeshVerticesData: !!(frame as any).mesh_vertices_data,
-      hasVertices: !!(frame as any).vertices,
-      hasMeshFacesData: !!(frame as any).mesh_faces_data,
-      hasFaces: !!(frame as any).faces
+      hasMeshVerticesData: !!meshFrame.mesh_vertices_data,
+      hasVertices: !!meshFrame.vertices,
+      hasMeshFacesData: !!meshFrame.mesh_faces_data,
+      hasFaces: !!meshFrame.faces
     });
   }
   
