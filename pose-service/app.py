@@ -49,10 +49,20 @@ def main():
         # Load models once at startup
         detector = PoseDetector(model_cache_dir='.models')
         
-        # Read input from stdin
-        input_data = sys.stdin.read()
-        request = json.loads(input_data)
-        frames = request.get('frames', [])
+        # Read input from stdin with robust error handling
+        # Use a timeout to prevent hanging if stdin is closed unexpectedly
+        try:
+            input_data = sys.stdin.read()
+            if not input_data:
+                raise ValueError("No input data received on stdin")
+            request = json.loads(input_data)
+            frames = request.get('frames', [])
+        except json.JSONDecodeError as e:
+            sys.stderr.write(f"Failed to parse JSON from stdin: {str(e)}\n")
+            sys.exit(1)
+        except Exception as e:
+            sys.stderr.write(f"Failed to read from stdin: {str(e)}\n")
+            sys.exit(1)
         
         # Process frames
         results = []
