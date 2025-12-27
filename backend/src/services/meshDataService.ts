@@ -8,6 +8,7 @@ import FrameQualityAnalyzer from './frameQualityAnalyzer';
 import FrameFilterService from './frameFilterService';
 import FrameIndexMapper from './frameIndexMapper';
 import frameQualityConfig from '../config/frameQualityConfig';
+import { FrameInterpolationService } from './frameInterpolation/frameInterpolationService';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env.local') });
@@ -73,6 +74,9 @@ class MeshDataService {
   private framesCollection: Collection<any> | null = null;
   private mongoUrl: string;
   private smoothingEnabled: boolean = true;
+  private interpolationService: FrameInterpolationService = new FrameInterpolationService();
+  private interpolationEnabled: boolean = true;
+  private sourceFramesCache: Map<string, Map<number, any>> = new Map(); // videoId -> frameIndex -> frame
 
   constructor() {
     this.mongoUrl = process.env.MONGODB_URI || 'mongodb://admin:password@localhost:27017/snowboarding?authSource=admin';
@@ -520,7 +524,8 @@ class MeshDataService {
   /**
    * Get a single frame by videoId and frameNumber
    * 
-   * If frame index mapping exists, uses it to map original frame index to processed frame index
+   * If frame index mapping exists, uses it to map original frame index to processed frame index.
+   * If interpolation is enabled and frame is missing, interpolates from adjacent frames.
    */
   async getFrame(videoId: string, frameNumber: number): Promise<any | null> {
     if (!this.collection || !this.framesCollection) {
@@ -528,7 +533,7 @@ class MeshDataService {
     }
 
     try {
-      // Get metadata to check for frame index mapping
+      // Get metadata to check for frame index mapping and interpolation setup
       const metadata = await this.collection.findOne({ videoId });
       
       let processedFrameNumber = frameNumber;
@@ -539,7 +544,24 @@ class MeshDataService {
         const mappedIndex = FrameIndexMapper.getProcessedIndex(mapping, frameNumber);
         
         if (mappedIndex === undefined) {
-          // Frame was removed
+          // Frame was removed - try interpolation if enabled
+          if (this.interpolationEnabled && this.interpolationService.isReady()) {
+            logger.debug(`Frame ${frameNumber} was removed, attempting interpolation for video ${videoId}`);
+            
+            // Get source frames cache for this video
+            let sourceFrames = this.sourceFramesCache.get(videoId);
+            if (!sourceFrames) {
+              // Build source frames cache
+              sourceFrames = await this.buildSourceFramesCache(videoId);
+              this.sourceFramesCache.set(videoId, sourceFrames);
+            }
+            
+            const interpolated = this.interpolationService.getFrame(frameNumber, sourceFrames);
+            if (interpolated) {
+              return this.convertInterpolatedFrameToDatabase(interpolated);
+            }
+          }
+          
           logger.debug(`Frame ${frameNumber} was removed during quality filtering for video ${videoId}`);
           return null;
         }
@@ -604,7 +626,8 @@ class MeshDataService {
   /**
    * Get multiple frames by videoId and frame range
    * 
-   * If frame index mapping exists, uses it to map original frame indices to processed frame indices
+   * If frame index mapping exists, uses it to map original frame indices to processed frame indices.
+   * If interpolation is enabled, fills gaps with interpolated frames.
    */
   async getFrameRange(videoId: string, startFrame: number, endFrame: number): Promise<any[]> {
     if (!this.collection || !this.framesCollection) {
@@ -637,7 +660,21 @@ class MeshDataService {
         }
         
         if (firstProcessedFrame === undefined || lastProcessedFrame === undefined) {
-          // No valid frames in range
+          // No valid frames in range - try interpolation if enabled
+          if (this.interpolationEnabled && this.interpolationService.isReady()) {
+            logger.debug(`No source frames in range ${startFrame}-${endFrame}, attempting interpolation for video ${videoId}`);
+            
+            // Get source frames cache for this video
+            let sourceFrames = this.sourceFramesCache.get(videoId);
+            if (!sourceFrames) {
+              sourceFrames = await this.buildSourceFramesCache(videoId);
+              this.sourceFramesCache.set(videoId, sourceFrames);
+            }
+            
+            const interpolated = this.interpolationService.getFrameRange(startFrame, endFrame, sourceFrames);
+            return interpolated.map(f => this.convertInterpolatedFrameToDatabase(f));
+          }
+          
           return [];
         }
         
@@ -645,13 +682,30 @@ class MeshDataService {
         processedEndFrame = lastProcessedFrame;
       }
 
-      return await this.framesCollection
+      const frames = await this.framesCollection
         .find({
           videoId,
           frameNumber: { $gte: processedStartFrame, $lte: processedEndFrame }
         })
         .sort({ frameNumber: 1 })
         .toArray();
+
+      // If interpolation is enabled and we have gaps, fill them
+      if (this.interpolationEnabled && this.interpolationService.isReady() && frames.length < (endFrame - startFrame + 1)) {
+        logger.debug(`Frame range ${startFrame}-${endFrame} has gaps, attempting interpolation for video ${videoId}`);
+        
+        // Get source frames cache for this video
+        let sourceFrames = this.sourceFramesCache.get(videoId);
+        if (!sourceFrames) {
+          sourceFrames = await this.buildSourceFramesCache(videoId);
+          this.sourceFramesCache.set(videoId, sourceFrames);
+        }
+        
+        const interpolated = this.interpolationService.getFrameRange(startFrame, endFrame, sourceFrames);
+        return interpolated.map(f => this.convertInterpolatedFrameToDatabase(f));
+      }
+
+      return frames;
     } catch (err) {
       logger.error(`Failed to retrieve frame range ${videoId}/${startFrame}-${endFrame}`, { error: err });
       throw err;
@@ -769,6 +823,118 @@ class MeshDataService {
   setSmoothingParameters(processNoise: number, measurementNoise: number): void {
     kalmanSmoothingService.setParameters(processNoise, measurementNoise);
     logger.info(`Kalman parameters updated: processNoise=${processNoise}, measurementNoise=${measurementNoise}`);
+  }
+
+  /**
+   * Enable or disable frame interpolation
+   */
+  setInterpolationEnabled(enabled: boolean): void {
+    this.interpolationEnabled = enabled;
+    logger.info(`Frame interpolation ${enabled ? 'enabled' : 'disabled'}`);
+  }
+
+  /**
+   * Check if frame interpolation is enabled
+   */
+  isInterpolationEnabled(): boolean {
+    return this.interpolationEnabled;
+  }
+
+  /**
+   * Initialize interpolation service for a video
+   * 
+   * @param videoId - The video ID
+   * @param sourceFrameIndices - Array of frame indices that have pose data
+   * @param totalVideoFrames - Total number of frames in the video
+   */
+  async initializeInterpolation(
+    videoId: string,
+    sourceFrameIndices: number[],
+    totalVideoFrames: number
+  ): Promise<void> {
+    this.interpolationService.initialize(sourceFrameIndices, totalVideoFrames);
+    logger.info(`Interpolation initialized for video ${videoId}`, {
+      sourceFrames: sourceFrameIndices.length,
+      totalFrames: totalVideoFrames,
+      missingFrames: totalVideoFrames - sourceFrameIndices.length
+    });
+  }
+
+  /**
+   * Build a cache of source frames for interpolation
+   * 
+   * @param videoId - The video ID
+   * @returns Map of frame index to frame data
+   */
+  private async buildSourceFramesCache(videoId: string): Promise<Map<number, any>> {
+    const sourceFrames = new Map<number, any>();
+    
+    try {
+      const frames = await this.framesCollection!
+        .find({ videoId })
+        .sort({ frameNumber: 1 })
+        .toArray();
+
+      frames.forEach((frame: any) => {
+        sourceFrames.set(frame.frameNumber, frame);
+      });
+
+      logger.debug(`Built source frames cache for video ${videoId}`, {
+        frameCount: sourceFrames.size
+      });
+    } catch (err) {
+      logger.error(`Failed to build source frames cache for video ${videoId}`, { error: err });
+    }
+
+    return sourceFrames;
+  }
+
+  /**
+   * Convert interpolated frame to database frame format
+   * 
+   * @param interpolatedFrame - The interpolated frame
+   * @returns Frame in database format
+   */
+  private convertInterpolatedFrameToDatabase(interpolatedFrame: any): any {
+    return {
+      videoId: '', // Will be set by caller
+      frameNumber: interpolatedFrame.frameIndex,
+      timestamp: interpolatedFrame.timestamp,
+      keypoints: interpolatedFrame.keypoints,
+      skeleton: interpolatedFrame.skeleton,
+      has3d: false,
+      jointAngles3d: {},
+      mesh_vertices_data: interpolatedFrame.mesh_vertices_data,
+      mesh_faces_data: interpolatedFrame.mesh_faces_data,
+      cameraTranslation: interpolatedFrame.cameraTranslation,
+      interpolated: interpolatedFrame.interpolated,
+      createdAt: new Date()
+    };
+  }
+
+  /**
+   * Get interpolation statistics
+   */
+  getInterpolationStatistics(): any {
+    return this.interpolationService.getStatistics();
+  }
+
+  /**
+   * Clear interpolation cache
+   */
+  clearInterpolationCache(): void {
+    this.interpolationService.clearCache();
+    this.sourceFramesCache.clear();
+    logger.info('Interpolation cache cleared');
+  }
+
+  /**
+   * Reset interpolation service
+   */
+  resetInterpolation(): void {
+    this.interpolationService.reset();
+    this.sourceFramesCache.clear();
+    logger.info('Interpolation service reset');
   }
 }
 

@@ -149,7 +149,8 @@ export function PoseOverlayViewer({
     ? rightScreen.mesh.frames[Math.floor(rightSceneFrame)]
     : null;
 
-  // Playback animation loop - advances independent scene frames
+  // Sync playback to video element's timeupdate event
+  // This ensures mesh frames stay perfectly synchronized with video playback
   useEffect(() => {
     if (!isPlaying) return;
 
@@ -158,45 +159,38 @@ export function PoseOverlayViewer({
 
     if (maxLeftFrames === 0 && maxRightFrames === 0) return;
 
-    let lastFrameTime = performance.now();
-    let animationFrameId: number;
+    // Find video element in the DOM
+    const videoElement = document.querySelector('video') as HTMLVideoElement | null;
+    if (!videoElement) return;
 
-    const animate = (currentTime: number) => {
-      const deltaTime = currentTime - lastFrameTime;
+    const handleTimeUpdate = () => {
+      const videoTimeInSeconds = videoElement.currentTime;
       const fps = 30; // Default FPS
-      const frameAdvanceTime = (1000 / fps) / playbackSpeed; // Time per frame in ms
+      const newFrameIndex = Math.floor(videoTimeInSeconds * fps);
 
-      if (deltaTime >= frameAdvanceTime) {
-        // Advance left scene frame
-        if (maxLeftFrames > 0) {
-          const nextLeftFrame = leftSceneFrame + 1;
-          if (nextLeftFrame < maxLeftFrames) {
-            onLeftSceneFrameChange(nextLeftFrame);
-          } else {
-            onLeftSceneFrameChange(0); // Loop back
-          }
+      // Update left scene frame
+      if (maxLeftFrames > 0) {
+        const clampedFrame = Math.min(newFrameIndex, maxLeftFrames - 1);
+        if (clampedFrame !== leftSceneFrame) {
+          onLeftSceneFrameChange(clampedFrame);
         }
-
-        // Advance right scene frame
-        if (maxRightFrames > 0) {
-          const nextRightFrame = rightSceneFrame + 1;
-          if (nextRightFrame < maxRightFrames) {
-            onRightSceneFrameChange(nextRightFrame);
-          } else {
-            onRightSceneFrameChange(0); // Loop back
-          }
-        }
-
-        lastFrameTime = currentTime;
       }
 
-      animationFrameId = requestAnimationFrame(animate);
+      // Update right scene frame
+      if (maxRightFrames > 0) {
+        const clampedFrame = Math.min(newFrameIndex, maxRightFrames - 1);
+        if (clampedFrame !== rightSceneFrame) {
+          onRightSceneFrameChange(clampedFrame);
+        }
+      }
     };
 
-    animationFrameId = requestAnimationFrame(animate);
+    videoElement.addEventListener('timeupdate', handleTimeUpdate);
 
-    return () => cancelAnimationFrame(animationFrameId);
-  }, [isPlaying, leftSceneFrame, rightSceneFrame, playbackSpeed, onLeftSceneFrameChange, onRightSceneFrameChange, leftScreen.mesh, rightScreen.mesh]);
+    return () => {
+      videoElement.removeEventListener('timeupdate', handleTimeUpdate);
+    };
+  }, [isPlaying, leftSceneFrame, rightSceneFrame, onLeftSceneFrameChange, onRightSceneFrameChange, leftScreen.mesh, rightScreen.mesh]);
 
   // Keyboard shortcuts
   useEffect(() => {

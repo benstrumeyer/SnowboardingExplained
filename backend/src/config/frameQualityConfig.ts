@@ -33,18 +33,23 @@ interface FrameQualityConfig {
 
 const config: FrameQualityConfig = {
   // Confidence filtering
-  MIN_CONFIDENCE: parseFloat(process.env.FRAME_QUALITY_MIN_CONFIDENCE ?? '0.6'),
+  // Lowered from 0.6 to 0.3 to keep more frames during playback
+  // Only filter out frames with very low confidence (< 30%)
+  MIN_CONFIDENCE: parseFloat(process.env.FRAME_QUALITY_MIN_CONFIDENCE ?? '0.3'),
 
   // Off-screen detection
   BOUNDARY_THRESHOLD: parseFloat(process.env.FRAME_QUALITY_BOUNDARY_THRESHOLD ?? '0.05'),
-  OFF_SCREEN_CONFIDENCE: parseFloat(process.env.FRAME_QUALITY_OFF_SCREEN_CONFIDENCE ?? '0.3'),
+  // Lowered from 0.3 to 0.15 - only filter if most keypoints are off-screen
+  OFF_SCREEN_CONFIDENCE: parseFloat(process.env.FRAME_QUALITY_OFF_SCREEN_CONFIDENCE ?? '0.15'),
 
   // Outlier detection
-  OUTLIER_DEVIATION_THRESHOLD: parseFloat(process.env.FRAME_QUALITY_OUTLIER_DEVIATION_THRESHOLD ?? '0.3'),
+  // Increased from 0.3 to 0.5 - only filter extreme outliers
+  OUTLIER_DEVIATION_THRESHOLD: parseFloat(process.env.FRAME_QUALITY_OUTLIER_DEVIATION_THRESHOLD ?? '0.5'),
   TREND_WINDOW_SIZE: parseInt(process.env.FRAME_QUALITY_TREND_WINDOW_SIZE ?? '5', 10),
 
   // Interpolation
-  MAX_INTERPOLATION_GAP: parseInt(process.env.FRAME_QUALITY_MAX_INTERPOLATION_GAP ?? '10', 10),
+  // Increased from 10 to 20 - allow interpolation across larger gaps
+  MAX_INTERPOLATION_GAP: parseInt(process.env.FRAME_QUALITY_MAX_INTERPOLATION_GAP ?? '20', 10),
 
   // Logging
   DEBUG_MODE: process.env.FRAME_QUALITY_DEBUG_MODE === 'true'

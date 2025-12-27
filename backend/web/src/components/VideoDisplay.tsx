@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, forwardRef } from 'react';
 import '../styles/VideoDisplay.css';
 
 interface VideoDisplayProps {
@@ -9,13 +9,13 @@ interface VideoDisplayProps {
   fps?: number;
 }
 
-export const VideoDisplay: React.FC<VideoDisplayProps> = ({
+export const VideoDisplay = forwardRef<HTMLVideoElement, VideoDisplayProps>(({
   videoUrl,
   currentFrame,
   totalFrames,
   isPlaying,
   fps = 30,
-}) => {
+}, ref) => {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   // Sync video playback with frame position
@@ -44,6 +44,15 @@ export const VideoDisplay: React.FC<VideoDisplayProps> = ({
     }
   }, [isPlaying]);
 
+  // Forward ref to parent
+  useEffect(() => {
+    if (typeof ref === 'function') {
+      ref(videoRef.current);
+    } else if (ref) {
+      ref.current = videoRef.current;
+    }
+  }, [ref]);
+
   return (
     <div className="video-display-container">
       <video
@@ -58,4 +67,6 @@ export const VideoDisplay: React.FC<VideoDisplayProps> = ({
       </div>
     </div>
   );
-};
+});
+
+VideoDisplay.displayName = 'VideoDisplay';

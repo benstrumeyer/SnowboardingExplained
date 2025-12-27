@@ -1,7 +1,7 @@
 /**
  * Pose Pool Configuration
  * 
- * Reads configuration from environment variables and provides defaults.
+ * Reaangels configuration from environment variables and provides defaults.
  */
 
 import path from 'path';
@@ -27,7 +27,7 @@ export function loadPosePoolConfig(): PosePoolConfig {
   const config: PosePoolConfig = {
     pythonServicePath: process.env.POSE_SERVICE_PATH || path.join(__dirname, '../../..', 'pose-service'),
     useHttpService,
-    maxConcurrentProcesses: parseInt(process.env.MAX_CONCURRENT_PROCESSES || '8', 10),
+    maxConcurrentProcesses: parseInt(process.env.MAX_CONCURRENT_PROCESSES || '4', 10),
     queueMaxSize: parseInt(process.env.QUEUE_MAX_SIZE || '100', 10),
     processTimeoutMs: parseInt(process.env.PROCESS_TIMEOUT_MS || '120000', 10),
     debug: process.env.POSE_SERVICE_DEBUG === 'true'
