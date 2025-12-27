@@ -10,6 +10,7 @@ import logger from '../logger';
 
 export interface PosePoolConfig {
   pythonServicePath: string;
+  useHttpService: boolean;
   maxConcurrentProcesses: number;
   queueMaxSize: number;
   processTimeoutMs: number;
@@ -20,8 +21,12 @@ export interface PosePoolConfig {
  * Load and validate pose pool configuration from environment variables.
  */
 export function loadPosePoolConfig(): PosePoolConfig {
+  // Check if using HTTP service instead of process spawning
+  const useHttpService = process.env.USE_HTTP_POSE_SERVICE === 'true';
+
   const config: PosePoolConfig = {
     pythonServicePath: process.env.POSE_SERVICE_PATH || path.join(__dirname, '../../..', 'pose-service'),
+    useHttpService,
     maxConcurrentProcesses: parseInt(process.env.MAX_CONCURRENT_PROCESSES || '2', 10),
     queueMaxSize: parseInt(process.env.QUEUE_MAX_SIZE || '100', 10),
     processTimeoutMs: parseInt(process.env.PROCESS_TIMEOUT_MS || '120000', 10),
@@ -39,6 +44,22 @@ export function loadPosePoolConfig(): PosePoolConfig {
  */
 function validatePosePoolConfig(config: PosePoolConfig): void {
   logger.info('Validating pose pool configuration...');
+
+  // If using HTTP service, skip local file checks
+  if (config.useHttpService) {
+    logger.info('Using HTTP service mode - skipping local file validation');
+    logger.info('Pose pool configuration loaded', {
+      mode: 'HTTP',
+      maxConcurrentProcesses: config.maxConcurrentProcesses,
+      queueMaxSize: config.queueMaxSize,
+      processTimeoutMs: config.processTimeoutMs,
+      debug: config.debug
+    });
+    return;
+  }
+
+  // Local process mode validation
+  logger.info('Using local process mode');
 
   // Check Python service path
   if (!fs.existsSync(config.pythonServicePath)) {
@@ -112,6 +133,7 @@ function validatePosePoolConfig(config: PosePoolConfig): void {
 
   // Log final configuration
   logger.info('Pose pool configuration loaded', {
+    mode: 'Process',
     pythonServicePath: config.pythonServicePath,
     maxConcurrentProcesses: config.maxConcurrentProcesses,
     queueMaxSize: config.queueMaxSize,

@@ -338,11 +338,6 @@ app.use('/api', referenceLibraryRouter);
 app.use('/api', frameDataRouter);
 app.use('/api', smoothingControlRouter);
 
-// Mount pose detection endpoints (requires pool manager)
-if (poolManager) {
-  app.use('/api/pose', createPoseRouter(poolManager));
-}
-
 // Chunked Video Upload Endpoints
 const chunksDir = path.join(os.tmpdir(), 'video-chunks');
 if (!fs.existsSync(chunksDir)) {
@@ -472,46 +467,163 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
       chunksAssembled: totalChunks
     });
 
-    // Trigger pose extraction asynchronously
-    (async () => {
-      try {
-        logger.info(`Starting mesh-aligned frame extraction for ${videoId}`);
-        
-        // Extract frames aligned with mesh indices
-        const extractionResult = await VideoExtractionService.extractFramesAtMeshIndices(videoPath, videoId);
-        logger.info(`Mesh-aligned frame extraction completed for ${videoId}`, {
-          extractedFrames: extractionResult.extractedFrames,
-          meshAligned: extractionResult.meshAligned
-        });
+    // Extract frames and process with pose detection (same as direct upload)
+    let frameResult;
+    try {
+      frameResult = await FrameExtractionService.extractFrames(videoPath, videoId);
+      logger.info(`Extracted ${frameResult.frameCount} frames`);
+    } catch (err: any) {
+      logger.error(`Frame extraction failed for ${videoId}:`, err);
+      return res.status(400).json({ 
+        error: 'Failed to extract frames from video. The file may be corrupted or in an unsupported format.',
+        details: err.message 
+      });
+    }
 
-        // Get pose data for each frame from the pose service
-        const poseFrames: any[] = [];
-        const cachedFrames = FrameExtractionService.getCachedFrames(videoId);
-        
-        if (cachedFrames) {
-          for (let i = 0; i < cachedFrames.frameCount; i++) {
-            const frame = cachedFrames.frames[i];
-            if (frame) {
-              try {
-                const imageBase64 = FrameExtractionService.getFrameAsBase64(frame.imagePath);
-                const poseResult = await detectPoseHybrid(imageBase64);
-                poseFrames.push({
-                  frameNumber: i,
-                  timestamp: frame.timestamp,
-                  pose: poseResult
-                });
-              } catch (err) {
-                logger.warn(`Failed to extract pose for frame ${i}:`, err);
-              }
-            }
-          }
+    // Extract pose data for all frames using the process pool
+    const meshSequence: any[] = [];
+    console.log(`[FINALIZE] Starting pose extraction for ${frameResult.frameCount} frames`);
+    
+    // Prepare frames for pool processing
+    const framesToProcess: any[] = [];
+    for (let i = 0; i < frameResult.frameCount; i++) {
+      const frame = frameResult.frames[i];
+      if (frame) {
+        try {
+          const imageBase64 = FrameExtractionService.getFrameAsBase64(frame.imagePath);
+          framesToProcess.push({
+            frameNumber: i,
+            imageBase64: imageBase64,
+            timestamp: frame.timestamp
+          });
+        } catch (err) {
+          console.error(`[FINALIZE] Error reading frame ${i}:`, err);
+          logger.warn(`Failed to read frame ${i}:`, err);
         }
-
-        logger.info(`Pose extraction complete for ${videoId}: ${poseFrames.length} frames with pose data`);
-      } catch (err) {
-        logger.error(`Mesh-aligned frame extraction failed for ${videoId}:`, err);
       }
-    })();
+    }
+    
+    console.log(`[FINALIZE] Prepared ${framesToProcess.length} frames for pool processing`);
+    console.log(`[FINALIZE] poolManager check: poolManager=${poolManager ? 'YES' : 'NO'}, framesToProcess.length=${framesToProcess.length}`);
+    
+    // Process frames through the pool (each frame gets its own process)
+    // This aligns with the architecture: ProcessPoolManager queues individual frame requests
+    if (poolManager && framesToProcess.length > 0) {
+      console.log(`[FINALIZE] ✓ poolManager is initialized, submitting ${framesToProcess.length} frames to process pool`);
+      
+      // Process frames sequentially to avoid queue overflow
+      // The pool will handle concurrency internally based on maxConcurrentProcesses
+      for (let i = 0; i < framesToProcess.length; i++) {
+        const frameData = framesToProcess[i];
+        try {
+          console.log(`[FINALIZE] Submitting frame ${i}/${framesToProcess.length} to pool`);
+          const results = await poolManager.processRequest([frameData]);  // Send one frame per request
+          
+          if (results.length > 0 && !results[0].error) {
+            meshSequence.push({
+              frameNumber: frameData.frameNumber,
+              timestamp: frameData.timestamp,
+              keypoints: results[0].keypoints,
+              has3d: results[0].has3d,
+              jointAngles3d: results[0].jointAngles3d,
+              mesh_vertices_data: results[0].mesh_vertices_data,
+              mesh_faces_data: results[0].mesh_faces_data,
+              cameraTranslation: results[0].cameraTranslation
+            });
+            
+            if ((i + 1) % 10 === 0) {
+              console.log(`[FINALIZE] Processed ${i + 1}/${framesToProcess.length} frames`);
+            }
+          } else {
+            console.warn(`[FINALIZE] Frame ${frameData.frameNumber} had error:`, results[0]?.error);
+          }
+        } catch (err) {
+          console.error(`[FINALIZE] Error processing frame ${frameData.frameNumber}:`, err);
+          logger.warn(`Failed to extract pose for frame ${frameData.frameNumber}:`, err);
+        }
+      }
+      
+      console.log(`[FINALIZE] Successfully processed ${meshSequence.length}/${framesToProcess.length} frames with pose data`);
+    } else {
+      // No pool manager, fall back to sequential processing
+      console.log(`[FINALIZE] ✗ poolManager is ${poolManager ? 'initialized' : 'NULL'}, framesToProcess.length=${framesToProcess.length}`);
+      console.log(`[FINALIZE] Falling back to sequential processing without pool`);
+      for (let i = 0; i < framesToProcess.length; i++) {
+        const frameData = framesToProcess[i];
+        try {
+          console.log(`[FINALIZE] Processing frame ${frameData.frameNumber}/${framesToProcess.length}`);
+          const poseResult = await detectPoseHybrid(frameData.imageBase64, frameData.frameNumber);
+          
+          meshSequence.push({
+            frameNumber: frameData.frameNumber,
+            timestamp: frameData.timestamp,
+            keypoints: poseResult.keypoints,
+            has3d: poseResult.has3d,
+            jointAngles3d: poseResult.jointAngles3d,
+            mesh_vertices_data: poseResult.mesh_vertices_data,
+            mesh_faces_data: poseResult.mesh_faces_data,
+            cameraTranslation: poseResult.cameraTranslation
+          });
+        } catch (err) {
+          console.error(`[FINALIZE] Error processing frame ${frameData.frameNumber}:`, err);
+          logger.warn(`Failed to extract pose for frame ${frameData.frameNumber}:`, err);
+        }
+      }
+    }
+
+    logger.info(`Pose extraction complete: ${meshSequence.length} frames with pose data`);
+    
+    // Store mesh data in MongoDB for later retrieval
+    const meshData = {
+      videoId,
+      role,
+      fps: frameResult.fps,
+      videoDuration: frameResult.videoDuration,
+      frameCount: meshSequence.length,
+      frames: meshSequence.map(frame => ({
+        frameNumber: frame.frameNumber,
+        timestamp: frame.timestamp,
+        keypoints: frame.keypoints,
+        skeleton: {
+          vertices: frame.mesh_vertices_data || [],
+          faces: frame.mesh_faces_data || [],
+          has3d: frame.has3d,
+          jointAngles3d: frame.jointAngles3d,
+          cameraTranslation: frame.cameraTranslation
+        }
+      }))
+    };
+
+    try {
+      // Connect to MongoDB before saving
+      console.log(`[FINALIZE] Connecting to MongoDB...`);
+      await meshDataService.connect();
+      console.log(`[FINALIZE] ✓ Connected to MongoDB`);
+      
+      // Save with new unified structure
+      console.log(`[FINALIZE] About to save mesh data for ${videoId}`);
+      console.log(`[FINALIZE] Mesh data: ${meshData.frameCount} frames, fps: ${meshData.fps}`);
+      
+      await meshDataService.saveMeshData({
+        videoId,
+        videoUrl: `http://localhost:3001/videos/${videoId}`,
+        fps: meshData.fps,
+        videoDuration: meshData.videoDuration,
+        frameCount: meshData.frameCount,
+        totalFrames: meshData.frameCount,
+        frames: meshData.frames,
+        role: role as 'rider' | 'coach'
+      });
+      console.log(`[FINALIZE] ✓ Stored mesh data in MongoDB for ${videoId}`);
+      console.log(`[FINALIZE] Saved ${meshData.frames.length} frames to MongoDB`);
+    } catch (err) {
+      logger.error(`Failed to save mesh data for ${videoId}:`, err);
+      console.error(`[FINALIZE] Error saving mesh data:`, err);
+    }
+
+    // Note: Pose extraction happens in the main upload handler (/api/upload-video-with-pose)
+    // The finalize-upload endpoint is only for chunked uploads that are then processed
+    // by the main upload handler. Do not duplicate pose extraction here.
 
     res.status(200).json({
       success: true,
@@ -597,28 +709,98 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
       });
     }
 
-    // Extract pose data for all frames
+    // Extract pose data for all frames using the process pool
     const meshSequence: any[] = [];
     console.log(`[UPLOAD] Starting pose extraction for ${frameResult.frameCount} frames`);
+    console.log(`[UPLOAD] Frames array length: ${frameResult.frames.length}`);
+    console.log(`[UPLOAD] First 3 frames:`, frameResult.frames.slice(0, 3).map(f => ({ frameNumber: f.frameNumber, imagePath: f.imagePath.split('/').pop() })));
     
+    // Prepare frames for pool processing
+    const framesToProcess: any[] = [];
     for (let i = 0; i < frameResult.frameCount; i++) {
       const frame = frameResult.frames[i];
       if (frame) {
         try {
-          console.log(`[UPLOAD] Processing frame ${i}/${frameResult.frameCount}`);
           const imageBase64 = FrameExtractionService.getFrameAsBase64(frame.imagePath);
-          console.log(`[UPLOAD] Frame ${i} base64 length: ${imageBase64.length}`);
-          
-          const poseResult = await detectPoseHybrid(imageBase64, i);
-          console.log(`[UPLOAD] Frame ${i} pose result:`, {
-            has3d: poseResult.has3d,
-            keypointCount: poseResult.keypointCount,
-            error: poseResult.error
+          framesToProcess.push({
+            frameNumber: i,
+            imageBase64: imageBase64,
+            timestamp: frame.timestamp
           });
+        } catch (err) {
+          console.error(`[UPLOAD] Error reading frame ${i}:`, err);
+          logger.warn(`Failed to read frame ${i}:`, err);
+        }
+      }
+    }
+    
+    console.log(`[UPLOAD] Prepared ${framesToProcess.length} frames for pool processing`);
+    
+    // ARCHITECTURE: Process frames through the pool with one frame per process request
+    // WHY: This design ensures true parallelization and resource management:
+    // 1. Each frame gets its own isolated Python process (memory safety, crash isolation)
+    // 2. ProcessPoolManager queues individual requests and limits concurrent processes
+    // 3. Queue prevents resource exhaustion (e.g., max 2 processes running, rest queued)
+    // 4. When a process finishes, the pool automatically feeds it the next queued frame
+    // 5. This is more performant than batching all frames into one process because:
+    //    - Multiple frames process in parallel (if maxConcurrentProcesses > 1)
+    //    - One frame's crash doesn't affect others
+    //    - Memory is freed per-frame instead of holding all frames in one process
+    // ALTERNATIVE (not used): Send all frames to one process would be simpler but:
+    //    - No true parallelization (all frames sequential in one process)
+    //    - One frame's crash kills the entire batch
+    //    - Memory usage spikes for large videos
+    console.log(`[UPLOAD] poolManager check: poolManager=${poolManager ? 'YES' : 'NO'}, framesToProcess.length=${framesToProcess.length}`);
+    
+    if (poolManager && framesToProcess.length > 0) {
+      console.log(`[UPLOAD] ✓ poolManager is initialized, submitting ${framesToProcess.length} frames to process pool`);
+      
+      // Process frames sequentially to avoid queue overflow
+      // The pool will handle concurrency internally based on maxConcurrentProcesses
+      for (let i = 0; i < framesToProcess.length; i++) {
+        const frameData = framesToProcess[i];
+        try {
+          console.log(`[UPLOAD] Submitting frame ${i}/${framesToProcess.length} to pool`);
+          const results = await poolManager.processRequest([frameData]);  // Send one frame per request
+          
+          if (results.length > 0 && !results[0].error) {
+            meshSequence.push({
+              frameNumber: frameData.frameNumber,
+              timestamp: frameData.timestamp,
+              keypoints: results[0].keypoints,
+              has3d: results[0].has3d,
+              jointAngles3d: results[0].jointAngles3d,
+              mesh_vertices_data: results[0].mesh_vertices_data,
+              mesh_faces_data: results[0].mesh_faces_data,
+              cameraTranslation: results[0].cameraTranslation
+            });
+            
+            if ((i + 1) % 10 === 0) {
+              console.log(`[UPLOAD] Processed ${i + 1}/${framesToProcess.length} frames`);
+            }
+          } else {
+            console.warn(`[UPLOAD] Frame ${frameData.frameNumber} had error:`, results[0]?.error);
+          }
+        } catch (err) {
+          console.error(`[UPLOAD] Error processing frame ${frameData.frameNumber}:`, err);
+          logger.warn(`Failed to extract pose for frame ${frameData.frameNumber}:`, err);
+        }
+      }
+      
+      console.log(`[UPLOAD] Successfully processed ${meshSequence.length}/${framesToProcess.length} frames with pose data`);
+    } else {
+      // No pool manager, fall back to sequential processing
+      console.log(`[UPLOAD] ✗ poolManager is ${poolManager ? 'initialized' : 'NULL'}, framesToProcess.length=${framesToProcess.length}`);
+      console.log(`[UPLOAD] Falling back to sequential processing without pool`);
+      for (let i = 0; i < framesToProcess.length; i++) {
+        const frameData = framesToProcess[i];
+        try {
+          console.log(`[UPLOAD] Processing frame ${frameData.frameNumber}/${framesToProcess.length}`);
+          const poseResult = await detectPoseHybrid(frameData.imageBase64, frameData.frameNumber);
           
           meshSequence.push({
-            frameNumber: i,
-            timestamp: frame.timestamp,
+            frameNumber: frameData.frameNumber,
+            timestamp: frameData.timestamp,
             keypoints: poseResult.keypoints,
             has3d: poseResult.has3d,
             jointAngles3d: poseResult.jointAngles3d,
@@ -627,8 +809,8 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
             cameraTranslation: poseResult.cameraTranslation
           });
         } catch (err) {
-          console.error(`[UPLOAD] Error processing frame ${i}:`, err);
-          logger.warn(`Failed to extract pose for frame ${i}:`, err);
+          console.error(`[UPLOAD] Error processing frame ${frameData.frameNumber}:`, err);
+          logger.warn(`Failed to extract pose for frame ${frameData.frameNumber}:`, err);
         }
       }
     }
@@ -2527,6 +2709,9 @@ async function startServer() {
     // Initialize process pool manager for pose detection
     const posePoolConfig = loadPosePoolConfig();
     poolManager = new ProcessPoolManager(posePoolConfig);
+    
+    // Mount pose detection endpoints now that pool manager is initialized
+    app.use('/api/pose', createPoseRouter(poolManager));
     
     // Initialize database connection
     const { connectToDatabase } = await import('./db/connection');
