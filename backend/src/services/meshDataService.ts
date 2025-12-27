@@ -152,8 +152,8 @@ class MeshDataService {
   /**
    * Apply frame quality filtering to frames
    * 
-   * Analyzes frame quality, removes low-quality frames, interpolates outliers,
-   * and creates frame index mapping for synchronization.
+   * DISABLED: Frame quality filtering is now handled by PHALP
+   * This method is kept for backward compatibility but does nothing
    */
   private async applyFrameQualityFiltering(
     videoId: string,
@@ -164,75 +164,12 @@ class MeshDataService {
     frameIndexMapping: any;
     qualityStats: any;
   }> {
-    try {
-      console.log(`[MESH-SERVICE] 🔍 Applying frame quality filtering for ${videoId}`);
-
-      // Initialize analyzer and filter service
-      const analyzer = new FrameQualityAnalyzer(videoDimensions, {
-        minConfidence: frameQualityConfig.MIN_CONFIDENCE,
-        boundaryThreshold: frameQualityConfig.BOUNDARY_THRESHOLD,
-        offScreenConfidence: frameQualityConfig.OFF_SCREEN_CONFIDENCE,
-        outlierDeviationThreshold: frameQualityConfig.OUTLIER_DEVIATION_THRESHOLD,
-        trendWindowSize: frameQualityConfig.TREND_WINDOW_SIZE
-      });
-
-      const filterService = new FrameFilterService({
-        maxInterpolationGap: frameQualityConfig.MAX_INTERPOLATION_GAP,
-        debugMode: frameQualityConfig.DEBUG_MODE
-      });
-
-      // Step 1: Analyze frame quality
-      console.log(`[MESH-SERVICE] 📊 Analyzing quality of ${frames.length} frames`);
-      const qualities = analyzer.analyzeSequence(
-        frames.map(f => ({ keypoints: f.keypoints || [] }))
-      );
-
-      // Step 2: Filter and interpolate
-      console.log(`[MESH-SERVICE] 🔧 Filtering and interpolating frames`);
-      const filtered = filterService.filterAndInterpolate(frames, qualities);
-
-      // Step 3: Create frame index mapping
-      console.log(`[MESH-SERVICE] 🗺️  Creating frame index mapping`);
-      const mapping = FrameIndexMapper.createMapping(
-        videoId,
-        frames.length,
-        filtered.removedFrames,
-        filtered.interpolatedFrames
-      );
-
-      const stats = FrameIndexMapper.getStatistics(mapping);
-
-      console.log(`[MESH-SERVICE] ✅ Frame quality filtering complete:`, {
-        originalCount: filtered.statistics.originalCount,
-        processedCount: filtered.statistics.processedCount,
-        removedCount: filtered.statistics.removedCount,
-        interpolatedCount: filtered.statistics.interpolatedCount,
-        removalPercentage: stats.removalPercentage,
-        interpolationPercentage: stats.interpolationPercentage
-      });
-
-      return {
-        filteredFrames: filtered.frames,
-        frameIndexMapping: FrameIndexMapper.serialize(mapping),
-        qualityStats: {
-          originalCount: filtered.statistics.originalCount,
-          processedCount: filtered.statistics.processedCount,
-          removedCount: filtered.statistics.removedCount,
-          interpolatedCount: filtered.statistics.interpolatedCount,
-          removalPercentage: stats.removalPercentage,
-          interpolationPercentage: stats.interpolationPercentage
-        }
-      };
-    } catch (err) {
-      logger.error(`Failed to apply frame quality filtering for ${videoId}`, { error: err });
-      // Don't throw - continue with unfiltered frames
-      console.warn(`[MESH-SERVICE] ⚠️  Frame quality filtering failed, continuing with unfiltered frames`);
-      return {
-        filteredFrames: frames,
-        frameIndexMapping: undefined,
-        qualityStats: undefined
-      };
-    }
+    // Return frames as-is without any filtering
+    return {
+      filteredFrames: frames,
+      frameIndexMapping: undefined,
+      qualityStats: undefined
+    };
   }
 
   async saveMeshData(meshData: Omit<MeshData, '_id' | 'createdAt' | 'updatedAt'>): Promise<string> {
@@ -241,150 +178,64 @@ class MeshDataService {
     }
 
     try {
-      console.log(`[MESH-SERVICE] ========== SAVE MESH DATA START ==========`);
-      console.log(`[MESH-SERVICE] Saving mesh data for ${meshData.videoId}`);
-      console.log(`[MESH-SERVICE] Data details:`, {
-        videoId: meshData.videoId,
-        frameCount: meshData.frames?.length || 0,
-        fps: meshData.fps,
-        videoDuration: meshData.videoDuration,
-        role: meshData.role
-      });
-
-      // CRITICAL: Disable smoothing during save to avoid data loss
-      const wasSmoothing = this.smoothingEnabled;
-      this.smoothingEnabled = false;
-
-      // CRITICAL: Always delete old data for this videoId first to ensure fresh data
-      console.log(`%c[MESH-SERVICE] 🗑️  CRITICAL: Deleting ALL old data for ${meshData.videoId}`, 'color: #FF0000; font-weight: bold; font-size: 14px;');
-      
-      // Delete metadata
-      const metaDeleteResult = await this.collection.deleteOne({ videoId: meshData.videoId });
-      console.log(`%c[MESH-SERVICE] ✓ Deleted ${metaDeleteResult.deletedCount} old metadata document(s)`, 'color: #FF0000;');
-      
-      // Delete ALL frames for this videoId - this is critical!
-      const frameDeleteResult = await this.framesCollection.deleteMany({ videoId: meshData.videoId });
-      console.log(`%c[MESH-SERVICE] ✓ Deleted ${frameDeleteResult.deletedCount} old frame document(s)`, 'color: #FF0000; font-weight: bold;');
-      
-      // Verify deletion worked
-      const verifyCount = await this.framesCollection.countDocuments({ videoId: meshData.videoId });
-      if (verifyCount > 0) {
-        console.error(`%c[MESH-SERVICE] ❌ CRITICAL ERROR: ${verifyCount} frames still exist after deletion!`, 'color: #FF0000; font-weight: bold; font-size: 14px;');
-        this.smoothingEnabled = wasSmoothing; // Restore smoothing state
-        throw new Error(`Failed to delete old frames for ${meshData.videoId}: ${verifyCount} frames still exist`);
-      }
-      console.log(`%c[MESH-SERVICE] ✅ Verified: 0 frames remain for ${meshData.videoId}`, 'color: #00FF00; font-weight: bold;');
+      console.log(`%c[MESH-SERVICE] ========== SAVE MESH DATA START ==========`, 'color: #FF6B6B; font-weight: bold; font-size: 14px;');
+      console.log(`%c[MESH-SERVICE] Saving mesh data for ${meshData.videoId}`, 'color: #FF6B6B; font-weight: bold;');
+      console.log(`%c[MESH-SERVICE] 📥 INPUT: ${meshData.frames?.length || 0} frames`, 'color: #FF6B6B; font-weight: bold;');
 
       const now = new Date();
       const frames = meshData.frames || [];
 
-      // Apply frame quality filtering
-      const videoDimensions = { width: 1920, height: 1080 }; // Default, can be extracted from video metadata
-      const { filteredFrames, frameIndexMapping, qualityStats } = await this.applyFrameQualityFiltering(
-        meshData.videoId,
-        frames as any[],
-        videoDimensions
-      );
+      // Delete old data for this videoId
+      console.log(`%c[MESH-SERVICE] 🗑️  Deleting old data for ${meshData.videoId}`, 'color: #FF0000; font-weight: bold;');
+      await this.collection.deleteOne({ videoId: meshData.videoId });
+      await this.framesCollection.deleteMany({ videoId: meshData.videoId });
 
-      // Save metadata document (without frames)
+      // Save metadata
       const metadataDoc: MeshData = {
         ...meshData,
-        frames: [], // Don't store frames in metadata
-        frameCount: filteredFrames.length,
-        totalFrames: filteredFrames.length,
+        frames: [],
+        frameCount: frames.length,
+        totalFrames: frames.length,
         metadata: {
           ...meshData.metadata,
           uploadedAt: meshData.metadata?.uploadedAt || now,
           processingTime: meshData.metadata?.processingTime || 0,
-          extractionMethod: meshData.metadata?.extractionMethod || 'unknown',
-          frameIndexMapping,
-          qualityStats
+          extractionMethod: meshData.metadata?.extractionMethod || 'unknown'
         },
         createdAt: now,
         updatedAt: now
       };
 
-      console.log(`[MESH-SERVICE] Saving metadata document`);
-      await this.collection.updateOne(
-        { videoId: meshData.videoId },
-        { $set: metadataDoc },
-        { upsert: true }
-      );
-      console.log(`[MESH-SERVICE] ✓ Metadata saved`);
+      console.log(`%c[MESH-SERVICE] 💾 Saving metadata: frameCount=${frames.length}`, 'color: #FF6B6B; font-weight: bold;');
+      await this.collection.insertOne(metadataDoc);
 
-      // Save frames to dedicated collection
-      if (filteredFrames.length > 0) {
-        console.log(`%c[MESH-SERVICE] 💾 SAVING ${filteredFrames.length} frames for videoId: ${meshData.videoId}`, 'color: #FF6B6B; font-weight: bold;');
-        console.log(`%c[MESH-SERVICE] 📋 First frame structure BEFORE save:`, 'color: #FF6B6B;', {
+      // Save frames directly without any filtering
+      if (frames.length > 0) {
+        console.log(`%c[MESH-SERVICE] 💾 Saving ${frames.length} frames`, 'color: #FF6B6B; font-weight: bold;');
+        
+        const frameDocuments = frames.map((frame: any, index: number) => ({
           videoId: meshData.videoId,
-          frameNumber: (filteredFrames[0] as any).frameNumber,
-          timestamp: (filteredFrames[0] as any).timestamp,
-          keypointCount: (filteredFrames[0] as any).keypoints?.length || 0,
-          skeletonExists: !!(filteredFrames[0] as any).skeleton,
-          fullFrame: JSON.stringify(filteredFrames[0]).substring(0, 300)
-        });
-        
-        const frameDocuments = filteredFrames.map((frame: any, index: number) => {
-          const doc = {
-            videoId: meshData.videoId,
-            frameNumber: frame.frameNumber ?? index,
-            timestamp: frame.timestamp ?? 0,
-            keypoints: frame.keypoints || [],
-            skeleton: frame.skeleton || {},
-            has3d: frame.has3d || false,
-            jointAngles3d: frame.jointAngles3d || {},
-            mesh_vertices_data: frame.mesh_vertices_data || [],
-            mesh_faces_data: frame.mesh_faces_data || [],
-            cameraTranslation: frame.cameraTranslation || null,
-            interpolated: frame.interpolated || false,
-            createdAt: now
-          };
-          return doc;
-        });
+          frameNumber: frame.frameNumber ?? index,
+          timestamp: frame.timestamp ?? 0,
+          keypoints: frame.keypoints || [],
+          skeleton: frame.skeleton || {},
+          has3d: frame.has3d || false,
+          jointAngles3d: frame.jointAngles3d || {},
+          mesh_vertices_data: frame.mesh_vertices_data || [],
+          mesh_faces_data: frame.mesh_faces_data || [],
+          cameraTranslation: frame.cameraTranslation || null,
+          interpolated: false,
+          createdAt: now
+        }));
 
-        console.log(`%c[MESH-SERVICE] 📝 First frame document TO SAVE:`, 'color: #FF6B6B;', {
-          videoId: frameDocuments[0].videoId,
-          frameNumber: frameDocuments[0].frameNumber,
-          keypointCount: frameDocuments[0].keypoints?.length || 0,
-          fullDoc: JSON.stringify(frameDocuments[0]).substring(0, 300)
-        });
-
-        // Batch insert frames - use ordered: true to catch any issues
-        console.log(`%c[MESH-SERVICE] 📥 INSERTING ${frameDocuments.length} new frames`, 'color: #FF6B6B; font-weight: bold;');
-        try {
-          const insertResult = await this.framesCollection.insertMany(frameDocuments, { ordered: true });
-          console.log(`%c[MESH-SERVICE] ✅ Successfully inserted ${insertResult.insertedCount} frames`, 'color: #00FF00; font-weight: bold;');
-        } catch (err: any) {
-          // Log the error but don't fail - might be duplicate key errors
-          console.error(`%c[MESH-SERVICE] ⚠️  Insert error (may be duplicates):`, 'color: #FF6B6B;', err.message);
-          if (err.code !== 11000) {
-            this.smoothingEnabled = wasSmoothing; // Restore smoothing state
-            throw err;
-          }
-        }
-        
-        // Verify frames were actually saved
-        const savedCount = await this.framesCollection.countDocuments({ videoId: meshData.videoId });
-        console.log(`%c[MESH-SERVICE] 📊 Verification: ${savedCount} frames now in database for ${meshData.videoId}`, 'color: #00FF00; font-weight: bold;');
-        if (savedCount !== frameDocuments.length) {
-          console.warn(`%c[MESH-SERVICE] ⚠️  Expected ${frameDocuments.length} frames but found ${savedCount}`, 'color: #FFAA00;');
-        }
+        const result = await this.framesCollection.insertMany(frameDocuments, { ordered: false });
+        console.log(`%c[MESH-SERVICE] ✅ Inserted ${result.insertedCount} frames`, 'color: #00FF00; font-weight: bold;');
       }
 
-      // Restore smoothing state
-      this.smoothingEnabled = wasSmoothing;
-
-      console.log(`[MESH-SERVICE] ========== SAVE MESH DATA COMPLETE ==========`);
-      logger.info(`Saved mesh data for video ${meshData.videoId}`, {
-        videoId: meshData.videoId,
-        frameCount: frames.length,
-        fps: meshData.fps,
-        hasVideoUrl: !!meshData.videoUrl
-      });
-
+      console.log(`%c[MESH-SERVICE] ========== SAVE COMPLETE ==========`, 'color: #00FF00; font-weight: bold;');
       return meshData.videoId;
     } catch (err) {
-      console.error(`[MESH-SERVICE] ✗ Error saving mesh data for ${meshData.videoId}:`, err);
+      console.error(`%c[MESH-SERVICE] ✗ Error: ${err}`, 'color: #FF0000; font-weight: bold;');
       logger.error(`Failed to save mesh data for ${meshData.videoId}`, { error: err });
       throw err;
     }
@@ -524,8 +375,8 @@ class MeshDataService {
   /**
    * Get a single frame by videoId and frameNumber
    * 
-   * If frame index mapping exists, uses it to map original frame index to processed frame index.
-   * If interpolation is enabled and frame is missing, interpolates from adjacent frames.
+   * DISABLED: Frame index mapping and interpolation are now handled by PHALP
+   * Simply retrieves the frame as-is from the database
    */
   async getFrame(videoId: string, frameNumber: number): Promise<any | null> {
     if (!this.collection || !this.framesCollection) {
@@ -533,43 +384,8 @@ class MeshDataService {
     }
 
     try {
-      // Get metadata to check for frame index mapping and interpolation setup
-      const metadata = await this.collection.findOne({ videoId });
-      
-      let processedFrameNumber = frameNumber;
-      
-      // If frame index mapping exists, use it to map original to processed index
-      if (metadata?.metadata?.frameIndexMapping) {
-        const mapping = FrameIndexMapper.deserialize(metadata.metadata.frameIndexMapping);
-        const mappedIndex = FrameIndexMapper.getProcessedIndex(mapping, frameNumber);
-        
-        if (mappedIndex === undefined) {
-          // Frame was removed - try interpolation if enabled
-          if (this.interpolationEnabled && this.interpolationService.isReady()) {
-            logger.debug(`Frame ${frameNumber} was removed, attempting interpolation for video ${videoId}`);
-            
-            // Get source frames cache for this video
-            let sourceFrames = this.sourceFramesCache.get(videoId);
-            if (!sourceFrames) {
-              // Build source frames cache
-              sourceFrames = await this.buildSourceFramesCache(videoId);
-              this.sourceFramesCache.set(videoId, sourceFrames);
-            }
-            
-            const interpolated = this.interpolationService.getFrame(frameNumber, sourceFrames);
-            if (interpolated) {
-              return this.convertInterpolatedFrameToDatabase(interpolated);
-            }
-          }
-          
-          logger.debug(`Frame ${frameNumber} was removed during quality filtering for video ${videoId}`);
-          return null;
-        }
-        
-        processedFrameNumber = mappedIndex;
-      }
-
-      const frame = await this.framesCollection.findOne({ videoId, frameNumber: processedFrameNumber });
+      // Direct query - no frame index mapping or interpolation
+      const frame = await this.framesCollection.findOne({ videoId, frameNumber });
       
       // Apply Kalman smoothing directly to keypoints if enabled
       if (frame && this.smoothingEnabled && frame.keypoints && Array.isArray(frame.keypoints) && frame.keypoints.length > 0) {
@@ -626,8 +442,8 @@ class MeshDataService {
   /**
    * Get multiple frames by videoId and frame range
    * 
-   * If frame index mapping exists, uses it to map original frame indices to processed frame indices.
-   * If interpolation is enabled, fills gaps with interpolated frames.
+   * DISABLED: Frame index mapping and interpolation are now handled by PHALP
+   * Simply retrieves frames as-is from the database
    */
   async getFrameRange(videoId: string, startFrame: number, endFrame: number): Promise<any[]> {
     if (!this.collection || !this.framesCollection) {
@@ -635,75 +451,14 @@ class MeshDataService {
     }
 
     try {
-      // Get metadata to check for frame index mapping
-      const metadata = await this.collection.findOne({ videoId });
-      
-      let processedStartFrame = startFrame;
-      let processedEndFrame = endFrame;
-      
-      // If frame index mapping exists, use it to map original to processed indices
-      if (metadata?.metadata?.frameIndexMapping) {
-        const mapping = FrameIndexMapper.deserialize(metadata.metadata.frameIndexMapping);
-        
-        // Find the first and last valid processed frames in the range
-        let firstProcessedFrame: number | undefined;
-        let lastProcessedFrame: number | undefined;
-        
-        for (let i = startFrame; i <= endFrame; i++) {
-          const processedIndex = FrameIndexMapper.getProcessedIndex(mapping, i);
-          if (processedIndex !== undefined) {
-            if (firstProcessedFrame === undefined) {
-              firstProcessedFrame = processedIndex;
-            }
-            lastProcessedFrame = processedIndex;
-          }
-        }
-        
-        if (firstProcessedFrame === undefined || lastProcessedFrame === undefined) {
-          // No valid frames in range - try interpolation if enabled
-          if (this.interpolationEnabled && this.interpolationService.isReady()) {
-            logger.debug(`No source frames in range ${startFrame}-${endFrame}, attempting interpolation for video ${videoId}`);
-            
-            // Get source frames cache for this video
-            let sourceFrames = this.sourceFramesCache.get(videoId);
-            if (!sourceFrames) {
-              sourceFrames = await this.buildSourceFramesCache(videoId);
-              this.sourceFramesCache.set(videoId, sourceFrames);
-            }
-            
-            const interpolated = this.interpolationService.getFrameRange(startFrame, endFrame, sourceFrames);
-            return interpolated.map(f => this.convertInterpolatedFrameToDatabase(f));
-          }
-          
-          return [];
-        }
-        
-        processedStartFrame = firstProcessedFrame;
-        processedEndFrame = lastProcessedFrame;
-      }
-
+      // Direct query - no frame index mapping or interpolation
       const frames = await this.framesCollection
         .find({
           videoId,
-          frameNumber: { $gte: processedStartFrame, $lte: processedEndFrame }
+          frameNumber: { $gte: startFrame, $lte: endFrame }
         })
         .sort({ frameNumber: 1 })
         .toArray();
-
-      // If interpolation is enabled and we have gaps, fill them
-      if (this.interpolationEnabled && this.interpolationService.isReady() && frames.length < (endFrame - startFrame + 1)) {
-        logger.debug(`Frame range ${startFrame}-${endFrame} has gaps, attempting interpolation for video ${videoId}`);
-        
-        // Get source frames cache for this video
-        let sourceFrames = this.sourceFramesCache.get(videoId);
-        if (!sourceFrames) {
-          sourceFrames = await this.buildSourceFramesCache(videoId);
-          this.sourceFramesCache.set(videoId, sourceFrames);
-        }
-        
-        const interpolated = this.interpolationService.getFrameRange(startFrame, endFrame, sourceFrames);
-        return interpolated.map(f => this.convertInterpolatedFrameToDatabase(f));
-      }
 
       return frames;
     } catch (err) {

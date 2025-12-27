@@ -36,7 +36,7 @@ import frameDataRouter from '../api/frame-data';
 import smoothingControlRouter from '../api/smoothing-control';
 
 // Load environment variables from .env.local
-const envPath = path.join(__dirname, '../.env.local');
+const envPath = path.join(__dirname, '../../.env.local');
 console.log(`[STARTUP] Loading env from: ${envPath}`);
 console.log(`[STARTUP] Env file exists: ${fs.existsSync(envPath)}`);
 const envResult = dotenv.config({ path: envPath });
@@ -117,11 +117,15 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   fileFilter: (_req: any, file: any, cb: any) => {
-    const allowedMimes = ['video/mp4', 'video/quicktime', 'video/webm'];
-    if (allowedMimes.includes(file.mimetype)) {
+    const allowedMimes = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-quicktime', 'video/x-msvideo'];
+    const allowedExtensions = ['.mp4', '.mov', '.webm', '.avi'];
+    const ext = path.extname(file.originalname).toLowerCase();
+    
+    // Check both MIME type and file extension for flexibility
+    if (allowedMimes.includes(file.mimetype) || allowedExtensions.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only MP4, MOV, and WebM are allowed.'));
+      cb(new Error(`Invalid file type. Only MP4, MOV, and WebM are allowed. Got: ${file.mimetype} (${ext})`));
     }
   },
   limits: { fileSize: 2 * 1024 * 1024 * 1024 } // 2GB - supports high-quality 60 FPS videos
@@ -520,7 +524,20 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
           console.log(`[FINALIZE] Submitting frame ${i}/${framesToProcess.length} to pool`);
           const results = await poolManager.processRequest([frameData]);  // Send one frame per request
           
-          if (results.length > 0 && !results[0].error) {
+          console.log(`[FINALIZE] 🔍 Frame ${frameData.frameNumber} result:`, {
+            resultsLength: results.length,
+            hasError: results[0]?.error,
+            errorValue: results[0]?.error,
+            keypointCount: results[0]?.keypoints?.length || 0,
+            meshVerticesCount: results[0]?.mesh_vertices_data?.length || 0,
+            has3d: results[0]?.has3d
+          });
+          
+          // Check if frame was processed successfully (has keypoints and no error)
+          const hasKeypoints = results[0]?.keypoints && results[0].keypoints.length > 0;
+          const noError = !results[0]?.error;
+          
+          if (results.length > 0 && hasKeypoints && noError) {
             meshSequence.push({
               frameNumber: frameData.frameNumber,
               timestamp: frameData.timestamp,
@@ -782,7 +799,20 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
           console.log(`[UPLOAD] Submitting frame ${i}/${framesToProcess.length} to pool`);
           const results = await poolManager.processRequest([frameData]);  // Send one frame per request
           
-          if (results.length > 0 && !results[0].error) {
+          console.log(`[UPLOAD] 🔍 Frame ${frameData.frameNumber} result:`, {
+            resultsLength: results.length,
+            hasError: results[0]?.error,
+            errorValue: results[0]?.error,
+            keypointCount: results[0]?.keypoints?.length || 0,
+            meshVerticesCount: results[0]?.mesh_vertices_data?.length || 0,
+            has3d: results[0]?.has3d
+          });
+          
+          // Check if frame was processed successfully (has keypoints and no error)
+          const hasKeypoints = results[0]?.keypoints && results[0].keypoints.length > 0;
+          const noError = !results[0]?.error;
+          
+          if (results.length > 0 && hasKeypoints && noError) {
             meshSequence.push({
               frameNumber: frameData.frameNumber,
               timestamp: frameData.timestamp,
@@ -863,8 +893,17 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
       console.log(`[UPLOAD] ✓ Connected to MongoDB`);
       
       // Save with new unified structure
-      console.log(`[UPLOAD] About to save mesh data for ${videoId}`);
-      console.log(`[UPLOAD] Mesh data: ${meshData.frameCount} frames, fps: ${meshData.fps}`);
+      console.log(`%c[UPLOAD] 🔍 DEBUG: About to save mesh data for ${videoId}`, 'color: #FF6B6B; font-weight: bold;');
+      console.log(`%c[UPLOAD] 🔍 DEBUG: meshSequence.length = ${meshSequence.length}`, 'color: #FF6B6B;');
+      console.log(`%c[UPLOAD] 🔍 DEBUG: meshData.frameCount = ${meshData.frameCount}`, 'color: #FF6B6B;');
+      console.log(`%c[UPLOAD] 🔍 DEBUG: meshData.frames.length = ${meshData.frames.length}`, 'color: #FF6B6B;');
+      if (meshData.frames.length > 0) {
+        console.log(`%c[UPLOAD] 🔍 DEBUG: First frame in meshData:`, 'color: #FF6B6B;', {
+          frameNumber: meshData.frames[0].frameNumber,
+          keypointCount: meshData.frames[0].keypoints?.length || 0,
+          meshVertexCount: meshData.frames[0].mesh_vertices_data?.length || 0
+        });
+      }
       
       await meshDataService.saveMeshData({
         videoId,
@@ -2767,6 +2806,11 @@ async function startServer() {
     
     // Initialize process pool manager for pose detection
     const posePoolConfig = loadPosePoolConfig();
+    console.log(`[STARTUP] Pose pool config loaded:`, {
+      useHttpService: posePoolConfig.useHttpService,
+      pythonServicePath: posePoolConfig.pythonServicePath,
+      maxConcurrentProcesses: posePoolConfig.maxConcurrentProcesses
+    });
     poolManager = new ProcessPoolManager(posePoolConfig);
     
     // Mount pose detection endpoints now that pool manager is initialized
