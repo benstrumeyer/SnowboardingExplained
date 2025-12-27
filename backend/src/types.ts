@@ -205,6 +205,82 @@ export interface LLMAnalysisResponse {
   };
 }
 
+// Frame Quality Types
+export interface FrameQualityFlags {
+  lowConfidence: boolean;
+  offScreen: boolean;
+  outlier: boolean;
+}
+
+export interface FrameQuality {
+  frameIndex: number;
+  qualityScore: number; // 0-1, where 1 is perfect
+  flags: FrameQualityFlags;
+  averageConfidence: number;
+  boundaryDistance: number; // 0-1, min distance to image edge
+  deviationFromNeighbors: number; // 0-1 scale
+  metadata?: {
+    keypointCount: number;
+    lowConfidenceKeypoints: number;
+    boundaryKeypoints: number;
+  };
+}
+
+export interface FilteredFrameSequence {
+  frames: any[];
+  removedFrames: number[];
+  interpolatedFrames: number[];
+  frameIndexMap: Map<number, number>; // original → processed index
+  statistics: {
+    originalCount: number;
+    processedCount: number;
+    removedCount: number;
+    interpolatedCount: number;
+  };
+}
+
+export interface FrameIndexMapping {
+  videoId: string;
+  originalToProcessed: Map<number, number>;
+  processedToOriginal: Map<number, number>;
+  removedFrames: Set<number>;
+  interpolatedFrames: Set<number>;
+  metadata: {
+    originalFrameCount: number;
+    processedFrameCount: number;
+    removedCount: number;
+    interpolatedCount: number;
+  };
+}
+
+export interface SerializedFrameIndexMapping {
+  videoId: string;
+  originalToProcessed: Array<[number, number]>;
+  processedToOriginal: Array<[number, number]>;
+  removedFrames: number[];
+  interpolatedFrames: number[];
+  metadata: {
+    originalFrameCount: number;
+    processedFrameCount: number;
+    removedCount: number;
+    interpolatedCount: number;
+  };
+}
+
+export interface QualityStatistics {
+  videoId: string;
+  originalFrameCount: number;
+  processedFrameCount: number;
+  removedCount: number;
+  interpolatedCount: number;
+  removalPercentage: number;
+  interpolationPercentage: number;
+  averageQualityScore: number;
+  lowConfidenceFrameCount: number;
+  offScreenFrameCount: number;
+  outlierFrameCount: number;
+}
+
 // API Response Types
 export interface ApiResponse<T> {
   success: boolean;

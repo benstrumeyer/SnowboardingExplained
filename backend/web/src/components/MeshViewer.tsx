@@ -178,10 +178,26 @@ export function MeshViewer({
   useEffect(() => {
     if (!sceneRef.current) return;
 
+    console.log('%c[MESH-UPDATE] ═══════════════════════════════════════', 'color: #FF00FF; font-weight: bold; font-size: 14px;');
+    console.log('%c[MESH-UPDATE] 🎬 MESH UPDATE TRIGGERED', 'color: #FF00FF; font-weight: bold; font-size: 14px;');
+    console.log('%c[MESH-UPDATE] ═══════════════════════════════════════', 'color: #FF00FF; font-weight: bold; font-size: 14px;');
+    
+    console.log('%c[MESH-UPDATE] Input state:', 'color: #FF00FF;', {
+      riderMeshExists: !!riderMesh,
+      referenceMeshExists: !!referenceMesh,
+      showRider,
+      showReference,
+      riderMeshType: riderMesh ? ('meshData' in riderMesh ? 'SyncedFrame' : 'MeshFrame') : 'null',
+      referenceMeshType: referenceMesh ? ('meshData' in referenceMesh ? 'SyncedFrame' : 'MeshFrame') : 'null'
+    });
+
     // Clear existing meshes and tracking lines
     const meshesToRemove = sceneRef.current.children.filter(
       (child) => child instanceof THREE.Mesh && child.name.startsWith('mesh-')
     );
+    console.log('%c[MESH-UPDATE] 🗑️  Removing old meshes:', 'color: #FFAA00;', {
+      count: meshesToRemove.length
+    });
     meshesToRemove.forEach((mesh) => sceneRef.current!.remove(mesh));
 
     trackingLinesRef.current.forEach((line) => sceneRef.current!.remove(line));
@@ -190,8 +206,16 @@ export function MeshViewer({
 
     // Add rider mesh
     if (riderMesh && showRider) {
+      console.log('%c[MESH-UPDATE] 🎯 RIDER MESH: Creating from frame', 'color: #00FF00; font-weight: bold;');
+      console.log('%c[MESH-UPDATE] Rider frame structure:', 'color: #00FF00;', {
+        frameKeys: Object.keys(riderMesh).slice(0, 10),
+        hasMeshData: 'meshData' in riderMesh,
+        meshDataKeys: ('meshData' in riderMesh) ? Object.keys((riderMesh as SyncedFrame).meshData) : 'N/A'
+      });
+      
       const mesh = createMeshFromFrame(riderMesh, riderColor);
       if (mesh) {
+        console.log('%c[MESH-UPDATE] ✅ RIDER MESH CREATED', 'color: #00FF00; font-weight: bold; font-size: 13px;');
         mesh.name = 'mesh-rider';
         mesh.position.set(0, 0, 0);
         mesh.rotation.set(
@@ -208,18 +232,23 @@ export function MeshViewer({
         });
         sceneRef.current.add(mesh);
         meshesRef.current.set('rider', mesh);
-
-        // Add tracking lines if enabled
-        if (showTrackingLines && enabledKeypoints.size > 0) {
-          addTrackingLines(riderMesh, enabledKeypoints, sceneRef.current, riderColor);
-        }
+        console.log('%c[MESH-UPDATE] ✅ RIDER MESH ADDED TO SCENE', 'color: #00FF00; font-weight: bold; font-size: 13px;');
+      } else {
+        console.error('%c[MESH-UPDATE] ❌ RIDER MESH CREATION FAILED', 'color: #FF0000; font-weight: bold; font-size: 13px;');
       }
+    } else {
+      console.warn('%c[MESH-UPDATE] ⏭️  Skipping rider mesh:', 'color: #FFAA00;', {
+        riderMeshExists: !!riderMesh,
+        showRider
+      });
     }
 
     // Add reference mesh
     if (referenceMesh && showReference) {
+      console.log('%c[MESH-UPDATE] 🎯 REFERENCE MESH: Creating from frame', 'color: #00FFFF; font-weight: bold;');
       const mesh = createMeshFromFrame(referenceMesh, referenceColor);
       if (mesh) {
+        console.log('%c[MESH-UPDATE] ✅ REFERENCE MESH CREATED', 'color: #00FFFF; font-weight: bold; font-size: 13px;');
         mesh.name = 'mesh-reference';
         mesh.position.set(2, 0, 0);
         mesh.rotation.set(
@@ -236,8 +265,20 @@ export function MeshViewer({
         });
         sceneRef.current.add(mesh);
         meshesRef.current.set('reference', mesh);
+        console.log('%c[MESH-UPDATE] ✅ REFERENCE MESH ADDED TO SCENE', 'color: #00FFFF; font-weight: bold; font-size: 13px;');
+      } else {
+        console.error('%c[MESH-UPDATE] ❌ REFERENCE MESH CREATION FAILED', 'color: #FF0000; font-weight: bold; font-size: 13px;');
       }
+    } else {
+      console.warn('%c[MESH-UPDATE] ⏭️  Skipping reference mesh:', 'color: #FFAA00;', {
+        referenceMeshExists: !!referenceMesh,
+        showReference
+      });
     }
+
+    console.log('%c[MESH-UPDATE] ═══════════════════════════════════════', 'color: #FF00FF; font-weight: bold; font-size: 14px;');
+    console.log('%c[MESH-UPDATE] 🎬 MESH UPDATE COMPLETE', 'color: #FF00FF; font-weight: bold; font-size: 14px;');
+    console.log('%c[MESH-UPDATE] ═══════════════════════════════════════', 'color: #FF00FF; font-weight: bold; font-size: 14px;');
 
     // Note: showAngles is reserved for future joint angle visualization
     void showAngles;
@@ -247,150 +288,101 @@ export function MeshViewer({
 }
 
 function createMeshFromFrame(frame: MeshFrame | SyncedFrame, colorHex: string): THREE.Mesh | null {
-  // Extract vertices from either frame type
+  console.log('%c[MESH-CREATE] 🔍 Starting mesh creation', 'color: #FF00FF; font-weight: bold; font-size: 12px;');
+  console.log('%c[MESH-CREATE] Frame type check:', 'color: #FF00FF;', {
+    hasMeshData: 'meshData' in frame,
+    frameKeys: Object.keys(frame).slice(0, 5)
+  });
+
+  // Extract vertices and faces from either frame type
   let vertices: number[][];
   let faces: number[][];
   
   if ('meshData' in frame) {
-    // SyncedFrame type
+    // SyncedFrame type - mesh has already been processed through 2-pass transformation
+    console.log('%c[MESH-CREATE] ✅ Detected SyncedFrame format', 'color: #00FF00;');
     vertices = frame.meshData.vertices;
     faces = frame.meshData.faces;
+    console.log('%c[MESH-CREATE] SyncedFrame meshData:', 'color: #00FF00;', {
+      verticesCount: vertices?.length || 0,
+      facesCount: faces?.length || 0,
+      verticesType: typeof vertices,
+      facesType: typeof faces,
+      firstVertex: vertices?.[0],
+      firstFace: faces?.[0]
+    });
   } else {
-    // MeshFrame type
-    vertices = frame.vertices;
-    faces = frame.faces;
+    // MeshFrame type - check for both old and new property names
+    console.log('%c[MESH-CREATE] ⚠️  Detected MeshFrame format (legacy)', 'color: #FFAA00;');
+    vertices = (frame as any).mesh_vertices_data || (frame as any).vertices || [];
+    faces = (frame as any).mesh_faces_data || (frame as any).faces || [];
+    console.log('%c[MESH-CREATE] MeshFrame data:', 'color: #FFAA00;', {
+      verticesCount: vertices?.length || 0,
+      facesCount: faces?.length || 0,
+      hasMeshVerticesData: !!(frame as any).mesh_vertices_data,
+      hasVertices: !!(frame as any).vertices,
+      hasMeshFacesData: !!(frame as any).mesh_faces_data,
+      hasFaces: !!(frame as any).faces
+    });
   }
   
-  if (!vertices || vertices.length === 0) return null;
+  console.log('%c[MESH-CREATE] 📊 Extracted data:', 'color: #00FFFF;', {
+    verticesLength: vertices?.length || 0,
+    facesLength: faces?.length || 0,
+    verticesIsArray: Array.isArray(vertices),
+    facesIsArray: Array.isArray(faces)
+  });
+
+  if (!vertices || vertices.length === 0) {
+    console.error('%c[MESH-CREATE] ❌ CRITICAL: No vertices found!', 'color: #FF0000; font-weight: bold; font-size: 14px;');
+    console.error('%c[MESH-CREATE] Frame structure:', 'color: #FF0000;', frame);
+    console.error('%c[MESH-CREATE] Full frame dump:', 'color: #FF0000;', JSON.stringify(frame).substring(0, 500));
+    return null;
+  }
+
+  console.log('%c[MESH-CREATE] ✅ Vertices found, creating geometry', 'color: #00FF00; font-weight: bold;');
 
   const geometry = new THREE.BufferGeometry();
 
-  let minX = Infinity, maxX = -Infinity;
-  let minY = Infinity, maxY = -Infinity;
-  let minZ = Infinity, maxZ = -Infinity;
-
-  for (const [x, y, z] of vertices) {
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y);
-    minZ = Math.min(minZ, z);
-    maxZ = Math.max(maxZ, z);
-  }
-
-  const centerX = (minX + maxX) / 2;
-  const centerY = (minY + maxY) / 2;
-  const centerZ = (minZ + maxZ) / 2;
-
-  const sizeX = maxX - minX || 1;
-  const sizeY = maxY - minY || 1;
-  const sizeZ = maxZ - minZ || 1;
-  const maxSize = Math.max(sizeX, sizeY, sizeZ);
-  const scale = maxSize > 0 ? 2 / maxSize : 1;
-
-  // Normalize and reorient vertices to be upright
-  // HMR2 outputs in camera space (X right, Y down, Z forward)
-  // We want world space (X right, Y up, Z back)
-  const normalizedVertices = vertices.map(([x, y, z]) => {
-    // Center all axes
-    let nx = (x - centerX) * scale;
-    let ny = (y - centerY) * scale;
-    let nz = (z - centerZ) * scale;
-    
-    // Rotate 90 degrees around X axis: Y becomes -Z, Z becomes Y
-    // This converts camera space (Y down) to world space (Y up)
-    const tempY = ny;
-    ny = nz;
-    nz = -tempY;
-    
-    // Rotate 90 degrees around Z axis: X becomes -Y, Y becomes X
-    const tempX = nx;
-    nx = -ny;
-    ny = tempX;
-    
-    // Rotate 90 degrees around Y axis: X becomes Z, Z becomes -X
-    const tempX2 = nx;
-    nx = nz;
-    nz = -tempX2;
-    
-    // Rotate another 90 degrees around Y axis: X becomes Z, Z becomes -X
-    const tempX3 = nx;
-    nx = nz;
-    nz = -tempX3;
-    
-    // Rotate another 90 degrees around Y axis: X becomes Z, Z becomes -X
-    const tempX4 = nx;
-    nx = nz;
-    nz = -tempX4;
-    
-    // Rotate another 90 degrees around Y axis: X becomes Z, Z becomes -X
-    const tempX5 = nx;
-    nx = nz;
-    nz = -tempX5;
-    
-    // Rotate 180 degrees around Y axis (two 90-degree rotations)
-    const tempX6 = nx;
-    nx = nz;
-    nz = -tempX6;
-    
-    const tempX7 = nx;
-    nx = nz;
-    nz = -tempX7;
-    
-    // Rotate 90 degrees around X axis: Y becomes -Z, Z becomes Y
-    const tempY4 = ny;
-    ny = nz;
-    nz = -tempY4;
-    
-    // Rotate another 180 degrees around Y axis (two 90-degree rotations)
-    const tempX8 = nx;
-    nx = nz;
-    nz = -tempX8;
-    
-    const tempX9 = nx;
-    nx = nz;
-    nz = -tempX9;
-    
-    // Rotate 180 degrees around X axis (two 90-degree rotations)
-    const tempY5 = ny;
-    ny = nz;
-    nz = -tempY5;
-    
-    const tempY6 = ny;
-    ny = nz;
-    nz = -tempY6;
-    
-    // Rotate 90 degrees around Y axis: X becomes Z, Z becomes -X
-    const tempX10 = nx;
-    nx = nz;
-    nz = -tempX10;
-    
-    // Rotate 180 degrees around Y axis (two 90-degree rotations)
-    const tempX11 = nx;
-    nx = nz;
-    nz = -tempX11;
-    
-    const tempX12 = nx;
-    nx = nz;
-    nz = -tempX12;
-    
-    // Position feet on ground (add back the height offset)
-    ny = ny + (sizeY * scale) / 2;
-    
-    return [nx, ny, nz];
+  // Vertices are already normalized and transformed by the 2-pass pipeline
+  // Just set them directly without additional transformation
+  const flatVertices = vertices.flat();
+  console.log('%c[MESH-CREATE] 📐 Flattened vertices:', 'color: #00FFFF;', {
+    flatLength: flatVertices.length,
+    expectedLength: vertices.length * 3,
+    firstThreeValues: flatVertices.slice(0, 3),
+    lastThreeValues: flatVertices.slice(-3)
   });
 
-  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(normalizedVertices.flat()), 3));
+  geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(flatVertices), 3));
+  console.log('%c[MESH-CREATE] ✅ Position attribute set', 'color: #00FF00;');
 
+  // Set faces if available
   if (faces && faces.length > 0) {
     const flatFaces = faces.flat();
+    console.log('%c[MESH-CREATE] 📐 Setting faces:', 'color: #00FFFF;', {
+      facesCount: faces.length,
+      flatLength: flatFaces.length,
+      expectedLength: faces.length * 3,
+      firstFace: faces[0],
+      lastFace: faces[faces.length - 1]
+    });
     geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(flatFaces), 1));
+    console.log('%c[MESH-CREATE] ✅ Index attribute set', 'color: #00FF00;');
+  } else {
+    console.warn('%c[MESH-CREATE] ⚠️  No faces provided, rendering as point cloud', 'color: #FFAA00;');
   }
 
   geometry.computeVertexNormals();
+  console.log('%c[MESH-CREATE] ✅ Vertex normals computed', 'color: #00FF00;');
 
   // Convert hex color string to number
   const colorNum = parseInt(colorHex.replace('#', ''), 16);
+  console.log('%c[MESH-CREATE] 🎨 Color:', 'color: #00FFFF;', {
+    hexInput: colorHex,
+    colorNum: colorNum,
+    colorHex: '0x' + colorNum.toString(16)
+  });
 
   const material = new THREE.MeshPhongMaterial({
     color: colorNum,
@@ -398,30 +390,12 @@ function createMeshFromFrame(frame: MeshFrame | SyncedFrame, colorHex: string): 
   });
 
   const mesh = new THREE.Mesh(geometry, material);
+  console.log('%c[MESH-CREATE] ✅✅✅ MESH CREATED SUCCESSFULLY ✅✅✅', 'color: #00FF00; font-weight: bold; font-size: 14px;', {
+    vertexCount: vertices.length,
+    faceCount: faces?.length || 0,
+    meshName: mesh.name
+  });
   
   return mesh;
 }
 
-function addTrackingLines(frame: MeshFrame | SyncedFrame, enabledKeypoints: Set<number>, scene: THREE.Scene, meshColor: string): void {
-  // Add point visualization for enabled keypoints
-  let keypoints: any[] = [];
-  if ('meshData' in frame && frame.meshData) {
-    keypoints = frame.meshData.keypoints || [];
-  }
-
-  enabledKeypoints.forEach((index) => {
-    if (keypoints && keypoints[index]) {
-      const kp = keypoints[index];
-      const pos = Array.isArray(kp) ? kp : (kp.position || [0, 0, 0]);
-      
-      // Create a small sphere for each keypoint
-      const geometry = new THREE.SphereGeometry(0.05, 8, 8);
-      const colorNum = parseInt(meshColor.replace('#', ''), 16);
-      const material = new THREE.MeshBasicMaterial({ color: colorNum });
-      const sphere = new THREE.Mesh(geometry, material);
-      
-      sphere.position.set(pos[0], pos[1], pos[2]);
-      scene.add(sphere);
-    }
-  });
-}

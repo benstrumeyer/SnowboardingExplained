@@ -4,10 +4,30 @@ import path from 'path';
 import logger from '../logger';
 import { MeshSequence, SyncedFrame } from '../types';
 import { kalmanSmoothingService } from './kalmanSmoothingService';
+import FrameQualityAnalyzer from './frameQualityAnalyzer';
+import FrameFilterService from './frameFilterService';
+import FrameIndexMapper from './frameIndexMapper';
+import frameQualityConfig from '../config/frameQualityConfig';
 
 // Load environment variables
 dotenv.config({ path: path.join(__dirname, '../../.env.local') });
 dotenv.config();
+
+// Database frame interface - represents actual stored frame structure
+interface DatabaseFrame {
+  videoId: string;
+  frameNumber: number;
+  timestamp: number;
+  keypoints: any[];
+  skeleton: any;
+  has3d: boolean;
+  jointAngles3d: any;
+  mesh_vertices_data: number[][];
+  mesh_faces_data: number[][];
+  cameraTranslation: any;
+  interpolated: boolean;
+  createdAt: Date;
+}
 
 // Legacy interface for backward compatibility
 interface MeshFrame {
@@ -27,11 +47,20 @@ interface MeshData {
   videoDuration: number;
   frameCount: number;
   totalFrames: number;
-  frames: SyncedFrame[] | MeshFrame[]; // Support both old and new formats
+  frames: DatabaseFrame[] | SyncedFrame[]; // Support both database frames and synced frames
   metadata?: {
     uploadedAt: Date;
     processingTime: number;
     extractionMethod: string;
+    frameIndexMapping?: any; // SerializedFrameIndexMapping
+    qualityStats?: {
+      originalCount: number;
+      processedCount: number;
+      removedCount: number;
+      interpolatedCount: number;
+      removalPercentage: string;
+      interpolationPercentage: string;
+    };
   };
   createdAt: Date;
   updatedAt: Date;
@@ -116,6 +145,92 @@ class MeshDataService {
     }
   }
 
+  /**
+   * Apply frame quality filtering to frames
+   * 
+   * Analyzes frame quality, removes low-quality frames, interpolates outliers,
+   * and creates frame index mapping for synchronization.
+   */
+  private async applyFrameQualityFiltering(
+    videoId: string,
+    frames: any[],
+    videoDimensions: { width: number; height: number }
+  ): Promise<{
+    filteredFrames: any[];
+    frameIndexMapping: any;
+    qualityStats: any;
+  }> {
+    try {
+      console.log(`[MESH-SERVICE] 🔍 Applying frame quality filtering for ${videoId}`);
+
+      // Initialize analyzer and filter service
+      const analyzer = new FrameQualityAnalyzer(videoDimensions, {
+        minConfidence: frameQualityConfig.MIN_CONFIDENCE,
+        boundaryThreshold: frameQualityConfig.BOUNDARY_THRESHOLD,
+        offScreenConfidence: frameQualityConfig.OFF_SCREEN_CONFIDENCE,
+        outlierDeviationThreshold: frameQualityConfig.OUTLIER_DEVIATION_THRESHOLD,
+        trendWindowSize: frameQualityConfig.TREND_WINDOW_SIZE
+      });
+
+      const filterService = new FrameFilterService({
+        maxInterpolationGap: frameQualityConfig.MAX_INTERPOLATION_GAP,
+        debugMode: frameQualityConfig.DEBUG_MODE
+      });
+
+      // Step 1: Analyze frame quality
+      console.log(`[MESH-SERVICE] 📊 Analyzing quality of ${frames.length} frames`);
+      const qualities = analyzer.analyzeSequence(
+        frames.map(f => ({ keypoints: f.keypoints || [] }))
+      );
+
+      // Step 2: Filter and interpolate
+      console.log(`[MESH-SERVICE] 🔧 Filtering and interpolating frames`);
+      const filtered = filterService.filterAndInterpolate(frames, qualities);
+
+      // Step 3: Create frame index mapping
+      console.log(`[MESH-SERVICE] 🗺️  Creating frame index mapping`);
+      const mapping = FrameIndexMapper.createMapping(
+        videoId,
+        frames.length,
+        filtered.removedFrames,
+        filtered.interpolatedFrames
+      );
+
+      const stats = FrameIndexMapper.getStatistics(mapping);
+
+      console.log(`[MESH-SERVICE] ✅ Frame quality filtering complete:`, {
+        originalCount: filtered.statistics.originalCount,
+        processedCount: filtered.statistics.processedCount,
+        removedCount: filtered.statistics.removedCount,
+        interpolatedCount: filtered.statistics.interpolatedCount,
+        removalPercentage: stats.removalPercentage,
+        interpolationPercentage: stats.interpolationPercentage
+      });
+
+      return {
+        filteredFrames: filtered.frames,
+        frameIndexMapping: FrameIndexMapper.serialize(mapping),
+        qualityStats: {
+          originalCount: filtered.statistics.originalCount,
+          processedCount: filtered.statistics.processedCount,
+          removedCount: filtered.statistics.removedCount,
+          interpolatedCount: filtered.statistics.interpolatedCount,
+          removalPercentage: stats.removalPercentage,
+          interpolationPercentage: stats.interpolationPercentage
+        }
+      };
+    } catch (err) {
+      logger.error(`Failed to apply frame quality filtering for ${videoId}`, { error: err });
+      // Don't throw - continue with unfiltered frames
+      console.warn(`[MESH-SERVICE] ⚠️  Frame quality filtering failed, continuing with unfiltered frames`);
+      return {
+        filteredFrames: frames,
+        frameIndexMapping: undefined,
+        qualityStats: undefined
+      };
+    }
+  }
+
   async saveMeshData(meshData: Omit<MeshData, '_id' | 'createdAt' | 'updatedAt'>): Promise<string> {
     if (!this.collection || !this.framesCollection) {
       throw new Error('MongoDB not connected');
@@ -159,12 +274,28 @@ class MeshDataService {
       const now = new Date();
       const frames = meshData.frames || [];
 
+      // Apply frame quality filtering
+      const videoDimensions = { width: 1920, height: 1080 }; // Default, can be extracted from video metadata
+      const { filteredFrames, frameIndexMapping, qualityStats } = await this.applyFrameQualityFiltering(
+        meshData.videoId,
+        frames as any[],
+        videoDimensions
+      );
+
       // Save metadata document (without frames)
       const metadataDoc: MeshData = {
         ...meshData,
         frames: [], // Don't store frames in metadata
-        frameCount: frames.length,
-        totalFrames: frames.length,
+        frameCount: filteredFrames.length,
+        totalFrames: filteredFrames.length,
+        metadata: {
+          ...meshData.metadata,
+          uploadedAt: meshData.metadata?.uploadedAt || now,
+          processingTime: meshData.metadata?.processingTime || 0,
+          extractionMethod: meshData.metadata?.extractionMethod || 'unknown',
+          frameIndexMapping,
+          qualityStats
+        },
         createdAt: now,
         updatedAt: now
       };
@@ -178,18 +309,18 @@ class MeshDataService {
       console.log(`[MESH-SERVICE] ✓ Metadata saved`);
 
       // Save frames to dedicated collection
-      if (frames.length > 0) {
-        console.log(`%c[MESH-SERVICE] 💾 SAVING ${frames.length} frames for videoId: ${meshData.videoId}`, 'color: #FF6B6B; font-weight: bold;');
+      if (filteredFrames.length > 0) {
+        console.log(`%c[MESH-SERVICE] 💾 SAVING ${filteredFrames.length} frames for videoId: ${meshData.videoId}`, 'color: #FF6B6B; font-weight: bold;');
         console.log(`%c[MESH-SERVICE] 📋 First frame structure BEFORE save:`, 'color: #FF6B6B;', {
           videoId: meshData.videoId,
-          frameNumber: (frames[0] as any).frameNumber,
-          timestamp: (frames[0] as any).timestamp,
-          keypointCount: (frames[0] as any).keypoints?.length || 0,
-          skeletonExists: !!(frames[0] as any).skeleton,
-          fullFrame: JSON.stringify(frames[0]).substring(0, 300)
+          frameNumber: (filteredFrames[0] as any).frameNumber,
+          timestamp: (filteredFrames[0] as any).timestamp,
+          keypointCount: (filteredFrames[0] as any).keypoints?.length || 0,
+          skeletonExists: !!(filteredFrames[0] as any).skeleton,
+          fullFrame: JSON.stringify(filteredFrames[0]).substring(0, 300)
         });
         
-        const frameDocuments = frames.map((frame: any, index: number) => {
+        const frameDocuments = filteredFrames.map((frame: any, index: number) => {
           const doc = {
             videoId: meshData.videoId,
             frameNumber: frame.frameNumber ?? index,
@@ -201,6 +332,7 @@ class MeshDataService {
             mesh_vertices_data: frame.mesh_vertices_data || [],
             mesh_faces_data: frame.mesh_faces_data || [],
             cameraTranslation: frame.cameraTranslation || null,
+            interpolated: frame.interpolated || false,
             createdAt: now
           };
           return doc;
@@ -387,14 +519,35 @@ class MeshDataService {
 
   /**
    * Get a single frame by videoId and frameNumber
+   * 
+   * If frame index mapping exists, uses it to map original frame index to processed frame index
    */
   async getFrame(videoId: string, frameNumber: number): Promise<any | null> {
-    if (!this.framesCollection) {
+    if (!this.collection || !this.framesCollection) {
       throw new Error('MongoDB not connected');
     }
 
     try {
-      const frame = await this.framesCollection.findOne({ videoId, frameNumber });
+      // Get metadata to check for frame index mapping
+      const metadata = await this.collection.findOne({ videoId });
+      
+      let processedFrameNumber = frameNumber;
+      
+      // If frame index mapping exists, use it to map original to processed index
+      if (metadata?.metadata?.frameIndexMapping) {
+        const mapping = FrameIndexMapper.deserialize(metadata.metadata.frameIndexMapping);
+        const mappedIndex = FrameIndexMapper.getProcessedIndex(mapping, frameNumber);
+        
+        if (mappedIndex === undefined) {
+          // Frame was removed
+          logger.debug(`Frame ${frameNumber} was removed during quality filtering for video ${videoId}`);
+          return null;
+        }
+        
+        processedFrameNumber = mappedIndex;
+      }
+
+      const frame = await this.framesCollection.findOne({ videoId, frameNumber: processedFrameNumber });
       
       // Apply Kalman smoothing directly to keypoints if enabled
       if (frame && this.smoothingEnabled && frame.keypoints && Array.isArray(frame.keypoints) && frame.keypoints.length > 0) {
@@ -450,17 +603,52 @@ class MeshDataService {
 
   /**
    * Get multiple frames by videoId and frame range
+   * 
+   * If frame index mapping exists, uses it to map original frame indices to processed frame indices
    */
   async getFrameRange(videoId: string, startFrame: number, endFrame: number): Promise<any[]> {
-    if (!this.framesCollection) {
+    if (!this.collection || !this.framesCollection) {
       throw new Error('MongoDB not connected');
     }
 
     try {
+      // Get metadata to check for frame index mapping
+      const metadata = await this.collection.findOne({ videoId });
+      
+      let processedStartFrame = startFrame;
+      let processedEndFrame = endFrame;
+      
+      // If frame index mapping exists, use it to map original to processed indices
+      if (metadata?.metadata?.frameIndexMapping) {
+        const mapping = FrameIndexMapper.deserialize(metadata.metadata.frameIndexMapping);
+        
+        // Find the first and last valid processed frames in the range
+        let firstProcessedFrame: number | undefined;
+        let lastProcessedFrame: number | undefined;
+        
+        for (let i = startFrame; i <= endFrame; i++) {
+          const processedIndex = FrameIndexMapper.getProcessedIndex(mapping, i);
+          if (processedIndex !== undefined) {
+            if (firstProcessedFrame === undefined) {
+              firstProcessedFrame = processedIndex;
+            }
+            lastProcessedFrame = processedIndex;
+          }
+        }
+        
+        if (firstProcessedFrame === undefined || lastProcessedFrame === undefined) {
+          // No valid frames in range
+          return [];
+        }
+        
+        processedStartFrame = firstProcessedFrame;
+        processedEndFrame = lastProcessedFrame;
+      }
+
       return await this.framesCollection
         .find({
           videoId,
-          frameNumber: { $gte: startFrame, $lte: endFrame }
+          frameNumber: { $gte: processedStartFrame, $lte: processedEndFrame }
         })
         .sort({ frameNumber: 1 })
         .toArray();
@@ -584,4 +772,5 @@ class MeshDataService {
   }
 }
 
+export { DatabaseFrame };
 export const meshDataService = new MeshDataService();

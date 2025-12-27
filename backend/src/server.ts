@@ -15,7 +15,8 @@ import { ChatService } from './services/chatService';
 import { KnowledgeBaseService } from './services/knowledgeBase';
 import { meshDataService } from './services/meshDataService';
 import { initializeRedisCache } from './services/redisCacheService';
-import { ApiResponse } from './types';
+import { ApiResponse, MeshSequence, SyncedFrame } from './types';
+import { DatabaseFrame } from './services/meshDataService';
 import { connectDB } from '../mcp-server/src/db/connection';
 import { processVideoUpload, getVideoAnalysis } from './services/videoAnalysisPipelineImpl';
 // New imports for Python pose service
@@ -573,6 +574,18 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
 
     logger.info(`Pose extraction complete: ${meshSequence.length} frames with pose data`);
     
+    // DEBUG: Log mesh data before saving (FINALIZE endpoint)
+    if (meshSequence.length > 0) {
+      console.log(`%c[FINALIZE] 🔍 MESH DATA DEBUG before save:`, 'color: #FF6B6B; font-weight: bold;');
+      console.log(`%c[FINALIZE]   First frame mesh_vertices_data exists: ${!!meshSequence[0].mesh_vertices_data}`, 'color: #FF6B6B;');
+      console.log(`%c[FINALIZE]   First frame mesh_vertices_data length: ${meshSequence[0].mesh_vertices_data?.length || 0}`, 'color: #FF6B6B;');
+      console.log(`%c[FINALIZE]   First frame mesh_faces_data exists: ${!!meshSequence[0].mesh_faces_data}`, 'color: #FF6B6B;');
+      console.log(`%c[FINALIZE]   First frame mesh_faces_data length: ${meshSequence[0].mesh_faces_data?.length || 0}`, 'color: #FF6B6B;');
+      if (meshSequence[0].mesh_vertices_data && meshSequence[0].mesh_vertices_data.length > 0) {
+        console.log(`%c[FINALIZE]   First vertex: ${JSON.stringify(meshSequence[0].mesh_vertices_data[0])}`, 'color: #FF6B6B;');
+      }
+    }
+    
     // Store mesh data in MongoDB for later retrieval
     const meshData = {
       videoId,
@@ -584,13 +597,12 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
         frameNumber: frame.frameNumber,
         timestamp: frame.timestamp,
         keypoints: frame.keypoints,
-        skeleton: {
-          vertices: frame.mesh_vertices_data || [],
-          faces: frame.mesh_faces_data || [],
-          has3d: frame.has3d,
-          jointAngles3d: frame.jointAngles3d,
-          cameraTranslation: frame.cameraTranslation
-        }
+        skeleton: frame.skeleton || {},
+        has3d: frame.has3d || false,
+        jointAngles3d: frame.jointAngles3d || {},
+        mesh_vertices_data: frame.mesh_vertices_data || [],
+        mesh_faces_data: frame.mesh_faces_data || [],
+        cameraTranslation: frame.cameraTranslation || null
       }))
     };
 
@@ -604,6 +616,13 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
       console.log(`[FINALIZE] About to save mesh data for ${videoId}`);
       console.log(`[FINALIZE] Mesh data: ${meshData.frameCount} frames, fps: ${meshData.fps}`);
       
+      // DEBUG: Log first frame mesh data
+      if (meshData.frames.length > 0) {
+        console.log(`%c[FINALIZE] 📊 First frame TO SAVE:`, 'color: #FF6B6B; font-weight: bold;');
+        console.log(`%c[FINALIZE]   mesh_vertices_data length: ${meshData.frames[0].mesh_vertices_data?.length || 0}`, 'color: #FF6B6B;');
+        console.log(`%c[FINALIZE]   mesh_faces_data length: ${meshData.frames[0].mesh_faces_data?.length || 0}`, 'color: #FF6B6B;');
+      }
+      
       await meshDataService.saveMeshData({
         videoId,
         videoUrl: `http://localhost:3001/videos/${videoId}`,
@@ -611,7 +630,7 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
         videoDuration: meshData.videoDuration,
         frameCount: meshData.frameCount,
         totalFrames: meshData.frameCount,
-        frames: meshData.frames,
+        frames: meshData.frames as DatabaseFrame[],
         role: role as 'rider' | 'coach'
       });
       console.log(`[FINALIZE] ✓ Stored mesh data in MongoDB for ${videoId}`);
@@ -828,13 +847,12 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
         frameNumber: frame.frameNumber,
         timestamp: frame.timestamp,
         keypoints: frame.keypoints,
-        skeleton: {
-          vertices: frame.mesh_vertices_data || [],
-          faces: frame.mesh_faces_data || [],
-          has3d: frame.has3d,
-          jointAngles3d: frame.jointAngles3d,
-          cameraTranslation: frame.cameraTranslation
-        }
+        skeleton: frame.skeleton || {},
+        has3d: frame.has3d || false,
+        jointAngles3d: frame.jointAngles3d || {},
+        mesh_vertices_data: frame.mesh_vertices_data || [],
+        mesh_faces_data: frame.mesh_faces_data || [],
+        cameraTranslation: frame.cameraTranslation || null
       }))
     };
 
@@ -855,7 +873,7 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
         videoDuration: meshData.videoDuration,
         frameCount: meshData.frameCount,
         totalFrames: meshData.frameCount,
-        frames: meshData.frames,
+        frames: meshData.frames as DatabaseFrame[],
         role: role as 'rider' | 'coach'
       });
       console.log(`[UPLOAD] ✓ Stored mesh data in MongoDB for ${videoId}`);
@@ -1035,29 +1053,70 @@ app.get('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
       console.error(`%c[API] ❌ MISMATCH: req=${videoId} got=${meshData.videoId}`, 'color: #FF0000; font-weight: bold;');
     }
     
+    // Debug: Log first frame structure
+    if (meshData.frames && meshData.frames.length > 0) {
+      const firstFrame = meshData.frames[0] as any;
+      console.log(`%c[API] 📊 First frame structure:`, 'color: #00BFFF;', {
+        frameNumber: firstFrame.frameNumber || firstFrame.frameIndex,
+        timestamp: firstFrame.timestamp,
+        hasKeypoints: !!firstFrame.keypoints,
+        keypointCount: firstFrame.keypoints?.length || 0,
+        hasMeshVerticesData: !!firstFrame.mesh_vertices_data,
+        meshVerticesCount: firstFrame.mesh_vertices_data?.length || 0,
+        hasMeshFacesData: !!firstFrame.mesh_faces_data,
+        meshFacesCount: firstFrame.mesh_faces_data?.length || 0,
+        hasSkeleton: !!firstFrame.skeleton,
+        skeletonKeys: firstFrame.skeleton ? Object.keys(firstFrame.skeleton) : []
+      });
+    }
+    
     // Return unified MeshSequence format
-    const meshSequence = {
+    const frames: SyncedFrame[] = meshData.frames.map((frame: any) => {
+      // Handle both DatabaseFrame and SyncedFrame formats
+      if ('frameIndex' in frame) {
+        // Already a SyncedFrame
+        return frame as SyncedFrame;
+      }
+      // Convert DatabaseFrame to SyncedFrame
+      const dbFrame = frame as DatabaseFrame;
+      
+      // Transform keypoints to frontend format
+      const transformedKeypoints = (dbFrame.keypoints || []).map((kp: any, index: number) => {
+        // Handle both formats: { x, y, z, confidence, name } and { position: [x, y, z], ... }
+        const position: [number, number, number] = Array.isArray(kp.position)
+          ? kp.position
+          : [kp.x || 0, kp.y || 0, kp.z || 0];
+        
+        return {
+          index,
+          name: kp.name || `keypoint_${index}`,
+          position,
+          confidence: kp.confidence || 0.5
+        };
+      });
+      
+      return {
+        frameIndex: dbFrame.frameNumber,
+        timestamp: dbFrame.timestamp,
+        videoFrameData: {
+          offset: dbFrame.frameNumber
+        },
+        meshData: {
+          keypoints: transformedKeypoints,
+          skeleton: dbFrame.skeleton || [],
+          vertices: (dbFrame.mesh_vertices_data || []) as [number, number, number][],
+          faces: (dbFrame.mesh_faces_data || []) as [number, number, number][]
+        }
+      };
+    });
+
+    const meshSequence: MeshSequence = {
       videoId: meshData.videoId,
       videoUrl: meshData.videoUrl || `${req.protocol}://${req.get('host')}/videos/${videoId}`,
       fps: meshData.fps,
       videoDuration: meshData.videoDuration,
       totalFrames: meshData.totalFrames || meshData.frameCount,
-      frames: (meshData.frames || []).map((frame: any, idx: number) => {
-        const transformed = {
-          frameIndex: frame.frameNumber || 0,
-          timestamp: frame.timestamp || 0,
-          videoFrameData: {
-            offset: frame.frameNumber || 0
-          },
-          meshData: {
-            keypoints: frame.keypoints || [],
-            skeleton: frame.skeleton || [],
-            vertices: frame.skeleton?.vertices || [],
-            faces: frame.skeleton?.faces || []
-          }
-        };
-        return transformed;
-      }),
+      frames,
       metadata: {
         uploadedAt: meshData.createdAt || new Date(),
         processingTime: 0,
