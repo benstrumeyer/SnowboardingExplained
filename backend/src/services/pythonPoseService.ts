@@ -12,6 +12,8 @@ const POSE_SERVICE_TIMEOUT = parseInt(process.env.POSE_SERVICE_TIMEOUT || '10000
 // Log on module load
 console.log(`[POSE_SERVICE_CLIENT] Initialized with URL: ${POSE_SERVICE_URL}`);
 console.log(`[POSE_SERVICE_CLIENT] Timeout: ${POSE_SERVICE_TIMEOUT}ms`);
+console.log(`[POSE_SERVICE_CLIENT] Environment POSE_SERVICE_URL: ${process.env.POSE_SERVICE_URL || 'NOT SET (using default)'}`);
+console.log(`[POSE_SERVICE_CLIENT] NOTE: If using WSL, URL should be WSL IP (e.g., http://172.x.x.x:5000), not localhost`);
 
 export interface Keypoint {
   name: string;
@@ -306,9 +308,16 @@ export async function detectPoseHybrid(
     console.log(`[4D-HUMANS] URL: ${POSE_SERVICE_URL}/pose/hybrid`);
     console.log(`[4D-HUMANS] Image base64 length: ${imageBase64.length}`);
     console.log(`[4D-HUMANS] Timeout: 120000ms`);
+    console.log(`[4D-HUMANS] POSE_SERVICE_URL value: "${POSE_SERVICE_URL}"`);
+    console.log(`[4D-HUMANS] Full URL: "${POSE_SERVICE_URL}/pose/hybrid"`);
     
     logger.debug(`[4D-HUMANS] Detecting 3D pose for frame ${frameNumber}`);
     
+    console.log(`[4D-HUMANS] About to call axios.post...`);
+    console.log(`[4D-HUMANS] Creating axios instance...`);
+    const requestStartTime = Date.now();
+    
+    console.log(`[4D-HUMANS] Calling axios.post with URL: ${POSE_SERVICE_URL}/pose/hybrid`);
     const response = await axios.post(
       `${POSE_SERVICE_URL}/pose/hybrid`,
       {
@@ -324,7 +333,8 @@ export async function detectPoseHybrid(
       }
     );
     
-    console.log(`[4D-HUMANS] Got response for frame ${frameNumber}: status ${response.status}`);
+    const requestDuration = Date.now() - requestStartTime;
+    console.log(`[4D-HUMANS] Got response for frame ${frameNumber}: status ${response.status} (took ${requestDuration}ms)`);
     
     const data = response.data;
     
@@ -367,8 +377,22 @@ export async function detectPoseHybrid(
       port: error.port,
       timeout: error.timeout,
       responseStatus: error.response?.status,
-      responseData: error.response?.data
+      responseData: error.response?.data,
+      stack: error.stack
     });
+    
+    // Provide helpful error messages for common issues
+    let errorMessage = error.message || 'Unknown error';
+    
+    if (error.code === 'ECONNREFUSED') {
+      errorMessage = `Connection refused to ${POSE_SERVICE_URL}/pose/hybrid. Is the Flask service running? If using WSL, make sure POSE_SERVICE_URL uses WSL IP (not localhost).`;
+    } else if (error.code === 'ENOTFOUND') {
+      errorMessage = `Cannot resolve hostname in ${POSE_SERVICE_URL}. Check that the URL is correct.`;
+    } else if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
+      errorMessage = `Request timed out after 120s. Flask service may be slow or not responding.`;
+    }
+    
+    console.error(`[4D-HUMANS] Helpful error: ${errorMessage}`);
     
     logger.error(`[4D-HUMANS] Error`, { frameNumber, error: error.message });
     
