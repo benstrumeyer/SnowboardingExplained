@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
-"""Flask HTTP wrapper for 4D-Humans with PHALP temporal tracking."""
+"""Flask HTTP wrapper for 4D-Humans with PHALP temporal tracking.
+
+VERSION: 2024-12-27-v2 - Added ViTDet person detection for proper HMR2 inference.
+
+Key fix: HMR2 requires a cropped person bounding box, not the full image.
+Without ViTDet detection, HMR2 returns default/mean pose (bent at waist).
+"""
 
 print("=" * 60)
-print("[KIRO-DEBUG] FILE LOADED - VERSION 2024-12-27-15:20")
+print("[KIRO-DEBUG] FILE LOADED - VERSION 2024-12-27-v2 (ViTDet)")
 print("=" * 60)
 
 import sys
@@ -67,6 +73,8 @@ phalp_tracker = None
 device = None
 model_load_error = None
 smpl_faces = None  # SMPL face indices (triangles)
+vitdet_detector = None  # ViTDet person detector
+vitdet_loaded = False
 
 # Import HMR2 modules using the working loader
 print("[STARTUP] Importing HMR2 loader...")
@@ -84,9 +92,69 @@ except Exception as e:
     traceback.print_exc()
 
 
+def load_vitdet():
+    """
+    Load ViTDet detector for person detection - EXACTLY as in 4D-Humans demo.py
+    
+    Reference: https://github.com/shubham-goel/4D-Humans/blob/main/demo.py
+    """
+    global vitdet_detector, vitdet_loaded
+    
+    if vitdet_loaded:
+        return vitdet_detector
+    
+    try:
+        print("[ViTDet] Loading ViTDet detector (exactly as 4D-Humans demo.py)...")
+        start = time.time()
+        
+        # Import exactly as demo.py does
+        print("[ViTDet] Step 1: Importing detectron2 and hmr2...")
+        from detectron2.config import LazyConfig
+        import hmr2
+        from hmr2.utils.utils_detectron2 import DefaultPredictor_Lazy
+        print("[ViTDet] ✓ Imports successful")
+        
+        # Load config exactly as demo.py
+        print("[ViTDet] Step 2: Loading ViTDet config...")
+        cfg_path = Path(hmr2.__file__).parent / 'configs' / 'cascade_mask_rcnn_vitdet_h_75ep.py'
+        print(f"[ViTDet] Config path: {cfg_path}")
+        
+        if not cfg_path.exists():
+            raise FileNotFoundError(f"Config file not found: {cfg_path}")
+        
+        detectron2_cfg = LazyConfig.load(str(cfg_path))
+        print("[ViTDet] ✓ Config loaded")
+        
+        # Set checkpoint and thresholds exactly as demo.py
+        print("[ViTDet] Step 3: Configuring checkpoint and thresholds...")
+        detectron2_cfg.train.init_checkpoint = "https://dl.fbaipublicfiles.com/detectron2/ViTDet/COCO/cascade_mask_rcnn_vitdet_h/f328730692/model_final_f05665.pkl"
+        
+        # Set score threshold for all 3 cascade stages - exactly as demo.py
+        for i in range(3):
+            detectron2_cfg.model.roi_heads.box_predictors[i].test_score_thresh = 0.25
+        print("[ViTDet] ✓ Thresholds configured")
+        
+        # Create predictor - exactly as demo.py
+        print("[ViTDet] Step 4: Creating DefaultPredictor_Lazy (downloads ~2.7GB on first run)...")
+        vitdet_detector = DefaultPredictor_Lazy(detectron2_cfg)
+        print("[ViTDet] ✓ Predictor created")
+        
+        vitdet_loaded = True
+        elapsed = time.time() - start
+        print(f"[ViTDet] ✓ ViTDet fully loaded in {elapsed:.1f}s")
+        return vitdet_detector
+        
+    except Exception as e:
+        print(f"[ViTDet] ✗ Failed to load: {e}")
+        traceback.print_exc()
+        vitdet_loaded = True  # Mark as attempted to prevent retry loops
+        vitdet_detector = None
+        return None
+
+
 def initialize_models():
     """Load models - called at startup."""
-    global models_loaded, hmr2_model, hmr2_cfg, phalp_tracker, device, model_load_error, HMR2_MODULES, smpl_faces
+    global models_loaded, hmr2_model, hmr2_cfg, phalp_tracker, device, model_load_error, HMR2_MODULES, smpl_faces, vitdet_detector, vitdet_loaded
     
     if models_loaded:
         return True
@@ -98,10 +166,6 @@ def initialize_models():
         print("[INIT] Importing torch...")
         import torch
         print("[INIT] ✓ Torch imported")
-        
-        # Determine device
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        print(f"[INIT] Using device: {device}")
         
         # Determine device
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -142,6 +206,18 @@ def initialize_models():
                 traceback.print_exc()
         else:
             print("[INIT] ⚠ HMR2 modules not available")
+        
+        # Load ViTDet for person detection - CRITICAL for proper HMR2 inference
+        print("[INIT] Loading ViTDet person detector...")
+        try:
+            vitdet_detector = load_vitdet()
+            if vitdet_detector is not None:
+                print("[INIT] ✓ ViTDet loaded successfully")
+            else:
+                print("[INIT] ⚠ ViTDet not available - will use full image fallback")
+        except Exception as e:
+            print(f"[INIT] ⚠ Failed to load ViTDet: {e}")
+            traceback.print_exc()
         
         # Load PHALP temporal tracker - exactly as in track.py
         print("[INIT] Loading PHALP temporal tracker...")
@@ -262,10 +338,12 @@ def health():
         'status': 'ready' if models_loaded else 'warming_up',
         'models': {
             'hmr2': 'loaded' if hmr2_model is not None else 'not_loaded',
+            'vitdet': 'loaded' if vitdet_detector is not None else 'not_loaded',
             'phalp': 'loaded' if phalp_tracker is not None else 'not_loaded'
         },
         'device': device,
         'ready': models_loaded,
+        'vitdet_available': vitdet_detector is not None,
         'error': model_load_error
     })
 
@@ -387,17 +465,20 @@ def pose_hybrid():
         try:
             import numpy as np
             from PIL import Image
+            import cv2
             
             image_data = base64.b64decode(image_base64)
             print(f"[🔴 POSE] 📥 Frame {frame_number}: Decoded to {len(image_data)} bytes")
             image = Image.open(io.BytesIO(image_data)).convert('RGB')
-            image_array = np.array(image)
-            print(f"[🔴 POSE] 📥 Frame {frame_number}: Image shape {image_array.shape}")
+            image_rgb = np.array(image)
+            # Convert to BGR for ViTDet (exactly as demo.py uses cv2.imread which returns BGR)
+            image_bgr = cv2.cvtColor(image_rgb, cv2.COLOR_RGB2BGR)
+            print(f"[🔴 POSE] 📥 Frame {frame_number}: Image shape {image_bgr.shape} (BGR)")
         except Exception as e:
             print(f"[🔴 POSE] ❌ Frame {frame_number}: Failed to decode image: {str(e)}")
             return jsonify({'error': f'Failed to decode image: {str(e)}'}), 400
         
-        # Run HMR2 detection
+        # Run HMR2 detection - EXACTLY as 4D-Humans demo.py
         if hmr2_model is None:
             print(f"[🔴 POSE] ❌ Frame {frame_number}: HMR2 model not loaded")
             return jsonify({'error': 'HMR2 model not loaded'}), 503
@@ -405,66 +486,93 @@ def pose_hybrid():
         try:
             import torch
             import numpy as np
-            from torchvision.transforms import Normalize
-            from PIL import Image
             
-            print(f"[🔴 POSE] 🔄 Frame {frame_number}: Starting HMR2 processing...")
+            # Import exactly as demo.py
+            from hmr2.datasets.vitdet_dataset import ViTDetDataset
+            from hmr2.utils.renderer import cam_crop_to_full
+            recursive_to = HMR2_MODULES['recursive_to']
+            
+            print(f"[🔴 POSE] 🔄 Frame {frame_number}: Starting HMR2 processing (demo.py style)...")
             start_time = time.time()
             
-            with torch.no_grad():
-                # Resize image to HMR2 expected input size (256x256)
-                print(f"[🔴 POSE] 🔄 Frame {frame_number}: Resizing image to 256x256...")
-                pil_image = Image.fromarray(image_array)
-                pil_image = pil_image.resize((256, 256), Image.BILINEAR)
-                image_array_resized = np.array(pil_image)
-                print(f"[🔴 POSE] ✅ Frame {frame_number}: Resized to {image_array_resized.shape}")
+            h, w = image_bgr.shape[:2]
+            print(f"[🔴 POSE] 📐 Frame {frame_number}: Image size {w}x{h}")
+            
+            # Step 1: Detect humans in image - EXACTLY as demo.py
+            # demo.py: det_out = detector(img_cv2)
+            boxes = None
+            if vitdet_detector is not None:
+                print(f"[🔴 POSE] 🔍 Frame {frame_number}: Running ViTDet detection (exactly as demo.py)...")
+                try:
+                    # Pass BGR image exactly as demo.py does with cv2.imread
+                    det_out = vitdet_detector(image_bgr)
+                    det_instances = det_out['instances']
+                    
+                    # Filter exactly as demo.py:
+                    # valid_idx = (det_instances.pred_classes==0) & (det_instances.scores > 0.5)
+                    valid_idx = (det_instances.pred_classes == 0) & (det_instances.scores > 0.5)
+                    boxes = det_instances.pred_boxes.tensor[valid_idx].cpu().numpy()
+                    
+                    print(f"[🔴 POSE] ✅ Frame {frame_number}: ViTDet found {len(boxes)} persons")
+                    if len(boxes) > 0:
+                        print(f"[🔴 POSE] 📦 Frame {frame_number}: First box: {boxes[0]}")
+                    else:
+                        print(f"[🔴 POSE] ⚠️ Frame {frame_number}: No persons detected, using full image")
+                        boxes = np.array([[0, 0, w, h]], dtype=np.float32)
+                except Exception as e:
+                    print(f"[🔴 POSE] ⚠️ Frame {frame_number}: ViTDet failed: {e}")
+                    traceback.print_exc()
+                    boxes = np.array([[0, 0, w, h]], dtype=np.float32)
+            else:
+                print(f"[🔴 POSE] ⚠️ Frame {frame_number}: ViTDet not available, using full image")
+                boxes = np.array([[0, 0, w, h]], dtype=np.float32)
+            
+            # Step 2: Run HMR2.0 on all detected humans - EXACTLY as demo.py
+            # demo.py: dataset = ViTDetDataset(model_cfg, img_cv2, boxes)
+            print(f"[🔴 POSE] 🔄 Frame {frame_number}: Creating ViTDetDataset with {len(boxes)} boxes...")
+            dataset = ViTDetDataset(hmr2_cfg, image_bgr, boxes)
+            dataloader = torch.utils.data.DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
+            
+            # Step 3: Run model - EXACTLY as demo.py
+            print(f"[🔴 POSE] 🔄 Frame {frame_number}: Running HMR2 inference...")
+            
+            for batch in dataloader:
+                batch = recursive_to(batch, device)
+                with torch.no_grad():
+                    out = hmr2_model(batch)
                 
-                # Prepare image for HMR2 - must match training preprocessing
-                image_tensor = torch.from_numpy(image_array_resized).float().to(device)
-                image_tensor = image_tensor.permute(2, 0, 1).unsqueeze(0) / 255.0
-                print(f"[🔴 POSE] ✅ Frame {frame_number}: Tensor shape {image_tensor.shape}")
+                # Step 4: Extract camera params - EXACTLY as demo.py
+                pred_cam = out['pred_cam']
+                box_center = batch["box_center"].float()
+                box_size = batch["box_size"].float()
+                img_size = batch["img_size"].float()
                 
-                # Normalize using ImageNet stats (required by HMR2)
-                normalize = Normalize(mean=[0.485, 0.456, 0.406], 
-                                    std=[0.229, 0.224, 0.225])
-                image_tensor = normalize(image_tensor)
-                print(f"[🔴 POSE] ✅ Frame {frame_number}: Normalized tensor")
+                # Compute scaled focal length - EXACTLY as demo.py
+                scaled_focal_length = hmr2_cfg.EXTRA.FOCAL_LENGTH / hmr2_cfg.MODEL.IMAGE_SIZE * img_size.max()
                 
-                # Create batch dict as HMR2 expects
-                batch = {
-                    'img': image_tensor,
-                    'img_metas': [{
-                        'ori_shape': image_array.shape,
-                        'img_shape': image_tensor.shape,
-                        'scale_factor': 1.0,
-                        'flip': False,
-                    }]
-                }
-                print(f"[🔴 POSE] ✅ Frame {frame_number}: Created batch dict")
+                # Convert camera to full image space - EXACTLY as demo.py
+                pred_cam_t_full = cam_crop_to_full(
+                    pred_cam, box_center, box_size, img_size, scaled_focal_length
+                ).detach().cpu().numpy()
                 
-                # Run HMR2
-                print(f"[🔴 POSE] 🔄 Frame {frame_number}: Running HMR2 forward pass...")
-                pred_dict = hmr2_model(batch)
-                print(f"[🔴 POSE] ✅ Frame {frame_number}: HMR2 forward pass complete")
-                print(f"[🔴 POSE] 🔍 Frame {frame_number}: HMR2 output keys: {list(pred_dict.keys())}")
+                print(f"[🔴 POSE] ===== CAMERA CONVERSION (exactly as demo.py) =====")
+                print(f"[🔴 POSE]   pred_cam (crop space): {pred_cam[0].cpu().numpy()}")
+                print(f"[🔴 POSE]   box_center: {box_center[0].cpu().numpy()}")
+                print(f"[🔴 POSE]   box_size: {box_size[0].cpu().numpy():.1f}")
+                print(f"[🔴 POSE]   img_size: {img_size[0].cpu().numpy()}")
+                print(f"[🔴 POSE]   scaled_focal_length: {scaled_focal_length.cpu().numpy():.1f}")
+                print(f"[🔴 POSE]   pred_cam_t_full: {pred_cam_t_full[0]}")
                 
-                # Extract results
-                keypoints_3d = pred_dict.get('pred_keypoints_3d', torch.zeros(1, 17, 3)).cpu().numpy()[0]
-                pred_cam = pred_dict.get('pred_cam', torch.zeros(1, 3)).cpu().numpy()[0]
-                vertices = pred_dict.get('pred_vertices', torch.zeros(1, 6890, 3)).cpu().numpy()[0]
+                # Extract outputs - exactly as demo.py
+                vertices = out['pred_vertices'][0].cpu().numpy()
+                cam_t = pred_cam_t_full[0]  # Full image camera translation
                 
-                print(f"[🔴 POSE] ✅ Frame {frame_number}: Extracted keypoints shape {keypoints_3d.shape}")
+                # Get 3D keypoints if available
+                keypoints_3d = out.get('pred_keypoints_3d', torch.zeros(1, 24, 3))[0].cpu().numpy()
+                
                 print(f"[🔴 POSE] ✅ Frame {frame_number}: Extracted vertices shape {vertices.shape}")
-                print(f"[🔴 POSE] ✅ Frame {frame_number}: Camera translation {pred_cam}")
-                
-                # CRITICAL: Apply camera translation to vertices
-                # HMR2 outputs vertices in SMPL model space, pred_cam positions them in world space
-                # pred_cam format: [tx, ty, tz] - translation in world coordinates
-                print(f"[🔴 POSE] 🔄 Frame {frame_number}: Applying camera translation to vertices...")
-                vertices_translated = vertices + pred_cam[np.newaxis, :]  # Broadcast translation to all vertices
-                print(f"[🔴 POSE] ✅ Frame {frame_number}: Vertices translated")
-                print(f"[🔴 POSE]   Original vertex range: X=[{vertices[:, 0].min():.3f}, {vertices[:, 0].max():.3f}], Y=[{vertices[:, 1].min():.3f}, {vertices[:, 1].max():.3f}], Z=[{vertices[:, 2].min():.3f}, {vertices[:, 2].max():.3f}]")
-                print(f"[🔴 POSE]   Translated vertex range: X=[{vertices_translated[:, 0].min():.3f}, {vertices_translated[:, 0].max():.3f}], Y=[{vertices_translated[:, 1].min():.3f}, {vertices_translated[:, 1].max():.3f}], Z=[{vertices_translated[:, 2].min():.3f}, {vertices_translated[:, 2].max():.3f}]")
+                print(f"[🔴 POSE] ✅ Frame {frame_number}: Extracted keypoints shape {keypoints_3d.shape}")
+                print(f"[🔴 POSE] ✅ Frame {frame_number}: Camera translation (full): {cam_t}")
                 
                 # Format keypoints
                 keypoints = []
@@ -477,39 +585,50 @@ def pose_hybrid():
                         'confidence': 1.0
                     })
                 
-                print(f"[🔴 POSE] ✅ Frame {frame_number}: Formatted {len(keypoints)} keypoints")
-                
-                # Format faces for Three.js
+                # Format faces
                 faces_list = []
                 if smpl_faces is not None:
-                    print(f"[🔴 POSE] 🔄 Frame {frame_number}: Formatting SMPL faces...")
-                    print(f"[🔴 POSE] 🔍 Frame {frame_number}: smpl_faces type: {type(smpl_faces)}, shape: {getattr(smpl_faces, 'shape', 'N/A')}")
-                    
-                    # SMPL faces are Nx3 array of vertex indices
-                    # Convert to nested list format [[v0, v1, v2], [v3, v4, v5], ...]
                     if hasattr(smpl_faces, 'tolist'):
                         faces_list = smpl_faces.tolist()
-                        print(f"[🔴 POSE] ✅ Frame {frame_number}: Converted numpy array to list")
                     else:
-                        faces_list = smpl_faces.tolist() if isinstance(smpl_faces, list) else list(smpl_faces)
-                        print(f"[🔴 POSE] ✅ Frame {frame_number}: Converted to list")
-                    
-                    print(f"[🔴 POSE] ✅ Frame {frame_number}: Formatted faces - {len(faces_list)} faces")
-                    if len(faces_list) > 0:
-                        print(f"[🔴 POSE] 🔍 Frame {frame_number}: First face: {faces_list[0]}, type: {type(faces_list[0])}")
-                        print(f"[🔴 POSE] 🔍 Frame {frame_number}: Last face: {faces_list[-1]}")
-                else:
-                    print(f"[🔴 POSE] ⚠️  Frame {frame_number}: SMPL faces not loaded, sending empty faces")
+                        faces_list = list(smpl_faces)
+                    print(f"[🔴 POSE] ✅ Frame {frame_number}: Formatted {len(faces_list)} faces")
                 
                 processing_time_ms = (time.time() - start_time) * 1000
                 
+                # Build response with full camera info for proper 3D rendering
                 response_data = {
                     'frame_number': frame_number,
                     'keypoints': keypoints,
                     'has_3d': True,
-                    'mesh_vertices_data': vertices_translated.tolist(),
+                    'mesh_vertices_data': vertices.tolist(),
                     'mesh_faces_data': faces_list,
-                    'camera_translation': pred_cam.tolist(),
+                    # Full image camera translation [tx, ty, tz] - exactly as demo.py uses
+                    'camera_translation': cam_t.tolist(),
+                    # Camera params for weak perspective (crop space)
+                    'camera_params': {
+                        'scale': float(pred_cam[0, 0].cpu().numpy()),
+                        'tx': float(pred_cam[0, 1].cpu().numpy()),
+                        'ty': float(pred_cam[0, 2].cpu().numpy()),
+                        'type': 'weak_perspective'
+                    },
+                    # Full camera info for proper rendering
+                    'camera_full': {
+                        'tx': float(cam_t[0]),
+                        'ty': float(cam_t[1]),
+                        'tz': float(cam_t[2]),
+                        'focal_length': float(scaled_focal_length.cpu().numpy()),
+                        'img_width': int(img_size[0, 0].cpu().numpy()),
+                        'img_height': int(img_size[0, 1].cpu().numpy()),
+                        'type': 'perspective'
+                    },
+                    # Detection info
+                    'detection': {
+                        'box_center': box_center[0].cpu().numpy().tolist(),
+                        'box_size': float(box_size[0].cpu().numpy()),
+                        'vitdet_used': vitdet_detector is not None,
+                        'num_persons_detected': len(boxes)
+                    },
                     'phalp_available': phalp_tracker is not None,
                     'processing_time_ms': processing_time_ms,
                     'error': None
@@ -519,6 +638,9 @@ def pose_hybrid():
                 print(f"[🔴 POSE] 📤 Frame {frame_number}: Sending response (took {processing_time_ms:.1f}ms)")
                 
                 return jsonify(response_data)
+            
+            # If we get here, no batch was processed
+            return jsonify({'error': 'No data processed', 'frame_number': frame_number}), 500
         
         except Exception as e:
             print(f"[🔴 POSE] ❌ Frame {frame_number}: HMR2 processing failed: {e}")

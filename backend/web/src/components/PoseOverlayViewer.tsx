@@ -102,7 +102,19 @@ export function PoseOverlayViewer({
     
     fetchRiderMesh(riderVideoId)
       .then((mesh) => {
-        console.log(`%c[VIEWER] ✅ Loaded rider mesh for ${riderVideoId}:`, 'color: #00FF00; font-weight: bold;', mesh);
+        console.log(`%c[VIEWER] ✅ Loaded rider mesh for ${riderVideoId}:`, 'color: #00FF00; font-weight: bold;');
+        console.log(`%c[VIEWER] 📊 Mesh details:`, 'color: #00FF00;', {
+          videoId: mesh.videoId,
+          fps: mesh.fps,
+          totalFrames: mesh.totalFrames,
+          framesArrayLength: mesh.frames?.length,
+          videoDuration: mesh.videoDuration,
+          firstFrameIndex: mesh.frames?.[0]?.frameIndex,
+          lastFrameIndex: mesh.frames?.[mesh.frames?.length - 1]?.frameIndex,
+          // Log all frame indices to see if they're sequential
+          allFrameIndices: mesh.frames?.map((f: any) => f.frameIndex).slice(0, 10),
+          frameIndicesSpread: mesh.frames?.length > 10 ? '...' : undefined
+        });
         setLeftScreen(prev => ({ ...prev, mesh }));
       })
       .catch((err) => {
@@ -129,7 +141,16 @@ export function PoseOverlayViewer({
     
     fetchReferenceMesh(referenceVideoId)
       .then((mesh) => {
-        console.log(`%c[VIEWER] ✅ Loaded reference mesh for ${referenceVideoId}:`, 'color: #00FF00; font-weight: bold;', mesh);
+        console.log(`%c[VIEWER] ✅ Loaded reference mesh for ${referenceVideoId}:`, 'color: #00FF00; font-weight: bold;');
+        console.log(`%c[VIEWER] 📊 Mesh details:`, 'color: #00FF00;', {
+          videoId: mesh.videoId,
+          fps: mesh.fps,
+          totalFrames: mesh.totalFrames,
+          framesArrayLength: mesh.frames?.length,
+          videoDuration: mesh.videoDuration,
+          firstFrameIndex: mesh.frames?.[0]?.frameIndex,
+          lastFrameIndex: mesh.frames?.[mesh.frames?.length - 1]?.frameIndex
+        });
         setRightScreen(prev => ({ ...prev, mesh }));
       })
       .catch((err) => {
@@ -141,6 +162,7 @@ export function PoseOverlayViewer({
   }, [referenceVideoId]); // Only depend on referenceVideoId, not rightScreen.mesh
 
   // Get current frames using independent scene frames
+  // Simply use the array index directly - frames are stored sequentially
   const currentLeftFrame = leftScreen.mesh && leftScreen.mesh.frames && leftSceneFrame < leftScreen.mesh.frames.length
     ? leftScreen.mesh.frames[Math.floor(leftSceneFrame)]
     : null;
@@ -149,48 +171,67 @@ export function PoseOverlayViewer({
     ? rightScreen.mesh.frames[Math.floor(rightSceneFrame)]
     : null;
 
-  // Sync playback to video element's timeupdate event
-  // This ensures mesh frames stay perfectly synchronized with video playback
+  // requestAnimationFrame-based frame-by-frame playback
+  // Tracks elapsed time to advance frames at the correct rate, synced with browser render
   useEffect(() => {
     if (!isPlaying) return;
 
     const maxLeftFrames = leftScreen.mesh?.frames?.length || 0;
     const maxRightFrames = rightScreen.mesh?.frames?.length || 0;
+    const fps = leftScreen.mesh?.fps || rightScreen.mesh?.fps || 30;
+    
+    // Time per frame in ms, adjusted for playback speed
+    const frameDuration = (1000 / fps) / playbackSpeed;
+
+    console.log('%c[PLAYBACK] 🎬 Starting rAF-based playback', 'color: #00BFFF; font-weight: bold;', {
+      fps,
+      playbackSpeed,
+      frameDuration,
+      maxLeftFrames,
+      maxRightFrames
+    });
 
     if (maxLeftFrames === 0 && maxRightFrames === 0) return;
 
-    // Find video element in the DOM
-    const videoElement = document.querySelector('video') as HTMLVideoElement | null;
-    if (!videoElement) return;
+    let lastTime = performance.now();
+    let leftAccumulator = 0;
+    let rightAccumulator = 0;
+    let animationId: number;
 
-    const handleTimeUpdate = () => {
-      const videoTimeInSeconds = videoElement.currentTime;
-      const fps = 30; // Default FPS
-      const newFrameIndex = Math.floor(videoTimeInSeconds * fps);
+    const tick = (currentTime: number) => {
+      const deltaTime = currentTime - lastTime;
+      lastTime = currentTime;
 
-      // Update left scene frame
-      if (maxLeftFrames > 0) {
-        const clampedFrame = Math.min(newFrameIndex, maxLeftFrames - 1);
-        if (clampedFrame !== leftSceneFrame) {
-          onLeftSceneFrameChange(clampedFrame);
-        }
+      leftAccumulator += deltaTime;
+      rightAccumulator += deltaTime;
+
+      // Advance left frame when enough time has passed
+      if (maxLeftFrames > 0 && leftAccumulator >= frameDuration) {
+        const framesToAdvance = Math.floor(leftAccumulator / frameDuration);
+        leftAccumulator -= framesToAdvance * frameDuration;
+        
+        const nextFrame = (leftSceneFrame + framesToAdvance) % maxLeftFrames;
+        onLeftSceneFrameChange(nextFrame);
       }
 
-      // Update right scene frame
-      if (maxRightFrames > 0) {
-        const clampedFrame = Math.min(newFrameIndex, maxRightFrames - 1);
-        if (clampedFrame !== rightSceneFrame) {
-          onRightSceneFrameChange(clampedFrame);
-        }
+      // Advance right frame when enough time has passed
+      if (maxRightFrames > 0 && rightAccumulator >= frameDuration) {
+        const framesToAdvance = Math.floor(rightAccumulator / frameDuration);
+        rightAccumulator -= framesToAdvance * frameDuration;
+        
+        const nextFrame = (rightSceneFrame + framesToAdvance) % maxRightFrames;
+        onRightSceneFrameChange(nextFrame);
       }
+
+      animationId = requestAnimationFrame(tick);
     };
 
-    videoElement.addEventListener('timeupdate', handleTimeUpdate);
+    animationId = requestAnimationFrame(tick);
 
     return () => {
-      videoElement.removeEventListener('timeupdate', handleTimeUpdate);
+      cancelAnimationFrame(animationId);
     };
-  }, [isPlaying, leftSceneFrame, rightSceneFrame, onLeftSceneFrameChange, onRightSceneFrameChange, leftScreen.mesh, rightScreen.mesh]);
+  }, [isPlaying, playbackSpeed, leftScreen.mesh, rightScreen.mesh, leftSceneFrame, rightSceneFrame, onLeftSceneFrameChange, onRightSceneFrameChange]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -221,10 +262,20 @@ export function PoseOverlayViewer({
 
   // Update total frames when meshes change
   useEffect(() => {
-    const newTotalFrames = Math.max(
-      leftScreen.mesh?.frames?.length || 0,
-      rightScreen.mesh?.frames?.length || 0
-    );
+    const leftFrameCount = leftScreen.mesh?.frames?.length || 0;
+    const rightFrameCount = rightScreen.mesh?.frames?.length || 0;
+    const newTotalFrames = Math.max(leftFrameCount, rightFrameCount);
+    
+    console.log('%c[VIEWER] 📊 Frame counts updated:', 'color: #FF6B6B; font-weight: bold;', {
+      leftFrameCount,
+      rightFrameCount,
+      newTotalFrames,
+      leftMeshTotalFrames: leftScreen.mesh?.totalFrames,
+      rightMeshTotalFrames: rightScreen.mesh?.totalFrames,
+      leftMeshFps: leftScreen.mesh?.fps,
+      rightMeshFps: rightScreen.mesh?.fps
+    });
+    
     onTotalFramesChange(newTotalFrames);
   }, [leftScreen.mesh, rightScreen.mesh, onTotalFramesChange]);
 

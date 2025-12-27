@@ -84,10 +84,38 @@ export const FloatingControlPanel: React.FC<FloatingControlPanelProps> = ({
           <div className="floating-playback">
             <button
               className="floating-btn"
+              onClick={() => {
+                const newFrame = Math.max(0, currentFrame - 1);
+                if (onSceneFrameChange) {
+                  onSceneFrameChange(newFrame);
+                } else {
+                  onFrameChange(newFrame);
+                }
+              }}
+              title="Previous frame"
+            >
+              ⏮
+            </button>
+            <button
+              className="floating-btn"
               onClick={onPlayPause}
               title={isPlaying ? 'Pause' : 'Play'}
             >
               {isPlaying ? '⏸' : '▶'}
+            </button>
+            <button
+              className="floating-btn"
+              onClick={() => {
+                const newFrame = Math.min(totalFrames - 1, currentFrame + 1);
+                if (onSceneFrameChange) {
+                  onSceneFrameChange(newFrame);
+                } else {
+                  onFrameChange(newFrame);
+                }
+              }}
+              title="Next frame"
+            >
+              ⏭
             </button>
             <input
               type="range"
