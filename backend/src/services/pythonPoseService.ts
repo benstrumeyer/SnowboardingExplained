@@ -339,26 +339,22 @@ export async function detectPoseHybrid(
     const data = response.data;
     
     // DEBUG: Log ALL keys in the response to see what Python is sending
-    console.log(`[4D-HUMANS] 🔍 RESPONSE KEYS for frame ${frameNumber}: ${Object.keys(data).join(', ')}`);
+    console.log(`\x1b[36m[4D-HUMANS] 🔍 RESPONSE KEYS for frame ${frameNumber}: ${Object.keys(data).join(', ')}\x1b[0m`);
     
     // DEBUG: Log mesh data from Python service
-    console.log(`[4D-HUMANS] 🔍 MESH DATA DEBUG for frame ${frameNumber}:`);
-    console.log(`[4D-HUMANS]   mesh_vertices (count field): ${data.mesh_vertices}`);
-    console.log(`[4D-HUMANS]   mesh_vertices_data exists: ${!!data.mesh_vertices_data}`);
-    console.log(`[4D-HUMANS]   mesh_vertices_data type: ${typeof data.mesh_vertices_data}`);
-    console.log(`[4D-HUMANS]   mesh_vertices_data length: ${data.mesh_vertices_data?.length || 0}`);
-    console.log(`[4D-HUMANS]   mesh_faces_data exists: ${!!data.mesh_faces_data}`);
-    console.log(`[4D-HUMANS]   mesh_faces_data type: ${typeof data.mesh_faces_data}`);
-    console.log(`[4D-HUMANS]   mesh_faces_data length: ${data.mesh_faces_data?.length || 0}`);
+    console.log(`\x1b[36m[4D-HUMANS] 🔍 MESH DATA DEBUG for frame ${frameNumber}:\x1b[0m`);
+    console.log(`\x1b[36m[4D-HUMANS]   ✅ keypoints count: ${data.keypoints?.length || 0}\x1b[0m`);
+    console.log(`\x1b[36m[4D-HUMANS]   ✅ mesh_vertices_data exists: ${!!data.mesh_vertices_data}\x1b[0m`);
+    console.log(`\x1b[36m[4D-HUMANS]   ✅ mesh_vertices_data type: ${typeof data.mesh_vertices_data}\x1b[0m`);
+    console.log(`\x1b[36m[4D-HUMANS]   ✅ mesh_vertices_data length: ${data.mesh_vertices_data?.length || 0}\x1b[0m`);
+    console.log(`\x1b[36m[4D-HUMANS]   ✅ mesh_faces_data exists: ${!!data.mesh_faces_data}\x1b[0m`);
+    console.log(`\x1b[36m[4D-HUMANS]   ✅ mesh_faces_data type: ${typeof data.mesh_faces_data}\x1b[0m`);
+    console.log(`\x1b[36m[4D-HUMANS]   ✅ mesh_faces_data length: ${data.mesh_faces_data?.length || 0}\x1b[0m`);
     if (data.mesh_vertices_data && data.mesh_vertices_data.length > 0) {
-      console.log(`[4D-HUMANS]   First vertex: ${JSON.stringify(data.mesh_vertices_data[0])}`);
+      console.log(`\x1b[36m[4D-HUMANS]   ✅ First vertex: ${JSON.stringify(data.mesh_vertices_data[0])}\x1b[0m`);
     }
-    // Check for alternative field names Python might be using
-    if (data.vertices) {
-      console.log(`[4D-HUMANS]   ⚠️  Found 'vertices' field (not mesh_vertices_data): length=${data.vertices?.length}`);
-    }
-    if (data.faces) {
-      console.log(`[4D-HUMANS]   ⚠️  Found 'faces' field (not mesh_faces_data): length=${data.faces?.length}`);
+    if (data.keypoints && data.keypoints.length > 0) {
+      console.log(`\x1b[36m[4D-HUMANS]   ✅ First keypoint: ${JSON.stringify(data.keypoints[0])}\x1b[0m`);
     }
     
     const result: HybridPoseFrame = {
@@ -380,13 +376,7 @@ export async function detectPoseHybrid(
       visualization: data.visualization // Python-generated skeleton overlay
     };
     
-    logger.info(`[4D-HUMANS] Frame ${frameNumber} completed`, {
-      keypointCount: result.keypointCount,
-      has3d: result.has3d,
-      hasVisualization: !!result.visualization,
-      processingTimeMs: result.processingTimeMs,
-      totalTimeMs: Date.now() - startTime
-    });
+    console.log(`\x1b[32m[4D-HUMANS] ✅ Frame ${frameNumber} SUCCESS: ${result.keypoints.length} keypoints, ${result.mesh_vertices_data?.length || 0} vertices\x1b[0m`);
     
     return result;
     
