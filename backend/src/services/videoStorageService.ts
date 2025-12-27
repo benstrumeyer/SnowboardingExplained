@@ -36,7 +36,7 @@ class VideoStorageService {
   private mongoUrl: string;
 
   constructor() {
-    this.mongoUrl = process.env.MONGODB_URI || 'mongodb://localhost:27017/snowboarding';
+    this.mongoUrl = process.env.MONGODB_URI || 'mongodb://admin:password@localhost:27017/snowboarding?authSource=admin';
   }
 
   async connect(): Promise<void> {

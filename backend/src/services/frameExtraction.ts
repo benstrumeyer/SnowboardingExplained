@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 import crypto from 'crypto';
+import { execFile } from 'child_process';
 import logger from '../logger';
 import { FrameExtractionResult } from '../types';
 import { meshDataService } from './meshDataService';
@@ -71,8 +72,18 @@ export class FrameExtractionService {
   ): Promise<FrameExtractionResult> {
     return new Promise(async (resolve, reject) => {
       try {
-        // Check MongoDB cache first
-        const cachedMeshData = await meshDataService.getMeshData(videoId);
+        // Check MongoDB cache first (but don't fail if MongoDB is unavailable)
+        let cachedMeshData = null;
+        try {
+          cachedMeshData = await meshDataService.getMeshData(videoId);
+        } catch (mongoError) {
+          logger.warn(`MongoDB unavailable for cache check, proceeding with frame extraction`, {
+            videoId,
+            error: mongoError instanceof Error ? mongoError.message : String(mongoError)
+          });
+          // Continue with frame extraction even if MongoDB is unavailable
+        }
+
         if (cachedMeshData) {
           logger.info(`Found cached mesh data in MongoDB for video: ${videoId}`, {
             videoId,
@@ -153,12 +164,10 @@ export class FrameExtractionService {
           }
           
           // Determine which frames to extract
-          let framesToExtract: number[];
           let totalFrames: number;
           
           if (frameIndices && frameIndices.length > 0) {
             // Extract only specific frame indices (mesh-aligned)
-            framesToExtract = frameIndices;
             totalFrames = frameIndices.length;
             console.log(`[FRAME_EXTRACTION] 🎯 Extracting ${totalFrames} specific frames aligned with mesh data`);
           } else {
@@ -174,68 +183,78 @@ export class FrameExtractionService {
               totalFrames = MAX_FRAMES;
             }
             
-            // Generate frame indices for fixed FPS extraction
-            framesToExtract = Array.from({ length: totalFrames }, (_, i) => i);
             console.log(`[FRAME_EXTRACTION] 📹 Video: ${duration}s @ ${videoFrameRate.toFixed(2)} fps, extracting ${totalFrames} frames @ ${targetFps.toFixed(2)} fps`);
           }
 
-          ffmpeg(videoPath)
-            .on('filenames', (filenames: any) => {
-              logger.info(`Frame extraction filenames generated: ${filenames.length} frames`);
-            })
-            .on('progress', (progress: any) => {
-              logger.debug(`Frame extraction progress: ${progress.percent}%`);
-            })
-            .on('error', (err: any) => {
-              logger.error(`Frame extraction error: ${err.message}`, { videoId, error: err });
-              reject(err);
-            })
-            .on('end', async () => {
-              logger.info(`Frame extraction completed for video: ${videoId}`);
-              
-              // Read extracted frames
-              const files = fs.readdirSync(outputDir)
-                .filter(f => f.endsWith('.png'))
-                .sort();
-              
-              const frames = files.map((file, index) => ({
-                frameNumber: index,
-                timestamp: index / framesPerSecond,
-                imagePath: path.join(outputDir, file)
-              }));
+          // Use raw ffmpeg command to extract frames
+          // For videos with multiple streams, we skip the -map option and let ffmpeg handle it
+          const ffmpegPath = ffmpegStatic || 'ffmpeg';
+          
+          // Calculate target FPS for frame extraction
+          const MAX_FPS = 60;
+          const targetFps = Math.min(videoFrameRate, MAX_FPS);
+          
+          const args = [
+            '-i', videoPath,  // Input file
+            '-vf', `fps=${targetFps},scale=640:360`,  // Extract at target FPS and scale down
+            '-q:v', '2',  // Quality (lower is better, 2 is high quality)
+            path.join(outputDir, 'frame-%d.png')  // Output pattern
+          ];
+          
+          console.log(`[FRAME_EXTRACTION] Running ffmpeg command:`);
+          console.log(`[FRAME_EXTRACTION] ${ffmpegPath} ${args.map(a => a.includes(' ') ? `"${a}"` : a).join(' ')}`);
+          
+          execFile(ffmpegPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
+            if (error) {
+              logger.error(`Frame extraction error: ${error.message}`, { videoId, error });
+              console.error(`[FRAME_EXTRACTION] ffmpeg stderr:`, stderr);
+              reject(error);
+              return;
+            }
+            
+            logger.info(`Frame extraction completed for video: ${videoId}`);
+            
+            // Read extracted frames
+            const files = fs.readdirSync(outputDir)
+              .filter(f => f.endsWith('.png'))
+              .sort();
+            
+            console.log(`[FRAME_EXTRACTION] ✓ Extraction complete: found ${files.length} PNG files`);
+            console.log(`[FRAME_EXTRACTION] Files:`, files.slice(0, 5).join(', '), files.length > 5 ? `... and ${files.length - 5} more` : '');
+            
+            const frames = files.map((file, index) => ({
+              frameNumber: index,
+              timestamp: index / framesPerSecond,
+              imagePath: path.join(outputDir, file)
+            }));
 
-              // Save FPS metadata for later retrieval
-              const metadataPath = path.join(outputDir, 'metadata.json');
-              fs.writeFileSync(metadataPath, JSON.stringify({
-                fps: framesPerSecond,
-                duration: duration,
-                frameCount: frames.length,
-                extractedAt: new Date().toISOString(),
-                meshAligned: frameIndices ? true : false,
-                requestedFrameIndices: frameIndices || null
-              }, null, 2));
+            // Save FPS metadata for later retrieval
+            const metadataPath = path.join(outputDir, 'metadata.json');
+            fs.writeFileSync(metadataPath, JSON.stringify({
+              fps: framesPerSecond,
+              duration: duration,
+              frameCount: frames.length,
+              extractedAt: new Date().toISOString(),
+              meshAligned: frameIndices ? true : false,
+              requestedFrameIndices: frameIndices || null
+            }, null, 2));
 
-              logger.info(`Frame extraction result: ${frames.length} frames from ${duration}s video`, {
-                videoId,
-                frameCount: frames.length,
-                duration,
-                fps: framesPerSecond,
-                meshAligned: frameIndices ? true : false
-              });
-
-              resolve({
-                frameCount: frames.length,
-                videoDuration: duration,
-                fps: framesPerSecond,
-                frames,
-                cacheHit: false
-              });
-            })
-            .screenshots({
-              count: totalFrames,
-              folder: outputDir,
-              filename: 'frame-%i.png'
+            logger.info(`Frame extraction result: ${frames.length} frames from ${duration}s video`, {
+              videoId,
+              frameCount: frames.length,
+              duration,
+              fps: framesPerSecond,
+              meshAligned: frameIndices ? true : false
             });
+
+            resolve({
+              frameCount: frames.length,
+              videoDuration: duration,
+              fps: framesPerSecond,
+              frames,
+              cacheHit: false
+            });
+          });
         });
       } catch (err) {
         logger.error(`Frame extraction error: ${err}`, { videoId, error: err });
