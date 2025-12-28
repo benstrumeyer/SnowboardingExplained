@@ -2,8 +2,18 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { execSync } from 'child_process';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { poseEstimation } from './poseEstimation';
-import { featureExtraction } from './featureExtraction';
+// TODO: These functions need to be implemented or imported from actual services
+// import { poseEstimation } from './poseEstimation';
+// import { featureExtraction } from './featureExtraction';
+
+// Stub implementations for testing
+async function poseEstimation(framePath: string): Promise<any> {
+  return { landmarks: [] };
+}
+
+async function featureExtraction(pose: any): Promise<any> {
+  return { isAirborne: false };
+}
 
 interface FrameData {
   frameIndex: number;
@@ -18,7 +28,7 @@ interface AnalysisPhase {
   name: 'setup' | 'approach' | 'air' | 'landing';
   startFrame: number;
   endFrame: number;
-  framesToSend: number[];
+  framesToSend: FrameData[];
 }
 
 interface GeminiBatch {

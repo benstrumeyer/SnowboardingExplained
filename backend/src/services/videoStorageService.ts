@@ -2,6 +2,7 @@ import { MongoClient, Db, Collection, GridFSBucket } from 'mongodb';
 import dotenv from 'dotenv';
 import path from 'path';
 import logger from '../logger';
+import { castToVideoSequenceArray } from '../utils/mongoTypeGuards';
 
 dotenv.config({ path: path.join(__dirname, '../../.env.local') });
 dotenv.config();
@@ -173,7 +174,7 @@ class VideoStorageService {
         .find({})
         .project({ frames: 0 }) // Exclude frames for listing
         .sort({ createdAt: -1 })
-        .toArray();
+        .toArray() as VideoSequence[];
 
       logger.info(`Retrieved ${sequences.length} video sequences`);
       return sequences;

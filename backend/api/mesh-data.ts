@@ -2,10 +2,12 @@
  * Mesh Data API
  * GET /api/mesh-data/{videoId}
  * 
- * SIMPLE: Just looks up jobStore[videoId] directly
- * Returns mesh data if complete, 202 if processing, 404 if not found
+ * TODO: Requires 'next' module which is not available in Express backend.
+ * Commenting out for now to unblock Docker build.
  */
 
+// COMMENTED OUT - Missing dependency: 'next' module
+/*
 import { NextApiRequest, NextApiResponse } from 'next';
 import { jobStore } from './jobStore';
 
@@ -54,3 +56,4 @@ export default function handler(
 
   return res.status(404).json({ error: 'Unknown job state' });
 }
+*/

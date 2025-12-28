@@ -9,7 +9,6 @@ import axios from 'axios';
 import logger from './logger';
 import { FrameExtractionService } from './services/frameExtraction';
 import { VideoExtractionService } from './services/videoExtractionService';
-import { TrickDetectionService } from './services/trickDetection';
 import { LLMTrickDetectionService } from './services/llmTrickDetection';
 import { ChatService } from './services/chatService';
 import { KnowledgeBaseService } from './services/knowledgeBase';
@@ -17,16 +16,16 @@ import { meshDataService } from './services/meshDataService';
 import { initializeRedisCache } from './services/redisCacheService';
 import { ApiResponse, MeshSequence, SyncedFrame } from './types';
 import { DatabaseFrame } from './services/meshDataService';
-import { connectDB } from '../mcp-server/src/db/connection';
-import { processVideoUpload, getVideoAnalysis } from './services/videoAnalysisPipelineImpl';
+import { connectToDatabase } from './db/connection';
 // New imports for Python pose service
 import { detectPose, detectPoseParallel, detectPoseHybrid, detectPoseHybridBatch, checkPoseServiceHealth, PoseFrame, HybridPoseFrame } from './services/pythonPoseService';
 import { AnalysisLogBuilder, analyzeFrame, AnalysisLog, FrameAnalysis } from './services/analysisLogService';
 import { initializeFrameDataService } from './services/frameDataService';
-// Process pool imports
-import { ProcessPoolManager } from './services/processPoolManager';
-import { loadPosePoolConfig } from './services/posePoolConfig';
-import { createPoseRouter } from './api/pose';
+// Process pool imports (DISABLED - using pose-video direct bash execution instead)
+// import { ProcessPoolManager } from './services/processPoolManager';
+// import { loadPosePoolConfig } from './services/posePoolConfig';
+// import { createPoseRouter } from './api/pose';
+import poseVideoRouter from './api/pose-video';
 // API routes
 import perfectPhasesRouter from '../api/perfect-phases';
 import comparisonRouter from '../api/comparison';
@@ -96,6 +95,16 @@ app.use((req: Request, res: Response, next: NextFunction) => {
   }
   
   next();
+});
+
+// Health check endpoint for Docker health checks
+app.get('/health', (_req: Request, res: Response) => {
+  res.json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development'
+  });
 });
 
 // Configure multer for video uploads
@@ -332,8 +341,8 @@ app.get('/videos/:videoId', (req: Request, res: Response) => {
   }
 });
 
-// Global process pool manager instance
-let poolManager: ProcessPoolManager | null = null;
+// Global process pool manager instance (DISABLED - using pose-video direct bash execution)
+// let poolManager: ProcessPoolManager | null = null;
 
 // Mount API routes
 app.use('/api/perfect-phases', perfectPhasesRouter);
@@ -342,6 +351,7 @@ app.use('/api', stackedPositionRouter);
 app.use('/api', referenceLibraryRouter);
 app.use('/api', frameDataRouter);
 app.use('/api', smoothingControlRouter);
+app.use('/api/pose', upload.single('video'), poseVideoRouter);
 
 // Chunked Video Upload Endpoints
 const chunksDir = path.join(os.tmpdir(), 'video-chunks');
@@ -403,9 +413,16 @@ app.post('/api/upload-chunk', chunkUpload.single('chunk'), (req: Request, res: R
 
 app.post('/api/finalize-upload', express.json(), async (req: Request, res: Response) => {
   try {
-    const { role, sessionId, filename, filesize } = req.body;
+    console.log(`[FINALIZE] ========================================`);
+    console.log(`[FINALIZE] 🚀 FINALIZE-UPLOAD ENDPOINT CALLED`);
+    console.log(`[FINALIZE] Request body:`, JSON.stringify(req.body, null, 2));
+    
+    const { role, sessionId, filename, filesize, fps: requestFps, videoDuration: requestDuration } = req.body;
+    const fps = parseInt(requestFps) || 30;
+    const videoDuration = parseFloat(requestDuration) || 0;
 
     if (!role || !sessionId) {
+      console.error(`[FINALIZE] ✗ VALIDATION FAILED: role=${role}, sessionId=${sessionId}`);
       return res.status(400).json({ error: 'Missing role or sessionId' });
     }
 
@@ -423,11 +440,18 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
     const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks (must match frontend)
     const totalChunks = Math.ceil(filesize / CHUNK_SIZE);
     
-    console.log(`[FINALIZE] Assembling ${totalChunks} chunks...`);
+    console.log(`[FINALIZE] 📦 CHUNK ASSEMBLY STARTING`);
+    console.log(`[FINALIZE] CHUNK_SIZE: ${CHUNK_SIZE} bytes`);
+    console.log(`[FINALIZE] Total chunks expected: ${totalChunks}`);
+    console.log(`[FINALIZE] Chunks directory: ${chunksDir}`);
+    console.log(`[FINALIZE] Chunks directory exists: ${fs.existsSync(chunksDir)}`);
 
     // Create output file path
     const ext = path.extname(filename) || '.mp4';
     const videoPath = path.join(uploadDir, videoId + ext);
+    console.log(`[FINALIZE] Output video path: ${videoPath}`);
+    console.log(`[FINALIZE] Upload directory exists: ${fs.existsSync(uploadDir)}`);
+    
     const writeStream = fs.createWriteStream(videoPath);
 
     let assembledSize = 0;
@@ -435,33 +459,46 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
     // Assemble chunks in order
     for (let i = 0; i < totalChunks; i++) {
       const chunkPath = path.join(chunksDir, `${sessionId}-chunk-${i}`);
+      console.log(`[FINALIZE] 📥 Chunk ${i + 1}/${totalChunks}: ${chunkPath}`);
       
       if (!fs.existsSync(chunkPath)) {
-        console.error(`[FINALIZE] ✗ Missing chunk ${i}: ${chunkPath}`);
+        console.error(`[FINALIZE] ✗ CRITICAL: Missing chunk ${i}: ${chunkPath}`);
+        console.error(`[FINALIZE] Files in chunks directory:`, fs.readdirSync(chunksDir).slice(0, 10));
         return res.status(400).json({ 
           error: `Missing chunk ${i}/${totalChunks}. Upload may have been interrupted.` 
         });
       }
 
       const chunkData = fs.readFileSync(chunkPath);
+      console.log(`[FINALIZE]   ✓ Read chunk ${i}: ${chunkData.length} bytes`);
+      
       writeStream.write(chunkData);
       assembledSize += chunkData.length;
       
-      console.log(`[FINALIZE] ✓ Assembled chunk ${i + 1}/${totalChunks} (${chunkData.length} bytes)`);
+      console.log(`[FINALIZE]   ✓ Wrote chunk ${i + 1}/${totalChunks} (${chunkData.length} bytes, total: ${assembledSize})`);
       
       // Delete chunk after assembly
       fs.unlinkSync(chunkPath);
+      console.log(`[FINALIZE]   ✓ Deleted chunk file`);
     }
 
     writeStream.end();
 
     // Wait for write to complete
     await new Promise<void>((resolve, reject) => {
-      writeStream.on('finish', () => resolve());
-      writeStream.on('error', reject);
+      writeStream.on('finish', () => {
+        console.log(`[FINALIZE] ✓ Write stream finished`);
+        resolve();
+      });
+      writeStream.on('error', (err) => {
+        console.error(`[FINALIZE] ✗ Write stream error:`, err);
+        reject(err);
+      });
     });
 
     console.log(`[FINALIZE] ✓ Video assembled: ${videoPath} (${assembledSize} bytes)`);
+    console.log(`[FINALIZE] File exists after assembly: ${fs.existsSync(videoPath)}`);
+    console.log(`[FINALIZE] File size on disk: ${fs.statSync(videoPath).size} bytes`);
     
     logger.info(`Video uploaded and ready for pose extraction: ${videoId}`, {
       role,
@@ -472,204 +509,36 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
       chunksAssembled: totalChunks
     });
 
-    // Extract frames and process with pose detection (same as direct upload)
-    let frameResult;
-    try {
-      frameResult = await FrameExtractionService.extractFrames(videoPath, videoId);
-      logger.info(`Extracted ${frameResult.frameCount} frames`);
-    } catch (err: any) {
-      logger.error(`Frame extraction failed for ${videoId}:`, err);
-      return res.status(400).json({ 
-        error: 'Failed to extract frames from video. The file may be corrupted or in an unsupported format.',
-        details: err.message 
-      });
-    }
-
-    // Extract pose data for all frames using the process pool
-    const meshSequence: any[] = [];
-    console.log(`[FINALIZE] Starting pose extraction for ${frameResult.frameCount} frames`);
-    
-    // Prepare frames for pool processing
-    const framesToProcess: any[] = [];
-    for (let i = 0; i < frameResult.frameCount; i++) {
-      const frame = frameResult.frames[i];
-      if (frame) {
-        try {
-          const imageBase64 = FrameExtractionService.getFrameAsBase64(frame.imagePath);
-          framesToProcess.push({
-            frameNumber: i,
-            imageBase64: imageBase64,
-            timestamp: frame.timestamp
-          });
-        } catch (err) {
-          console.error(`[FINALIZE] Error reading frame ${i}:`, err);
-          logger.warn(`Failed to read frame ${i}:`, err);
-        }
-      }
-    }
-    
-    console.log(`[FINALIZE] Prepared ${framesToProcess.length} frames for pool processing`);
-    console.log(`[FINALIZE] poolManager check: poolManager=${poolManager ? 'YES' : 'NO'}, framesToProcess.length=${framesToProcess.length}`);
-    
-    // Process frames through the pool (each frame gets its own process)
-    // This aligns with the architecture: ProcessPoolManager queues individual frame requests
-    if (poolManager && framesToProcess.length > 0) {
-      console.log(`[FINALIZE] ✓ poolManager is initialized, submitting ${framesToProcess.length} frames to process pool`);
-      
-      // Process frames sequentially to avoid queue overflow
-      // The pool will handle concurrency internally based on maxConcurrentProcesses
-      for (let i = 0; i < framesToProcess.length; i++) {
-        const frameData = framesToProcess[i];
-        try {
-          console.log(`[FINALIZE] Submitting frame ${i}/${framesToProcess.length} to pool`);
-          const results = await poolManager.processRequest([frameData]);  // Send one frame per request
-          
-          console.log(`[FINALIZE] 🔍 Frame ${frameData.frameNumber} result:`, {
-            resultsLength: results.length,
-            hasError: results[0]?.error,
-            errorValue: results[0]?.error,
-            keypointCount: results[0]?.keypoints?.length || 0,
-            meshVerticesCount: results[0]?.mesh_vertices_data?.length || 0,
-            has3d: results[0]?.has3d
-          });
-          
-          // Check if frame was processed successfully (has keypoints and no error)
-          const hasKeypoints = results[0]?.keypoints && results[0].keypoints.length > 0;
-          const noError = !results[0]?.error;
-          
-          if (results.length > 0 && hasKeypoints && noError) {
-            meshSequence.push({
-              frameNumber: frameData.frameNumber,
-              timestamp: frameData.timestamp,
-              keypoints: results[0].keypoints,
-              has3d: results[0].has3d,
-              jointAngles3d: results[0].jointAngles3d,
-              mesh_vertices_data: results[0].mesh_vertices_data,
-              mesh_faces_data: results[0].mesh_faces_data,
-              cameraTranslation: results[0].cameraTranslation
-            });
-            
-            if ((i + 1) % 10 === 0) {
-              console.log(`[FINALIZE] Processed ${i + 1}/${framesToProcess.length} frames`);
-            }
-          } else {
-            console.warn(`[FINALIZE] Frame ${frameData.frameNumber} had error:`, results[0]?.error);
-          }
-        } catch (err) {
-          console.error(`[FINALIZE] Error processing frame ${frameData.frameNumber}:`, err);
-          logger.warn(`Failed to extract pose for frame ${frameData.frameNumber}:`, err);
-        }
-      }
-      
-      console.log(`[FINALIZE] Successfully processed ${meshSequence.length}/${framesToProcess.length} frames with pose data`);
-    } else {
-      // No pool manager, fall back to sequential processing
-      console.log(`[FINALIZE] ✗ poolManager is ${poolManager ? 'initialized' : 'NULL'}, framesToProcess.length=${framesToProcess.length}`);
-      console.log(`[FINALIZE] Falling back to sequential processing without pool`);
-      for (let i = 0; i < framesToProcess.length; i++) {
-        const frameData = framesToProcess[i];
-        try {
-          console.log(`[FINALIZE] Processing frame ${frameData.frameNumber}/${framesToProcess.length}`);
-          const poseResult = await detectPoseHybrid(frameData.imageBase64, frameData.frameNumber);
-          
-          meshSequence.push({
-            frameNumber: frameData.frameNumber,
-            timestamp: frameData.timestamp,
-            keypoints: poseResult.keypoints,
-            has3d: poseResult.has3d,
-            jointAngles3d: poseResult.jointAngles3d,
-            mesh_vertices_data: poseResult.mesh_vertices_data,
-            mesh_faces_data: poseResult.mesh_faces_data,
-            cameraTranslation: poseResult.cameraTranslation
-          });
-        } catch (err) {
-          console.error(`[FINALIZE] Error processing frame ${frameData.frameNumber}:`, err);
-          logger.warn(`Failed to extract pose for frame ${frameData.frameNumber}:`, err);
-        }
-      }
-    }
-
-    logger.info(`Pose extraction complete: ${meshSequence.length} frames with pose data`);
-    
-    // DEBUG: Log mesh data before saving (FINALIZE endpoint)
-    if (meshSequence.length > 0) {
-      console.log(`%c[FINALIZE] 🔍 MESH DATA DEBUG before save:`, 'color: #FF6B6B; font-weight: bold;');
-      console.log(`%c[FINALIZE]   First frame mesh_vertices_data exists: ${!!meshSequence[0].mesh_vertices_data}`, 'color: #FF6B6B;');
-      console.log(`%c[FINALIZE]   First frame mesh_vertices_data length: ${meshSequence[0].mesh_vertices_data?.length || 0}`, 'color: #FF6B6B;');
-      console.log(`%c[FINALIZE]   First frame mesh_faces_data exists: ${!!meshSequence[0].mesh_faces_data}`, 'color: #FF6B6B;');
-      console.log(`%c[FINALIZE]   First frame mesh_faces_data length: ${meshSequence[0].mesh_faces_data?.length || 0}`, 'color: #FF6B6B;');
-      if (meshSequence[0].mesh_vertices_data && meshSequence[0].mesh_vertices_data.length > 0) {
-        console.log(`%c[FINALIZE]   First vertex: ${JSON.stringify(meshSequence[0].mesh_vertices_data[0])}`, 'color: #FF6B6B;');
-      }
-    }
-    
-    // Store mesh data in MongoDB for later retrieval
-    const meshData = {
-      videoId,
-      role,
-      fps: frameResult.fps,
-      videoDuration: frameResult.videoDuration,
-      frameCount: meshSequence.length,
-      frames: meshSequence.map(frame => ({
-        frameNumber: frame.frameNumber,
-        timestamp: frame.timestamp,
-        keypoints: frame.keypoints,
-        skeleton: frame.skeleton || {},
-        has3d: frame.has3d || false,
-        jointAngles3d: frame.jointAngles3d || {},
-        mesh_vertices_data: frame.mesh_vertices_data || [],
-        mesh_faces_data: frame.mesh_faces_data || [],
-        cameraTranslation: frame.cameraTranslation || null
-      }))
-    };
-
-    try {
-      // Connect to MongoDB before saving
-      console.log(`[FINALIZE] Connecting to MongoDB...`);
-      await meshDataService.connect();
-      console.log(`[FINALIZE] ✓ Connected to MongoDB`);
-      
-      // Save with new unified structure
-      console.log(`[FINALIZE] About to save mesh data for ${videoId}`);
-      console.log(`[FINALIZE] Mesh data: ${meshData.frameCount} frames, fps: ${meshData.fps}`);
-      
-      // DEBUG: Log first frame mesh data
-      if (meshData.frames.length > 0) {
-        console.log(`%c[FINALIZE] 📊 First frame TO SAVE:`, 'color: #FF6B6B; font-weight: bold;');
-        console.log(`%c[FINALIZE]   mesh_vertices_data length: ${meshData.frames[0].mesh_vertices_data?.length || 0}`, 'color: #FF6B6B;');
-        console.log(`%c[FINALIZE]   mesh_faces_data length: ${meshData.frames[0].mesh_faces_data?.length || 0}`, 'color: #FF6B6B;');
-      }
-      
-      await meshDataService.saveMeshData({
-        videoId,
-        videoUrl: `http://localhost:3001/videos/${videoId}`,
-        fps: meshData.fps,
-        videoDuration: meshData.videoDuration,
-        frameCount: meshData.frameCount,
-        totalFrames: meshData.frameCount,
-        frames: meshData.frames as DatabaseFrame[],
-        role: role as 'rider' | 'coach'
-      });
-      console.log(`[FINALIZE] ✓ Stored mesh data in MongoDB for ${videoId}`);
-      console.log(`[FINALIZE] Saved ${meshData.frames.length} frames to MongoDB`);
-    } catch (err) {
-      logger.error(`Failed to save mesh data for ${videoId}:`, err);
-      console.error(`[FINALIZE] Error saving mesh data:`, err);
-    }
-
-    // Note: Pose extraction happens in the main upload handler (/api/upload-video-with-pose)
-    // The finalize-upload endpoint is only for chunked uploads that are then processed
-    // by the main upload handler. Do not duplicate pose extraction here.
+    // FINALIZE endpoint only assembles chunks - pose extraction happens via /api/pose/video endpoint
+    console.log(`[FINALIZE] ========================================`);
+    console.log(`[FINALIZE] ✓✓✓ FINALIZE-UPLOAD COMPLETE ✓✓✓`);
+    console.log(`[FINALIZE] Video ID: ${videoId}`);
+    console.log(`[FINALIZE] Video Path: ${videoPath}`);
+    console.log(`[FINALIZE] File Size: ${assembledSize} bytes`);
+    console.log(`[FINALIZE] ========================================`);
+    console.log(`[FINALIZE] Next step: Call /api/pose/video with videoId=${videoId}`);
 
     res.status(200).json({
       success: true,
       videoId,
       role,
-      message: 'Video uploaded. Pose extraction started in background.'
+      videoPath,
+      message: 'Video assembled successfully. Call /api/pose/video to extract pose data.'
     });
   } catch (error) {
+    console.error(`[FINALIZE] ========================================`);
+    console.error(`[FINALIZE] ✗✗✗ OUTER CATCH BLOCK - FINALIZE UPLOAD FAILED ✗✗✗`);
+    console.error(`[FINALIZE] Error type: ${(error as any).constructor.name}`);
+    console.error(`[FINALIZE] Error message: ${(error as any).message}`);
+    console.error(`[FINALIZE] Error stack:`, (error as any).stack);
+    console.error(`[FINALIZE] ========================================`);
+    
     logger.error('Finalize upload error:', error);
-    res.status(500).json({ error: 'Failed to finalize upload' });
+    res.status(500).json({ 
+      error: 'Failed to finalize upload',
+      details: (error as any).message,
+      errorType: (error as any).constructor.name
+    });
   }
 });
 
@@ -774,6 +643,9 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
     
     // ARCHITECTURE: Process frames through the pool with one frame per process request
     // WHY: This design ensures true parallelization and resource management:
+    // POOL MANAGER DISABLED - Using direct bash execution via track.py instead
+    // Keeping this entire section commented for future reference/restoration:
+    /*
     // 1. Each frame gets its own isolated Python process (memory safety, crash isolation)
     // 2. ProcessPoolManager queues individual requests and limits concurrent processes
     // 3. Queue prevents resource exhaustion (e.g., max 2 processes running, rest queued)
@@ -789,52 +661,59 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
     console.log(`[UPLOAD] poolManager check: poolManager=${poolManager ? 'YES' : 'NO'}, framesToProcess.length=${framesToProcess.length}`);
     
     if (poolManager && framesToProcess.length > 0) {
-      console.log(`[UPLOAD] ✓ poolManager is initialized, submitting ${framesToProcess.length} frames to process pool`);
+      console.log(`[UPLOAD] ✓ poolManager is initialized, submitting ${framesToProcess.length} frames to process pool IN PARALLEL`);
       
-      // Process frames sequentially to avoid queue overflow
-      // The pool will handle concurrency internally based on maxConcurrentProcesses
-      for (let i = 0; i < framesToProcess.length; i++) {
-        const frameData = framesToProcess[i];
-        try {
-          console.log(`[UPLOAD] Submitting frame ${i}/${framesToProcess.length} to pool`);
-          const results = await poolManager.processRequest([frameData]);  // Send one frame per request
-          
-          console.log(`[UPLOAD] 🔍 Frame ${frameData.frameNumber} result:`, {
-            resultsLength: results.length,
-            hasError: results[0]?.error,
-            errorValue: results[0]?.error,
-            keypointCount: results[0]?.keypoints?.length || 0,
-            meshVerticesCount: results[0]?.mesh_vertices_data?.length || 0,
-            has3d: results[0]?.has3d
-          });
-          
-          // Check if frame was processed successfully (has keypoints and no error)
-          const hasKeypoints = results[0]?.keypoints && results[0].keypoints.length > 0;
-          const noError = !results[0]?.error;
-          
-          if (results.length > 0 && hasKeypoints && noError) {
-            meshSequence.push({
-              frameNumber: frameData.frameNumber,
-              timestamp: frameData.timestamp,
-              keypoints: results[0].keypoints,
-              has3d: results[0].has3d,
-              jointAngles3d: results[0].jointAngles3d,
-              mesh_vertices_data: results[0].mesh_vertices_data,
-              mesh_faces_data: results[0].mesh_faces_data,
-              cameraTranslation: results[0].cameraTranslation
+      // Submit all frames at once - pool manager queues them and processes maxConcurrentProcesses at a time
+      const framePromises = framesToProcess.map((frameData, i) => {
+        console.log(`[UPLOAD] Submitting frame ${i}/${framesToProcess.length} to pool`);
+        return poolManager!.processRequest([frameData])
+          .then(results => {
+            console.log(`[UPLOAD] 🔍 Frame ${frameData.frameNumber} result:`, {
+              resultsLength: results.length,
+              hasError: results[0]?.error,
+              keypointCount: results[0]?.keypoints?.length || 0,
+              meshVerticesCount: results[0]?.mesh_vertices_data?.length || 0,
+              has3d: results[0]?.has3d
             });
-            
-            if ((i + 1) % 10 === 0) {
-              console.log(`[UPLOAD] Processed ${i + 1}/${framesToProcess.length} frames`);
-            }
-          } else {
-            console.warn(`[UPLOAD] Frame ${frameData.frameNumber} had error:`, results[0]?.error);
-          }
-        } catch (err) {
-          console.error(`[UPLOAD] Error processing frame ${frameData.frameNumber}:`, err);
-          logger.warn(`Failed to extract pose for frame ${frameData.frameNumber}:`, err);
+            return { frameData, results, error: null };
+          })
+          .catch(err => {
+            console.error(`[UPLOAD] Error processing frame ${frameData.frameNumber}:`, err);
+            return { frameData, results: null, error: err };
+          });
+      });
+      
+      // Wait for all frames to complete
+      const allResults = await Promise.all(framePromises);
+      
+      // Collect successful results
+      for (const { frameData, results, error } of allResults) {
+        if (error || !results) {
+          logger.warn(`Failed to extract pose for frame ${frameData.frameNumber}:`, error);
+          continue;
+        }
+        
+        const hasKeypoints = results[0]?.keypoints && results[0].keypoints.length > 0;
+        const noError = !results[0]?.error;
+        
+        if (results.length > 0 && hasKeypoints && noError) {
+          meshSequence.push({
+            frameNumber: frameData.frameNumber,
+            timestamp: frameData.timestamp,
+            keypoints: results[0].keypoints,
+            has3d: results[0].has3d,
+            jointAngles3d: results[0].jointAngles3d,
+            mesh_vertices_data: results[0].mesh_vertices_data,
+            mesh_faces_data: results[0].mesh_faces_data,
+            cameraTranslation: results[0].cameraTranslation
+          });
+        } else {
+          console.warn(`[UPLOAD] Frame ${frameData.frameNumber} had error:`, results[0]?.error);
         }
       }
+      
+      // Sort by frame number since parallel processing may complete out of order
+      meshSequence.sort((a, b) => a.frameNumber - b.frameNumber);
       
       console.log(`[UPLOAD] Successfully processed ${meshSequence.length}/${framesToProcess.length} frames with pose data`);
     } else {
@@ -863,6 +742,7 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
         }
       }
     }
+    */
 
     logger.info(`Pose extraction complete: ${meshSequence.length} frames with pose data`);
     
@@ -1188,6 +1068,8 @@ app.get('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
   }
 });
 
+// Form analysis upload endpoint (COMMENTED OUT - depends on videoAnalysisPipelineImpl which is not available)
+/*
 app.post('/api/form-analysis/upload', upload.single('video'), async (req: Request, res: Response) => {
   const requestId = Date.now().toString();
   
@@ -1226,7 +1108,7 @@ app.post('/api/form-analysis/upload', upload.single('video'), async (req: Reques
 
     // Connect to database
     logger.info(`[${requestId}] Connecting to MongoDB...`);
-    const db = await connectDB();
+    const db = await connectToDatabase();
     logger.info(`[${requestId}] ✓ Connected to MongoDB`);
 
     // Import pipeline
@@ -1323,6 +1205,7 @@ app.post('/api/form-analysis/upload', upload.single('video'), async (req: Reques
     } as ApiResponse<null>);
   }
 });
+*/
 
 // Video upload and analysis endpoint (DEPRECATED - use /api/video/analyze-pose instead)
 /*
@@ -2716,13 +2599,8 @@ app.get('/api/video/download', (req: Request, res: Response) => {
     if (videoPath.includes('..')) {
       return res.status(400).json({ error: 'Invalid path' });
     }
-
-    // Convert WSL path to Windows path if needed
-    if (videoPath.startsWith('/mnt/c/')) {
-      videoPath = videoPath.replace('/mnt/c/', 'C:\\');
-    }
     
-    logger.info(`[DOWNLOAD] Converted path: ${videoPath}`);
+    logger.info(`[DOWNLOAD] Using path as-is (Docker container path): ${videoPath}`);
     logger.info(`[DOWNLOAD] Attempting to download: ${videoPath}`);
 
     // Check if file exists
@@ -2804,17 +2682,15 @@ async function startServer() {
       uploadDir: uploadDir
     });
     
-    // Initialize process pool manager for pose detection
-    const posePoolConfig = loadPosePoolConfig();
-    console.log(`[STARTUP] Pose pool config loaded:`, {
-      useHttpService: posePoolConfig.useHttpService,
-      pythonServicePath: posePoolConfig.pythonServicePath,
-      maxConcurrentProcesses: posePoolConfig.maxConcurrentProcesses
-    });
-    poolManager = new ProcessPoolManager(posePoolConfig);
-    
-    // Mount pose detection endpoints now that pool manager is initialized
-    app.use('/api/pose', createPoseRouter(poolManager));
+    // DISABLED: Process pool manager (using pose-video direct bash execution instead)
+    // const posePoolConfig = loadPosePoolConfig();
+    // console.log(`[STARTUP] Pose pool config loaded:`, {
+    //   useHttpService: posePoolConfig.useHttpService,
+    //   pythonServicePath: posePoolConfig.pythonServicePath,
+    //   maxConcurrentProcesses: posePoolConfig.maxConcurrentProcesses
+    // });
+    // poolManager = new ProcessPoolManager(posePoolConfig);
+    // app.use('/api/pose', createPoseRouter(poolManager));
     
     // Initialize database connection
     const { connectToDatabase } = await import('./db/connection');
@@ -2895,10 +2771,10 @@ async function startServer() {
     process.on('SIGINT', async () => {
       console.log('\n\nShutting down gracefully...');
       
-      // Shutdown process pool
-      if (poolManager) {
-        await poolManager.shutdown();
-      }
+      // Shutdown process pool (DISABLED - pool manager not in use)
+      // if (poolManager) {
+      //   await poolManager.shutdown();
+      // }
       
       await meshDataService.disconnect();
       server.close(() => {
@@ -2910,10 +2786,10 @@ async function startServer() {
     process.on('SIGTERM', async () => {
       console.log('\n\nShutting down gracefully (SIGTERM)...');
       
-      // Shutdown process pool
-      if (poolManager) {
-        await poolManager.shutdown();
-      }
+      // Shutdown process pool (DISABLED - pool manager not in use)
+      // if (poolManager) {
+      //   await poolManager.shutdown();
+      // }
       
       await meshDataService.disconnect();
       server.close(() => {

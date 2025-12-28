@@ -2,9 +2,12 @@
  * Job Status API
  * GET /api/job-status/{videoId}
  * 
- * SIMPLE: Just looks up jobStore[videoId] directly
+ * TODO: Requires 'next' module which is not available in Express backend.
+ * Commenting out for now to unblock Docker build.
  */
 
+// COMMENTED OUT - Missing dependency: 'next' module
+/*
 import { NextApiRequest, NextApiResponse } from 'next';
 import { jobStore } from './jobStore';
 
@@ -47,3 +50,4 @@ export default function handler(
     frameCount: job.result?.frames?.length || 0,
   });
 }
+*/

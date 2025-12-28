@@ -1,8 +1,12 @@
 /**
  * Debug endpoint to see jobStore contents
  * GET /api/debug-jobstore
+ * 
+ * TODO: Requires 'next' module which is not available in Express backend.
+ * Commenting out for now to unblock Docker build.
  */
 
+/*
 import { NextApiRequest, NextApiResponse } from 'next';
 import { jobStore } from './jobStore';
 
@@ -28,3 +32,4 @@ export default function handler(
     jobs: summary,
   });
 }
+*/

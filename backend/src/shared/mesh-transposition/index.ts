@@ -6,6 +6,9 @@
 
 import { Point2D, Point3D, Matrix4, Keypoint, Skeleton } from './types';
 
+// Re-export types for use by other modules
+export type { Point2D, Point3D, Matrix4, Keypoint, Skeleton };
+
 /**
  * Convert 2D video coordinates to 3D world space
  * Uses camera matrix and depth map for accurate transposition

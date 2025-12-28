@@ -23,6 +23,7 @@ import {
   calculateAverageStackedPosition,
 } from '../src/utils/stackedPositionAnalyzer';
 import { VideoAnalysis } from '../src/types/formAnalysis';
+import { castToVideoAnalysis } from '../src/utils/mongoTypeGuards';
 
 const router = Router();
 
@@ -52,9 +53,10 @@ router.post('/stacked-position/reference', async (req: Request, res: Response) =
     }
 
     // Fetch the video analysis
-    const videoAnalysis = (await db
+    const videoDoc = await db
       .collection('videoAnalyses')
-      .findOne({ videoId })) as VideoAnalysis | null;
+      .findOne({ videoId });
+    const videoAnalysis = castToVideoAnalysis(videoDoc);
 
     if (!videoAnalysis) {
       return res.status(404).json({
@@ -208,9 +210,10 @@ router.post('/stacked-position/analyze', async (req: Request, res: Response) => 
     }
 
     // Fetch rider video analysis
-    const riderAnalysis = (await db
+    const riderDoc = await db
       .collection('videoAnalyses')
-      .findOne({ videoId })) as VideoAnalysis | null;
+      .findOne({ videoId });
+    const riderAnalysis = castToVideoAnalysis(riderDoc);
 
     if (!riderAnalysis) {
       return res.status(404).json({

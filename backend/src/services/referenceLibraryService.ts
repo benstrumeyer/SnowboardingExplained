@@ -9,6 +9,7 @@ import { db } from '../db/connection';
 import { PoseFrame, Phase, VideoAnalysis } from '../types/formAnalysis';
 import { calculatePhaseDetectionSignals } from '../utils/phaseDetectionSignals';
 import { extractStackedPositionMetrics } from '../utils/stackedPositionAnalyzer';
+import { castToVideoAnalysis } from '../utils/mongoTypeGuards';
 
 export interface ReferenceSignalSet {
   _id?: string;
@@ -90,9 +91,10 @@ export async function createReferenceSignalSet(
   tags: string[] = []
 ): Promise<ReferenceSignalSet> {
   // Fetch the video analysis
-  const videoAnalysis = (await db
+  const videoDoc = await db
     .collection('videoAnalyses')
-    .findOne({ videoId: sourceVideoId })) as VideoAnalysis | null;
+    .findOne({ videoId: sourceVideoId });
+  const videoAnalysis = castToVideoAnalysis(videoDoc);
 
   if (!videoAnalysis) {
     throw new Error(`Video ${sourceVideoId} not found`);

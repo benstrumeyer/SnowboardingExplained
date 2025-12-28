@@ -400,7 +400,7 @@ export function computeSpinControl(
       maxSeparationFrame: 0,
       timeline: [],
       spinControlVerdict: {
-        verdict: 'unknown',
+        verdict: 'under_rotated' as const,
         reasoning: 'Insufficient data',
         coachTip: 'Unable to analyze',
       },

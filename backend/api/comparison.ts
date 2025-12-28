@@ -10,6 +10,7 @@ import {
   formatComparisonForAPI,
 } from '../src/services/comparisonService';
 import { VideoAnalysis } from '../src/types/formAnalysis';
+import { castToVideoAnalysis } from '../src/utils/mongoTypeGuards';
 
 const router = Router();
 
@@ -34,9 +35,10 @@ router.post('/comparison', async (req: Request, res: Response) => {
     }
 
     // Fetch rider analysis
-    const riderAnalysis = await db
+    const riderDoc = await db
       .collection('videoAnalyses')
-      .findOne({ videoId: riderVideoId }) as VideoAnalysis | null;
+      .findOne({ videoId: riderVideoId });
+    const riderAnalysis = castToVideoAnalysis(riderDoc);
 
     if (!riderAnalysis) {
       return res.status(404).json({
@@ -45,9 +47,10 @@ router.post('/comparison', async (req: Request, res: Response) => {
     }
 
     // Fetch reference analysis
-    const referenceAnalysis = await db
+    const referenceDoc = await db
       .collection('videoAnalyses')
-      .findOne({ videoId: referenceVideoId }) as VideoAnalysis | null;
+      .findOne({ videoId: referenceVideoId });
+    const referenceAnalysis = castToVideoAnalysis(referenceDoc);
 
     if (!referenceAnalysis) {
       return res.status(404).json({
@@ -80,9 +83,10 @@ router.get('/comparison/:riderVideoId/:referenceVideoId', async (req: Request, r
     const { riderVideoId, referenceVideoId } = req.params;
 
     // Fetch rider analysis
-    const riderAnalysis = await db
+    const riderDoc = await db
       .collection('videoAnalyses')
-      .findOne({ videoId: riderVideoId }) as VideoAnalysis | null;
+      .findOne({ videoId: riderVideoId });
+    const riderAnalysis = castToVideoAnalysis(riderDoc);
 
     if (!riderAnalysis) {
       return res.status(404).json({
@@ -91,9 +95,10 @@ router.get('/comparison/:riderVideoId/:referenceVideoId', async (req: Request, r
     }
 
     // Fetch reference analysis
-    const referenceAnalysis = await db
+    const referenceDoc = await db
       .collection('videoAnalyses')
-      .findOne({ videoId: referenceVideoId }) as VideoAnalysis | null;
+      .findOne({ videoId: referenceVideoId });
+    const referenceAnalysis = castToVideoAnalysis(referenceDoc);
 
     if (!referenceAnalysis) {
       return res.status(404).json({
