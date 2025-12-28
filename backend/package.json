@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "ts-node src/server.ts",
+    "dev": "npm run build && node dist/src/server.js",
     "build": "tsc --outDir dist",
     "start": "node dist/src/server.js",
     "deploy": "vercel --prod",
