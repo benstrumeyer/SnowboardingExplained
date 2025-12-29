@@ -2,8 +2,8 @@ services:
   # Pose Service with GPU support
   pose-service:
     build:
-      context: .
-      dockerfile: backend/pose-service/Dockerfile
+      context: ./backend/pose-service
+      dockerfile: Dockerfile
     container_name: snowboard-pose-service
     ports:
       - "5000:5000"
@@ -41,8 +41,8 @@ services:
   # Backend API
   backend-api:
     build:
-      context: .
-      dockerfile: backend/Dockerfile
+      context: ./backend
+      dockerfile: Dockerfile
     container_name: snowboard-backend-api
     ports:
       - "3001:3001"
@@ -79,8 +79,8 @@ services:
   # Frontend Dev Server
   frontend:
     build:
-      context: .
-      dockerfile: backend/web/Dockerfile
+      context: ./backend/web
+      dockerfile: Dockerfile
     container_name: snowboard-frontend
     ports:
       - "5173:5173"
