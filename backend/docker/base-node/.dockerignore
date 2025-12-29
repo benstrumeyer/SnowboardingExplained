@@ -6,8 +6,3 @@ npm-debug.log
 *.log
 .DS_Store
 Thumbs.db
-dist/
-build/
-.vite/
-coverage/
-.eslintcache

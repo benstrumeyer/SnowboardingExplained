@@ -12,11 +12,3 @@ env
 *.log
 .DS_Store
 Thumbs.db
-*.pkl
-data/
-*.egg-info
-dist/
-build/
-.pytest_cache
-.coverage
-htmlcov/
