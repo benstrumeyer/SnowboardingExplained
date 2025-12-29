@@ -6,40 +6,40 @@ This plan provides a step-by-step approach to fix all Docker dependencies for th
 
 ## Tasks
 
-- [ ] 1. Create corrected requirements.txt with all dependencies
+- [x] 1. Create corrected requirements.txt with all dependencies
   - Remove non-existent packages (libtiff6 → libtiff5)
   - Add missing packages (detectron2, smpl-x, phalp, timm)
   - Verify all package names exist in PyPI
   - Ensure version compatibility
   - _Requirements: 7.1, 7.2, 7.4_
 
-- [ ] 2. Create corrected Dockerfile with proper system dependencies
+- [x] 2. Create corrected Dockerfile with proper system dependencies
   - Fix graphics libraries (libgl1-mesa-glx, libgl1-mesa-dev)
   - Fix image processing libraries (use libtiff5 instead of libtiff6)
   - Add all build tools and development headers
   - Organize dependencies into logical stages
   - _Requirements: 1.1, 1.3, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [ ] 3. Add 4D-Humans installation to Dockerfile
+- [x] 3. Add 4D-Humans installation to Dockerfile
   - Clone 4D-Humans from GitHub
   - Copy to /app/4D-Humans
   - Ensure SMPL models are accessible
   - _Requirements: 2.1, 2.2, 2.5_
 
-- [ ] 4. Add Detectron2 installation to Dockerfile
+- [x] 4. Add Detectron2 installation to Dockerfile
   - Clone Detectron2 from GitHub
   - Build from source with pip install -e .
   - Verify installation succeeds
   - _Requirements: 5.1, 5.2, 5.3, 5.4_
 
-- [ ] 5. Verify Dockerfile syntax and structure
+- [x] 5. Verify Dockerfile syntax and structure
   - Check for syntax errors
   - Verify all COPY commands reference correct paths
   - Ensure RUN commands use proper shell syntax
   - Verify EXPOSE and CMD are correct
   - _Requirements: 6.1_
 
-- [ ] 6. Create test script to verify all dependencies in container
+- [x] 6. Create test script to verify all dependencies in container
   - Test libGL.so.1 availability
   - Test image decoding with sample base64 image
   - Test all module imports (4D-Humans, PHALP, ViTPose, Detectron2)
@@ -47,7 +47,7 @@ This plan provides a step-by-step approach to fix all Docker dependencies for th
   - Use Docker MCP to inspect container filesystem if needed
   - _Requirements: 1.2, 3.2, 4.2, 5.2, 7.2, 8.1_
 
-- [ ] 7. Build Docker image and verify no errors
+- [x] 7. Build Docker image and verify no errors
   - Run: `docker-compose -f SnowboardingExplained/docker-compose.yml build pose-service`
   - Monitor build output for errors using Docker MCP logs
   - Verify build completes successfully
