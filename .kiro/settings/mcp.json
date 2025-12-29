@@ -1,0 +1,91 @@
+{
+  "mcpServers": {
+    "mongodb": {
+      "type": "stdio",
+      "command": "wsl.exe",
+      "args": [
+        "--shell-type",
+        "login",
+        "npx",
+        "-y",
+        "mongodb-mcp-server@latest",
+        "--readOnly"
+      ],
+      "env": {
+        "MDB_MCP_CONNECTION_STRING": "mongodb://localhost:27017/snowboarding-explained"
+      },
+      "autoApprove": [
+        "connect",
+        "list-databases",
+        "list-collections",
+        "find",
+        "db-stats"
+      ],
+      "disabledTools": []
+    },
+    "chrome-devtools": {
+      "command": "wsl.exe",
+      "args": [
+        "--shell-type",
+        "login",
+        "npx",
+        "-y",
+        "chrome-devtools-mcp@latest"
+      ],
+      "autoApprove": [
+        "new_page",
+        "navigate_page",
+        "take_snapshot",
+        "list_console_messages",
+        "list_network_requests",
+        "wait_for",
+        "take_screenshot",
+        "click",
+        "list_pages",
+        "upload_file",
+        "get_console_message",
+        "evaluate_script",
+        "get_network_request",
+        "select_page",
+        "fill"
+      ],
+      "disabled": false
+    },
+    "browsermcp": {
+      "command": "wsl.exe",
+      "args": [
+        "--shell-type",
+        "login",
+        "npx",
+        "@browsermcp/mcp@latest"
+      ],
+      "autoApprove": [
+        "browser_wait",
+        "browser_snapshot",
+        "browser_click",
+        "browser_type",
+        "browser_screenshot",
+        "browser_press_key",
+        "browser_get_console_logs"
+      ],
+      "disabled": false,
+      "disabledTools": [
+        "browser_navigate"
+      ]
+    },
+    "fetch": {
+      "command": "wsl.exe",
+      "args": [
+        "--shell-type",
+        "login",
+        "uvx",
+        "mcp-server-fetch"
+      ],
+      "env": {},
+      "autoApprove": [
+        "fetch"
+      ],
+      "disabled": false
+    }
+  }
+}

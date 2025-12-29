@@ -1,0 +1,34 @@
+{
+  "folders": [
+    {
+      "path": ".",
+      "name": "root"
+    },
+    {
+      "path": "backend",
+      "name": "backend"
+    },
+    {
+      "path": "backend/mobile",
+      "name": "mobile"
+    },
+    {
+      "path": "backend/pose-service",
+      "name": "pose-service"
+    },
+    {
+      "path": "data-pipeline",
+      "name": "data-pipeline"
+    },
+    {
+      "path": "docs",
+      "name": "docs"
+    }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "${workspaceFolder:pose-service}/venv/bin/python",
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "editor.formatOnSave": true
+  }
+}

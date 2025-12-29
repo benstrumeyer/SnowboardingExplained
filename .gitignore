@@ -75,3 +75,4 @@ venv/
 
 # Development scripts (local only)
 dev-kiro.ps1
+*.pkl
