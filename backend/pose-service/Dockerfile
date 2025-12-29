@@ -1,126 +1,150 @@
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
+# ============================================
+# MULTI-STAGE BUILD: Dependencies Stage
+# ============================================
+# This Dockerfile uses multi-stage builds to optimize caching
+# Stage 1 (deps): Install dependencies - cached and reused
+# Stage 2 (build): Add application code - rebuilt when code changes
+# Stage 3 (runtime): Final image with only what's needed
 
+# FROM base-python-pose:latest as deps
+# FROM: Use the base image we created earlier (has all ML dependencies)
+# as deps: Name this stage "deps" so we can reference it later
+FROM base-python-pose:latest as deps
+
+# WORKDIR: Set working directory to /app
 WORKDIR /app
 
-# Install system dependencies in stages to avoid conflicts
-# Stage 1: Core build tools and Python 3.10
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3.10 \
-    python3-pip \
-    python3.10-venv \
-    python3.10-dev \
-    git \
-    wget \
-    curl \
-    ca-certificates \
-    build-essential \
-    cmake \
-    pkg-config \
-    && rm -rf /var/lib/apt/lists/*
-
-# Set Python 3.10 as default
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1 && \
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
-
-# Stage 2: Graphics and rendering libraries
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1-mesa-glx \
-    libgl1-mesa-dev \
-    libglib2.0-0 \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libgomp1 \
-    libglu1-mesa \
-    libxkbcommon-x11-0 \
-    libdbus-1-3 \
-    libfontconfig1 \
-    libfreetype6 \
-    libharfbuzz0b \
-    && rm -rf /var/lib/apt/lists/*
-
-# Stage 3: Image and math libraries
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpng16-16 \
-    libjpeg-turbo8 \
-    libtiff5 \
-    libwebp7 \
-    libopenblas0 \
-    liblapack3 \
-    libopenblas-dev \
-    liblapack-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Stage 4: Media and utilities
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements and install Python dependencies
+# ============================================
+# Install Python dependencies
+# ============================================
+# COPY: Copy files from host machine into container
+# backend/pose-service/requirements.txt: Source file on host
+# .: Destination in container (current directory = /app)
+# This copies the list of Python packages to install
 COPY backend/pose-service/requirements.txt .
 
-# CRITICAL: Install joblib FIRST before any other dependencies
-# PHALP imports joblib during its own initialization
-RUN pip install --no-cache-dir joblib
-
-# Now install all other requirements (which includes phalp)
+# RUN pip install: Install all packages listed in requirements.txt
+# --no-cache-dir: Don't cache packages (saves space)
+# -r requirements.txt: Read package list from file
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Verify joblib is available after all installations
-RUN python3 -c "import joblib; print(f'✓ joblib {joblib.__version__} available')"
-
-# Install pytorch3d 0.7.0 with proper build support
-RUN pip install --no-cache-dir pytorch3d==0.7.0 || \
-    (pip install --no-cache-dir 'git+https://github.com/facebookresearch/pytorch3d.git@v0.7.0' || \
-    (git clone --depth 1 --branch v0.7.0 https://github.com/facebookresearch/pytorch3d.git /app/pytorch3d && \
-    cd /app/pytorch3d && \
-    pip install --no-cache-dir -e .))
-
-# Stage 5: Copy and install 4D-Humans (already downloaded on Windows)
-COPY backend/pose-service/4D-Humans /app/4D-Humans
-RUN cd /app/4D-Humans && \
-    pip install --no-cache-dir -e .
-
-# Stage 6: Clone and install Detectron2 from source
-# CRITICAL: This must happen AFTER build-essential is installed
-# For Python 3.10, we need to build from source
-# ViTDet is included in Detectron2's model zoo - no separate package needed
-RUN echo "[BUILD] Installing Detectron2 from source (includes ViTDet models)..." && \
-    git clone https://github.com/facebookresearch/detectron2.git /app/detectron2 && \
-    cd /app/detectron2 && \
-    pip install --no-cache-dir -e . 2>&1 | tail -20 && \
-    echo "[BUILD] ✓ Detectron2 installed"
-
-# CRITICAL: Verify Detectron2 installation
-RUN python3 -c "import detectron2; print(f'[BUILD] ✓ Detectron2 {detectron2.__version__} verified')" || \
-    echo "[BUILD] ⚠ Detectron2 import warning (may still work)"
-
-# Verify ViTDet models are available in Detectron2
-RUN python3 -c "from detectron2.model_zoo import model_zoo; print('[BUILD] ✓ Detectron2 model zoo available (includes ViTDet)')" || \
-    echo "[BUILD] ⚠ Model zoo check skipped"
-
-# Copy SMPL model INTO the image (CRITICAL - must be done during build)
-# This ensures the model is available inside the container
+# ============================================
+# Copy SMPL model (3D body model)
+# ============================================
+# COPY: Copy files from host into container
+# backend/pose-service/data/: Source directory with model files
+# /app/data/: Destination in container
+# This copies the SMPL model file needed for pose estimation
 COPY backend/pose-service/data/ /app/data/
 
+# ============================================
 # Verify SMPL model exists
+# ============================================
+# ls -la: List files in directory (for debugging)
+# test -f: Check if file exists
+# &&: Run next command only if previous succeeded
+# echo: Print success message
+# ||: Run next command if previous failed
+# This verifies the model file was copied correctly
 RUN ls -la /app/data/ && \
-    test -f /app/data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl && \
+    test -f /app/data/basicmodel_m_lbs_10_207_0_v1.1.0.pkl && \
     echo "[BUILD] ✓ SMPL model verified" || \
-    echo "[BUILD] ⚠ SMPL model not found - will attempt download on first request"
+    echo "[BUILD] ⚠ SMPL model not found"
 
-# Copy pose service code (excluding venv and large directories)
+# ============================================
+# BUILD STAGE: Add application code
+# ============================================
+# FROM deps as build
+# FROM: Use the previous stage (deps) as base
+# as build: Name this stage "build"
+FROM deps as build
+
+# WORKDIR: Set working directory
+WORKDIR /app
+
+# ============================================
+# Copy pose service code
+# ============================================
+# COPY: Copy all files from pose-service directory
+# backend/pose-service/: Source directory on host
+# .: Destination in container (current directory = /app)
+# This copies the Python code for the pose service
 COPY backend/pose-service/ .
 
-# Remove venv if it was copied (shouldn't be due to .dockerignore)
+# ============================================
+# Clean up unnecessary files
+# ============================================
+# RUN rm -rf: Remove directories
+# venv: Virtual environment (not needed in container)
+# __pycache__: Python cache files (not needed)
+# .git: Git history (not needed)
+# This keeps the image smaller
 RUN rm -rf venv __pycache__ .git
 
-# Expose Flask port
+# ============================================
+# Verify all ML libraries are available
+# ============================================
+# python3 -c: Run Python code directly
+# import phalp: Load the PHALP library
+# print(...): Print success message
+# These verify that all dependencies installed correctly
+RUN python3 -c "import phalp; print('✓ PHALP available')" && \
+    python3 -c "import detectron2; print('✓ Detectron2 available')" && \
+    python3 -c "import pytorch3d; print('✓ pytorch3d available')"
+
+# ============================================
+# RUNTIME STAGE: Final image
+# ============================================
+# FROM base-python-pose:latest as runtime
+# FROM: Use the base image again (fresh copy)
+# as runtime: Name this stage "runtime"
+# We use the base image again (not the build stage) to keep image small
+# The build stage is only used to verify code, not included in final image
+FROM base-python-pose:latest as runtime
+
+# WORKDIR: Set working directory
+WORKDIR /app
+
+# ============================================
+# Copy SMPL model
+# ============================================
+# COPY: Copy model files from host
+# backend/pose-service/data/: Source directory
+# /app/data/: Destination in container
+COPY backend/pose-service/data/ /app/data/
+
+# ============================================
+# Copy application code from build stage
+# ============================================
+# COPY --from=build: Copy files from a previous stage (not from host)
+# /app: Source directory in build stage
+# /app: Destination in runtime stage
+# This copies the verified code from the build stage
+COPY --from=build /app /app
+
+# ============================================
+# EXPOSE: Document which port the app uses
+# ============================================
+# 5000: Flask web server port
 EXPOSE 5000
 
-# Health check
+# ============================================
+# HEALTHCHECK: Define how to check if container is healthy
+# ============================================
+# --interval=30s: Check every 30 seconds
+# --timeout=10s: Wait max 10 seconds for response
+# --start-period=60s: Wait 60 seconds before first check (let app start)
+# --retries=3: Mark unhealthy after 3 failed checks
+# CMD curl: Use curl to check if service is running
+# curl -f: Fail if HTTP status is not 2xx or 3xx
+# http://localhost:5000/health: Check the health endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:5000/health || exit 1
 
-# Start Flask wrapper
+# ============================================
+# CMD: Default command when container starts
+# ============================================
+# CMD ["python3", "flask_wrapper_minimal_safe.py"]
+# This runs the Flask web server when the container starts
+# The Flask server listens on port 5000 for video upload requests
 CMD ["python3", "flask_wrapper_minimal_safe.py"]
