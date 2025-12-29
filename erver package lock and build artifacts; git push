@@ -1,5 +1,0 @@
-[33m342ce89[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m, [m[1;31morigin/master[m[33m, [m[1;31morigin/HEAD[m[33m)[m Implement complete MCP server with all tools, caching, error handling, and database integration
-[33mb9b35bf[m Redesign coach system as knowledge base with natural language interface using MCP tools for data retrieval
-[33mecc8464[m Merge branch 'master' of https://github.com/benstrumeyer/AI-Snowboard-Coach
-[33mc0c62e9[m integrate-domain-classifier
-[33m3db1180[m add-domain-classifier
