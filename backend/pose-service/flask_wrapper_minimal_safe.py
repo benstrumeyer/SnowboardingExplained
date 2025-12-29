@@ -50,11 +50,8 @@ import typing
 from omegaconf import DictConfig, ListConfig
 from omegaconf.base import ContainerMetadata
 
-# Add safe globals for torch.load - include dict which is needed by HMR2 checkpoints
-torch.serialization.add_safe_globals([DictConfig, ListConfig, ContainerMetadata, typing.Any, dict])
-print("[PATCH] torch.serialization patched to allow OmegaConf classes, typing.Any, and dict")
-
 # Patch torch.load to use weights_only=False for PyTorch 2.6+
+# Note: add_safe_globals doesn't exist in PyTorch 2.0.1, so we just patch torch.load
 _original_torch_load = torch.load
 def _patched_torch_load(*args, **kwargs):
     if 'weights_only' not in kwargs:
@@ -263,6 +260,17 @@ def initialize_models():
         # Load PHALP temporal tracker - exactly as in track.py
         print("[INIT] Loading PHALP temporal tracker...")
         try:
+            # First ensure joblib is available
+            try:
+                import joblib
+                print("[INIT] ✓ joblib available")
+            except ImportError:
+                print("[INIT] ⚠ joblib not found, installing...")
+                import subprocess
+                subprocess.check_call([sys.executable, "-m", "pip", "install", "joblib"])
+                import joblib
+                print("[INIT] ✓ joblib installed")
+            
             # Patch PHALP's convert_pkl to use the male model we have
             print("[INIT] Patching PHALP utils to use male model...")
             try:
@@ -274,11 +282,12 @@ def initialize_models():
                     """Use male model instead of trying to download neutral"""
                     print(f"[PATCH] convert_pkl called for: {old_pkl}")
                     
-                    # Try to find the male model file
+                    # Try to find the male model file (fallback to neutral if not available)
                     male_model_paths = [
-                        'basicmodel_m_lbs_10_207_0_v1.1.0.pkl',
-                        '/home/ben/pose-service/basicmodel_m_lbs_10_207_0_v1.1.0.pkl',
-                        '/mnt/c/Users/benja/repos/SnowboardingExplained/backend/pose-service/basicmodel_m_lbs_10_207_0_v1.1.0.pkl',
+                        '/app/data/basicmodel_m_lbs_10_207_0_v1.1.0.pkl',  # Docker container path
+                        '/app/data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl',  # Neutral model fallback
+                        'basicmodel_m_lbs_10_207_0_v1.1.0.pkl',  # Current directory
+                        '/home/ben/pose-service/basicmodel_m_lbs_10_207_0_v1.1.0.pkl',  # WSL path
                     ]
                     
                     for path in male_model_paths:
@@ -324,10 +333,13 @@ def initialize_models():
         sys.stdout.flush()
         try:
             import pickle
-            # Try multiple possible filenames
+            # Try multiple possible filenames (male model with neutral fallback)
             possible_paths = [
-                '/home/ben/pose-service/basicmodel_m_lbs_10_207_0_v1.1.0_p3.pkl',
-                '/home/ben/pose-service/basicmodel_m_lbs_10_207_0_v1.1.0.pkl',
+                '/app/data/basicmodel_m_lbs_10_207_0_v1.1.0.pkl',  # Docker container path
+                '/app/data/basicmodel_m_lbs_10_207_0_v1.1.0_p3.pkl',  # Docker container path (alternate)
+                '/app/data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl',  # Neutral model fallback
+                '/home/ben/pose-service/basicmodel_m_lbs_10_207_0_v1.1.0.pkl',  # WSL path
+                '/home/ben/pose-service/basicmodel_m_lbs_10_207_0_v1.1.0_p3.pkl',  # WSL path (alternate)
             ]
             
             male_model_path = None
@@ -1218,10 +1230,13 @@ def pose_hybrid():
                 else:
                     print("[🔴 POSE] ⚠ Could not extract faces from HMR2, trying pickle file...")
                     import pickle
-                    # Try multiple possible filenames
+                    # Try multiple possible filenames (male model with neutral fallback)
                     possible_paths = [
-                        '/home/ben/pose-service/basicmodel_m_lbs_10_207_0_v1.1.0_p3.pkl',
-                        '/home/ben/pose-service/basicmodel_m_lbs_10_207_0_v1.1.0.pkl',
+                        '/app/data/basicmodel_m_lbs_10_207_0_v1.1.0.pkl',  # Docker container path
+                        '/app/data/basicmodel_m_lbs_10_207_0_v1.1.0_p3.pkl',  # Docker container path (alternate)
+                        '/app/data/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl',  # Neutral model fallback
+                        '/home/ben/pose-service/basicmodel_m_lbs_10_207_0_v1.1.0.pkl',  # WSL path
+                        '/home/ben/pose-service/basicmodel_m_lbs_10_207_0_v1.1.0_p3.pkl',  # WSL path (alternate)
                     ]
                     
                     for pkl_path in possible_paths:
