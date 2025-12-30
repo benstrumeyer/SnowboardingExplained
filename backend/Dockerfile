@@ -19,11 +19,11 @@ WORKDIR /app
 # Copy package files
 # ============================================
 # COPY: Copy files from host machine into container
-# backend/package*.json: Source files on host
+# package*.json: Source files (relative to build context ./backend)
 #   package*.json matches both package.json and package-lock.json
 # ./: Destination in container (current directory = /app)
 # This copies the list of Node.js packages to install
-COPY backend/package*.json ./
+COPY package*.json ./
 
 # ============================================
 # Install Node.js dependencies
@@ -49,19 +49,19 @@ WORKDIR /app
 # Copy source code and config
 # ============================================
 # COPY: Copy files from host into container
-# backend/src: Source directory with TypeScript code
+# src: Source directory with TypeScript code (relative to build context)
 # ./src: Destination in container
-COPY backend/src ./src
+COPY src ./src
 
 # COPY: Copy API endpoint files
-# backend/api: Source directory with API handlers
+# api: Source directory with API handlers (relative to build context)
 # ./api: Destination in container
-COPY backend/api ./api
+COPY api ./api
 
 # COPY: Copy TypeScript configuration
-# backend/tsconfig.json: TypeScript compiler configuration
+# tsconfig.json: TypeScript compiler configuration (relative to build context)
 # ./: Destination in container
-COPY backend/tsconfig.json ./
+COPY tsconfig.json ./
 
 # ============================================
 # Build if needed (optional)
@@ -88,10 +88,10 @@ WORKDIR /app
 # Copy package files
 # ============================================
 # COPY: Copy package files from host
-# backend/package*.json: Source files
+# package*.json: Source files (relative to build context)
 # ./: Destination in container
 # We copy these again so npm knows what packages are installed
-COPY backend/package*.json ./
+COPY package*.json ./
 
 # ============================================
 # Copy built artifacts and source code from build stage

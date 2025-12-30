@@ -19,11 +19,11 @@ WORKDIR /app
 # Copy package files
 # ============================================
 # COPY: Copy files from host machine into container
-# backend/web/package*.json: Source files on host
+# package*.json: Source files (relative to build context ./backend/web)
 #   package*.json matches both package.json and package-lock.json
 # ./: Destination in container (current directory = /app)
 # This copies the list of Node.js packages to install
-COPY backend/web/package*.json ./
+COPY package*.json ./
 
 # ============================================
 # Install Node.js dependencies
@@ -49,34 +49,34 @@ WORKDIR /app
 # Copy source code and config files
 # ============================================
 # COPY: Copy files from host into container
-# backend/web/src: Source directory with React/TypeScript code
+# src: Source directory with React/TypeScript code (relative to build context)
 # ./src: Destination in container
-COPY backend/web/src ./src
+COPY src ./src
 
 # COPY: Copy public assets (images, fonts, etc.)
-# backend/web/public: Source directory with static files
+# public: Source directory with static files (relative to build context)
 # ./public: Destination in container
-COPY backend/web/public ./public
+COPY public ./public
 
 # COPY: Copy HTML entry point
-# backend/web/index.html: Main HTML file
+# index.html: Main HTML file (relative to build context)
 # ./: Destination in container
-COPY backend/web/index.html ./
+COPY index.html ./
 
 # COPY: Copy Vite configuration
-# backend/web/vite.config.ts: Vite build tool configuration
+# vite.config.ts: Vite build tool configuration (relative to build context)
 # ./: Destination in container
-COPY backend/web/vite.config.ts ./
+COPY vite.config.ts ./
 
 # COPY: Copy TypeScript configuration
-# backend/web/tsconfig.json: TypeScript compiler configuration
+# tsconfig.json: TypeScript compiler configuration (relative to build context)
 # ./: Destination in container
-COPY backend/web/tsconfig.json ./
+COPY tsconfig.json ./
 
 # COPY: Copy TypeScript Node configuration
-# backend/web/tsconfig.node.json: TypeScript config for Node.js tools
+# tsconfig.node.json: TypeScript config for Node.js tools (relative to build context)
 # ./: Destination in container
-COPY backend/web/tsconfig.node.json ./
+COPY tsconfig.node.json ./
 
 # ============================================
 # Build for production
@@ -104,10 +104,10 @@ WORKDIR /app
 # Copy package files
 # ============================================
 # COPY: Copy package files from host
-# backend/web/package*.json: Source files
+# package*.json: Source files (relative to build context)
 # ./: Destination in container
 # We copy these again so npm knows what packages are installed
-COPY backend/web/package*.json ./
+COPY package*.json ./
 
 # ============================================
 # Copy built assets from build stage
