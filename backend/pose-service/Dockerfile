@@ -97,12 +97,12 @@ RUN python3 -c "import phalp; print('✓ PHALP available')" || echo "⚠ PHALP i
 # ============================================
 # RUNTIME STAGE: Final image
 # ============================================
-# FROM base-python-pose:latest as runtime
-# FROM: Use the base image again (fresh copy)
+# FROM deps as runtime
+# FROM: Use the deps stage (which has all pip-installed packages)
 # as runtime: Name this stage "runtime"
-# We use the base image again (not the build stage) to keep image small
-# The build stage is only used to verify code, not included in final image
-FROM base-python-pose:latest as runtime
+# We use the deps stage to inherit all Flask and ML dependencies
+# This ensures Flask and requirements.txt packages are available
+FROM deps as runtime
 
 # WORKDIR: Set working directory
 WORKDIR /app
