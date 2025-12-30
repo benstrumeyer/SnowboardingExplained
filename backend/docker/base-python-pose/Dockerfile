@@ -206,6 +206,18 @@ RUN python3 -c "from detectron2.model_zoo import model_zoo; print('[BUILD] ✓ D
     echo "[BUILD] ⚠ Model zoo check skipped"
 
 # ============================================
+# STAGE 12: Install Flask and web dependencies
+# ============================================
+# Flask: Web framework for the pose service API
+# flask-cors: Enable CORS for cross-origin requests
+# requests: HTTP client library
+RUN pip install --no-cache-dir \
+    flask==3.0.0 \
+    flask-cors==4.0.0 \
+    requests==2.31.0 && \
+    python3 -c "import flask; print(f'[BUILD] ✓ Flask {flask.__version__} installed')"
+
+# ============================================
 # EXPOSE: Document which ports the container listens on
 # ============================================
 # 5000: Flask web server port (for pose service API)
