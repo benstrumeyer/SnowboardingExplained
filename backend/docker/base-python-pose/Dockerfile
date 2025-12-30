@@ -184,20 +184,10 @@ RUN python3 -c "import joblib; print(f'✓ joblib {joblib.__version__} available
 # ============================================
 # STAGE 9: Install Detectron2 (object detection framework)
 # ============================================
-# Detectron2 must be built from source for Python 3.9
-# ViTDet (Vision Transformer Detection) is included in Detectron2's model zoo
-RUN echo "[BUILD] Installing Detectron2 from source (includes ViTDet models)..." && \
-    # git clone: Download the repository
-    # --depth 1: Only download the latest version (saves space)
-    # --branch v0.7.0: Download specific version
-    git clone https://github.com/facebookresearch/detectron2.git /app/detectron2 && \
-    # cd: Change directory to detectron2
-    cd /app/detectron2 && \
-    # pip install -e .: Install in editable mode from current directory
-    # 2>&1: Redirect error output to standard output
-    # | tail -20: Show only last 20 lines of output
-    pip install --no-cache-dir -e . 2>&1 | tail -20 && \
-    echo "[BUILD] ✓ Detectron2 installed"
+# Detectron2 from git - includes ViTDet models in model_zoo
+# Use --no-build-isolation so detectron2's setup.py can find torch
+RUN pip install --no-cache-dir --no-build-isolation 'detectron2 @ git+https://github.com/facebookresearch/detectron2.git' && \
+    echo "[BUILD] ✓ Detectron2 installed from git"
 
 # ============================================
 # STAGE 10: Verify Detectron2 installation
