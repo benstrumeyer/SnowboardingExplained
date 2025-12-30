@@ -20,14 +20,14 @@ WORKDIR /app
 # -y: Automatically answer "yes" to prompts
 # --no-install-recommends: Only install required packages, skip optional ones (keeps image smaller)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Python 3.9 interpreter (the language runtime)
-    python3.9 \
+    # Python 3.10 interpreter (the language runtime)
+    python3.10 \
     # pip: Python package manager (like npm for Node.js)
     python3-pip \
     # venv: Virtual environment tool (isolates Python packages)
-    python3.9-venv \
-    # python3.9-dev: Development headers needed to compile Python packages
-    python3.9-dev \
+    python3.10-venv \
+    # python3.10-dev: Development headers needed to compile Python packages
+    python3.10-dev \
     # git: Version control (needed to clone repositories)
     git \
     # wget: Download files from the internet
@@ -48,11 +48,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # update-alternatives: Creates symbolic links to set default commands
 # --install: Creates a new alternative
 # /usr/bin/python: The path where the link will be created
-# /usr/bin/python3.9: The actual binary to link to
+# /usr/bin/python3.10: The actual binary to link to
 # 1: Priority (higher number = higher priority)
-# This makes "python" command use Python 3.9 instead of default Python
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.9 1 && \
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1
+# This makes "python" command use Python 3.10 instead of default Python
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1 && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
 
 # ============================================
 # STAGE 2: Install graphics and rendering libraries
@@ -129,15 +129,20 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 # PHALP imports joblib during initialization, so it must be available
 RUN pip install --no-cache-dir joblib
 
+# Install chumpy BEFORE other packages (needed for SMPL models)
+# chumpy needs to be built from source and requires build isolation disabled
+RUN pip install --no-cache-dir --no-build-isolation \
+    'chumpy @ git+https://github.com/mattloper/chumpy'
+
 # Install all other Python packages needed for pose estimation
 # These are the core ML libraries for 4D-Humans, PHALP, and pose detection
 RUN pip install --no-cache-dir \
-    # PyTorch: Deep learning framework
-    torch \
+    # PyTorch: Deep learning framework (2.0.1 with CUDA 11.8 support)
+    torch==2.0.1 \
     # Computer vision models for PyTorch
-    torchvision \
+    torchvision==0.15.2 \
     # Audio processing for PyTorch
-    torchaudio \
+    torchaudio==2.0.2 \
     # NumPy: Numerical computing library
     numpy \
     # SciPy: Scientific computing library
@@ -160,16 +165,12 @@ RUN pip install --no-cache-dir \
 # ============================================
 # STAGE 7: Install pytorch3d (3D vision library)
 # ============================================
-# pytorch3d is complex to install, so we try multiple methods
-# First try: Install from PyPI (Python Package Index)
-RUN pip install --no-cache-dir pytorch3d==0.7.0 || \
-    # Second try: Install from GitHub source code
-    (pip install --no-cache-dir 'git+https://github.com/facebookresearch/pytorch3d.git@v0.7.0' || \
-    # Third try: Clone and build from source
-    (git clone --depth 1 --branch v0.7.0 https://github.com/facebookresearch/pytorch3d.git /app/pytorch3d && \
-    cd /app/pytorch3d && \
-    # -e: Install in editable mode (development mode)
-    pip install --no-cache-dir -e .))
+# pytorch3d v0.7.0 from source - compatible with torch 2.0.1 and CUDA 11.8/12.1
+RUN git clone --depth 1 --branch v0.7.0 https://github.com/facebookresearch/pytorch3d.git /app/pytorch3d && \
+cd /app/pytorch3d && \
+# Install with --no-build-isolation to use system torch
+pip install --no-cache-dir --no-build-isolation -e . && \
+echo "[BUILD] ✓ PyTorch3D v0.7.0 installed from source"
 
 # ============================================
 # STAGE 8: Verify joblib is still available

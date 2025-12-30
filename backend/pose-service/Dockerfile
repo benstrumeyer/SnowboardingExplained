@@ -23,10 +23,11 @@ WORKDIR /app
 # This copies the list of Python packages to install
 COPY backend/pose-service/requirements.txt .
 
+
 # RUN pip install: Install all packages listed in requirements.txt
 # --no-cache-dir: Don't cache packages (saves space)
 # -r requirements.txt: Read package list from file
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --no-build-isolation -r requirements.txt
 
 # ============================================
 # Copy SMPL model (3D body model)

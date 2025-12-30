@@ -1,6 +1,7 @@
 # Core ML Libraries
 torch==2.0.1
 torchvision==0.15.2
+torchaudio==2.0.2
 numpy==1.26.0
 opencv-python==4.8.0.76
 
