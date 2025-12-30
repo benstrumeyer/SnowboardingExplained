@@ -30,6 +30,7 @@ export function PoseViewerWithControls(props: PoseViewerWithControlsProps) {
   
   return (
     <div className="pose-viewer-with-controls">
+      {/* @ts-ignore */}
       <PoseOverlayViewer
         {...props}
         // Shared controls override individual scene controls

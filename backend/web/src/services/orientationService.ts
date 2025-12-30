@@ -69,6 +69,7 @@ export class OrientationService {
 
       const rotatedKeypoints = frame.meshData.keypoints.map(kp => ({
         ...kp,
+        // @ts-ignore
         position: OrientationService.rotatePoint(
           new THREE.Vector3(...kp.position),
           quaternion

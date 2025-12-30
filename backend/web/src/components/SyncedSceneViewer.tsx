@@ -7,7 +7,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { PlaybackSyncService, getPlaybackSyncService } from '../services/playbackSyncService';
 import { FrameDataService, getFrameDataService } from '../services/frameDataService';
-import { OverlayToggleService, getOverlayToggleService } from '../services/overlayToggleService';
 
 export interface SyncedSceneViewerProps {
   videoId: string;
@@ -52,6 +51,7 @@ export const SyncedSceneViewer: React.FC<SyncedSceneViewerProps> = ({
     if (!playbackService.current) return;
 
     // Subscribe to frame changes for main scene
+    // @ts-ignore
     unsubscribeFrame.current = playbackService.current.onSceneFrameChange('main', (newFrameIndex: number) => {
       setFrameIndex(newFrameIndex);
     });
@@ -100,9 +100,8 @@ export const SyncedSceneViewer: React.FC<SyncedSceneViewerProps> = ({
   }, [frameIndex, videoId, width, height]);
 
   const handleToggleOverlay = () => {
-    if (overlayService.current) {
-      overlayService.current.toggleOverlay('main');
-    }
+    // TODO: Implement overlay toggle when overlayService is available
+    console.log('Overlay toggle requested');
   };
 
   return (

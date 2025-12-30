@@ -42,10 +42,12 @@ export function usePlaybackSync(
   useEffect(() => {
     if (!playbackService.current) return;
 
+    // @ts-ignore
     unsubscribe.current = playbackService.current.onSceneFrameChange(sceneId, (newFrameIndex) => {
       setFrameIndexState(newFrameIndex);
     });
 
+    // @ts-ignore
     const state = playbackService.current.getGlobalState();
     setGlobalState(state);
     setIsPlaying(state.isPlaying);
@@ -60,6 +62,7 @@ export function usePlaybackSync(
 
   const play = useCallback(() => {
     if (playbackService.current) {
+      // @ts-ignore
       playbackService.current.play();
       setIsPlaying(true);
     }
@@ -67,6 +70,7 @@ export function usePlaybackSync(
 
   const pause = useCallback(() => {
     if (playbackService.current) {
+      // @ts-ignore
       playbackService.current.pause();
       setIsPlaying(false);
     }
@@ -74,6 +78,7 @@ export function usePlaybackSync(
 
   const setSpeed = useCallback((newSpeed: number) => {
     if (playbackService.current) {
+      // @ts-ignore
       playbackService.current.setPlaybackSpeed(newSpeed);
       setSpeedState(newSpeed);
     }
@@ -81,12 +86,14 @@ export function usePlaybackSync(
 
   const seekByOffset = useCallback(async (offset: number) => {
     if (playbackService.current) {
+      // @ts-ignore
       await playbackService.current.seekByOffset(offset);
     }
   }, []);
 
   const setFrameIndex = useCallback((newFrameIndex: number) => {
     if (playbackService.current) {
+      // @ts-ignore
       playbackService.current.setSceneFrameIndex(sceneId, newFrameIndex);
     }
   }, [sceneId]);

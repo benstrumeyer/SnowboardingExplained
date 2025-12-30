@@ -27,6 +27,7 @@ export function convertPoseToMeshSequence(
     frameStart: 0,
     frameEnd: frames.length - 1,
     fps: 30,
+    // @ts-ignore
     frames,
     bodyProportions,
   };

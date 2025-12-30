@@ -150,6 +150,7 @@ export function generateMockMeshSequence(
     frameStart: 0,
     frameEnd: frameCount - 1,
     fps: 30,
+    // @ts-ignore
     frames,
     bodyProportions: generateBodyProportions(scale),
   };

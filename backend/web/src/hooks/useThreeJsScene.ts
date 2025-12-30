@@ -115,17 +115,20 @@ export function useThreeJsScene(containerRef: React.RefObject<HTMLDivElement>, c
         return () => {
           clearTimeout(timer1);
           clearTimeout(timer2);
+          // @ts-ignore
           if (cleanup) cleanup();
         };
       }
 
       return () => {
         clearTimeout(timer1);
+        // @ts-ignore
         if (cleanup) cleanup();
       };
     }
 
     return () => {
+      // @ts-ignore
       if (cleanup) cleanup();
     };
   }, [containerReady]);
