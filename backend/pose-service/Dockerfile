@@ -18,25 +18,26 @@ WORKDIR /app
 # Install Python dependencies
 # ============================================
 # COPY: Copy files from host machine into container
-# backend/pose-service/requirements.txt: Source file on host
+# requirements.txt: Source file (relative to build context ./backend/pose-service)
 # .: Destination in container (current directory = /app)
 # This copies the list of Python packages to install
-COPY backend/pose-service/requirements.txt .
+COPY requirements.txt .
 
 
 # RUN pip install: Install all packages listed in requirements.txt
 # --no-cache-dir: Don't cache packages (saves space)
 # -r requirements.txt: Read package list from file
-RUN pip install --no-cache-dir --no-build-isolation -r requirements.txt
+RUN pip install --no-cache-dir --no-build-isolation -r requirements.txt && \
+    python3 -c "import flask; print('✓ Flask installed')" || (echo "ERROR: Flask not installed" && exit 1)
 
 # ============================================
 # Copy SMPL model (3D body model)
 # ============================================
 # COPY: Copy files from host into container
-# backend/pose-service/data/: Source directory with model files
+# data/: Source directory with model files (relative to build context)
 # /app/data/: Destination in container
 # This copies the SMPL model file needed for pose estimation
-COPY backend/pose-service/data/ /app/data/
+COPY data/ /app/data/
 
 # ============================================
 # Verify SMPL model exists
@@ -67,10 +68,10 @@ WORKDIR /app
 # Copy pose service code
 # ============================================
 # COPY: Copy all files from pose-service directory
-# backend/pose-service/: Source directory on host
+# .: Source directory (entire build context)
 # .: Destination in container (current directory = /app)
 # This copies the Python code for the pose service
-COPY backend/pose-service/ .
+COPY . .
 
 # ============================================
 # Clean up unnecessary files
@@ -110,9 +111,9 @@ WORKDIR /app
 # Copy SMPL model
 # ============================================
 # COPY: Copy model files from host
-# backend/pose-service/data/: Source directory
+# data/: Source directory (relative to build context)
 # /app/data/: Destination in container
-COPY backend/pose-service/data/ /app/data/
+COPY data/ /app/data/
 
 # ============================================
 # Copy application code from build stage
