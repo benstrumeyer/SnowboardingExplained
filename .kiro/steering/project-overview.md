@@ -1,94 +1,58 @@
----
-inclusion: always
----
+# Project Overview
 
-# SnowboardingExplained Project Overview
+**Version:** 2.0  
+**Last Updated:** 2025-12-31  
+**Status:** MVP - Local Development
 
-## Project Structure
+## What is SnowboardingExplained?
 
-This is a full-stack snowboarding analysis platform with video processing, pose estimation, and AI coaching.
+A video analysis platform that extracts 3D pose data from snowboarding videos using AI, enabling motion capture visualization and analysis.
 
-### Key Directories
+## MVP Goal
 
-- **backend/**: Node.js/TypeScript backend server
-  - `src/`: Main server code (services, types, utils)
-  - `api/`: API endpoints
-  - `mobile/`: React Native mobile app
-  - `pose-service/`: Python Flask service for pose estimation
-  - `mcp-server/`: Model Context Protocol server for LLM integration
-
-- **data-pipeline/**: Data processing scripts and datasets
-  - `scripts/`: TypeScript scripts for data processing
-  - `data/`: Video metadata, trick taxonomy, chunks
-
-- **docs/**: Documentation
-  - `MCP_TOOLS_REFERENCE.md`: Reference for MCP tools
-
-### Technology Stack
-
-- **Backend**: Node.js, TypeScript, Express
-- **Mobile**: React Native
-- **Pose Service**: Python, Flask, 4D-Humans, ViTDet
-- **Database**: SQLite (via MCP server)
-- **LLM Integration**: Gemini API via MCP
+Process snowboarding videos to extract accurate 3D pose data with temporal consistency, visualize in 3D, and store for future analysis.
 
 ## Key Features
 
-1. **Video Upload & Processing**: Upload snowboarding videos for analysis
-2. **Pose Estimation**: Extract 3D pose data using 4D-Humans model
-3. **Mesh Rendering**: Render 3D mesh overlays on video frames
-4. **Phase Detection**: Identify trick phases (approach, takeoff, rotation, landing)
-5. **AI Coaching**: Provide feedback using Gemini LLM
-6. **Perfect Phases**: Save and manage perfect trick execution examples
+- **Video Upload** - Web-based video upload modal
+- **3D Pose Extraction** - 4D-Humans model for per-frame pose
+- **Temporal Tracking** - PHALP for motion consistency
+- **3D Visualization** - Three.js rendering of skeleton/mesh
+- **Data Storage** - MongoDB for results
 
-## Development Workflow
+## Tech Stack
 
-### Starting Services
+- **Backend:** Node.js/Express (port 3001)
+- **Pose Service:** Python/Flask (port 5000)
+- **ML Models:** 4D-Humans, PHALP, ViTDet, detectron2
+- **Frontend:** Three.js (web-based)
+- **Database:** MongoDB
 
-1. **Backend**: `npm run dev` (port 3000)
-2. **Mobile**: `npm run dev` (Expo)
-3. **Pose Service**: `python app.py` (port 5000)
+## Current Status
 
-See `STARTUP_ORDER.md` and `INSTALL_DEPENDENCIES.md` for detailed setup.
+- ✅ Backend running locally
+- ✅ Pose service framework ready
+- ⏳ Dependencies being configured (frozen stack)
+- ⏳ Integration testing
 
-## Important Files
+## Next Steps
 
-- `backend/src/server.ts`: Main backend server
-- `backend/pose-service/app.py`: Pose estimation service
-- `backend/mobile/src/screens/VideoAnalysisScreen.tsx`: Video analysis UI
-- `backend/src/services/videoAnalysisPipelineImpl.ts`: Video processing pipeline
-- `backend/mcp-server/src/index.ts`: MCP server entry point
+1. Install frozen ML dependencies in correct order
+2. Test full video processing pipeline
+3. Verify PHALP temporal tracking
+4. Build Three.js visualization
+5. Implement database storage
 
-## Common Tasks
+## Important Notes
 
-### Adding a New API Endpoint
+- **No Mobile for MVP** - Focus on web-based upload and visualization
+- **Full Video Processing** - Videos processed as a unit (not frame-by-frame)
+- **Frozen Dependencies** - All ML packages cloned locally, must install in order
+- **Local Development** - Running in WSL2 with Kiro IDE
 
-1. Create handler in `backend/api/`
-2. Register in `backend/src/server.ts`
-3. Add types to `backend/src/types.ts`
+## Quick Links
 
-### Modifying Pose Service
-
-1. Edit Python files in `backend/pose-service/`
-2. Test with `test_*.py` scripts
-3. Restart service to apply changes
-
-### Updating Mobile UI
-
-1. Edit React components in `backend/mobile/src/`
-2. Changes hot-reload in Expo
-3. Test on device or emulator
-
-## Debugging
-
-- Backend logs: `backend/logs/`
-- Pose service: Check Flask console output
-- Mobile: Use Expo DevTools or React Native Debugger
-- MCP: Check `backend/mcp-server/` logs
-
-## Performance Notes
-
-- Video processing is async (max_frames parameter controls frame count)
-- Pose estimation is CPU/GPU intensive
-- Mesh rendering uses canvas for performance
-- Frame extraction is cached when possible
+- Architecture: `.kiro/steering/architecture.md`
+- Setup: `.kiro/steering/dependency-setup.md`
+- Development: `.kiro/steering/development-guide.md`
+- WSL: `.kiro/steering/wsl-integration.md`
