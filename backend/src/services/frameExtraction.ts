@@ -17,11 +17,19 @@ const FRAMES_PER_SECOND = 30; // Extract at higher frame rate for better quality
 const TEMP_DIR = path.join(os.tmpdir(), 'snowboard-frames');
 
 // Set ffmpeg and ffprobe paths
+// Try ffmpeg-static first, fall back to system ffmpeg
 if (ffmpegStatic) {
+  console.log(`[FFMPEG] Using ffmpeg-static at: ${ffmpegStatic}`);
   ffmpeg.setFfmpegPath(ffmpegStatic);
+} else {
+  console.log(`[FFMPEG] ffmpeg-static not available, using system ffmpeg`);
 }
+
 if (ffprobeStatic && ffprobeStatic.path) {
+  console.log(`[FFMPEG] Using ffprobe-static at: ${ffprobeStatic.path}`);
   ffmpeg.setFfprobePath(ffprobeStatic.path);
+} else {
+  console.log(`[FFMPEG] ffprobe-static not available, using system ffprobe`);
 }
 
 // Ensure temp directory exists
@@ -190,6 +198,9 @@ export class FrameExtractionService {
           // For videos with multiple streams, we skip the -map option and let ffmpeg handle it
           const ffmpegPath = ffmpegStatic || 'ffmpeg';
           
+          // Verify ffmpeg is available
+          console.log(`[FRAME_EXTRACTION] Using ffmpeg at: ${ffmpegPath}`);
+          
           // Calculate target FPS for frame extraction
           const MAX_FPS = 60;
           const targetFps = Math.min(videoFrameRate, MAX_FPS);
@@ -207,17 +218,29 @@ export class FrameExtractionService {
           execFile(ffmpegPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, stdout, stderr) => {
             if (error) {
               logger.error(`Frame extraction error: ${error.message}`, { videoId, error });
+              console.error(`[FRAME_EXTRACTION] ✗ ffmpeg error:`, error.message);
               console.error(`[FRAME_EXTRACTION] ffmpeg stderr:`, stderr);
+              console.error(`[FRAME_EXTRACTION] ffmpeg stdout:`, stdout);
               reject(error);
               return;
             }
             
             logger.info(`Frame extraction completed for video: ${videoId}`);
+            console.log(`[FRAME_EXTRACTION] ffmpeg stdout:`, stdout);
+            console.log(`[FRAME_EXTRACTION] ffmpeg stderr:`, stderr);
             
             // Read extracted frames
-            const files = fs.readdirSync(outputDir)
-              .filter(f => f.endsWith('.png'))
-              .sort();
+            let files: string[] = [];
+            try {
+              files = fs.readdirSync(outputDir)
+                .filter(f => f.endsWith('.png'))
+                .sort();
+            } catch (readErr) {
+              console.error(`[FRAME_EXTRACTION] ✗ Failed to read output directory:`, readErr);
+              logger.error(`Failed to read output directory: ${readErr}`, { videoId, outputDir });
+              reject(readErr);
+              return;
+            }
             
             console.log(`[FRAME_EXTRACTION] ✓ Extraction complete: found ${files.length} PNG files`);
             console.log(`[FRAME_EXTRACTION] Files:`, files.slice(0, 5).join(', '), files.length > 5 ? `... and ${files.length - 5} more` : '');

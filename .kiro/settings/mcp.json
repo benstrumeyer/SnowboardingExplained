@@ -69,9 +69,7 @@
         "browser_get_console_logs"
       ],
       "disabled": false,
-      "disabledTools": [
-        "browser_navigate"
-      ]
+      "disabledTools": []
     },
     "fetch": {
       "command": "wsl.exe",

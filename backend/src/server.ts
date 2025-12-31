@@ -108,10 +108,14 @@ app.get('/health', (_req: Request, res: Response) => {
 });
 
 // Configure multer for video uploads
-const uploadDir = path.join(__dirname, '../uploads');
+// Use shared volume if running in Docker, otherwise use local uploads directory
+const uploadDir = fs.existsSync('/shared/videos') 
+  ? '/shared/videos'
+  : path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
+console.log(`[STARTUP] Upload directory: ${uploadDir}`);
 
 const storage = multer.diskStorage({
   destination: (_req: any, _file: any, cb: any) => {
@@ -354,7 +358,10 @@ app.use('/api', smoothingControlRouter);
 app.use('/api/pose', upload.single('video'), poseVideoRouter);
 
 // Chunked Video Upload Endpoints
-const chunksDir = path.join(os.tmpdir(), 'video-chunks');
+// Use shared volume if running in Docker, otherwise use system temp
+const chunksDir = fs.existsSync('/shared/videos')
+  ? '/shared/videos/chunks'
+  : path.join(os.tmpdir(), 'video-chunks');
 if (!fs.existsSync(chunksDir)) {
   fs.mkdirSync(chunksDir, { recursive: true });
 }

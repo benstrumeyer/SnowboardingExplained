@@ -49,6 +49,14 @@ except ImportError as e:
     print(f"[WARN] Video processor not available: {e}")
     HAS_VIDEO_PROCESSOR = False
 
+# Import track wrapper for 4D-Humans
+try:
+    from track_wrapper import TrackWrapper, process_video_with_track
+    HAS_TRACK_WRAPPER = True
+except ImportError as e:
+    print(f"[WARN] Track wrapper not available: {e}")
+    HAS_TRACK_WRAPPER = False
+
 # Import mesh renderer
 try:
     from mesh_renderer import SMPLMeshRenderer
@@ -67,9 +75,9 @@ import uuid
 video_jobs = {}  # {job_id: {status: 'processing'|'complete'|'error', result: {...}, error: str}}
 
 def process_video_async(job_id, input_path, output_path, max_frames='999999'):
-    """Process video in background thread"""
+    """Process video in background thread using track.py"""
     try:
-        print(f"[JOB {job_id}] Starting async video processing...")
+        print(f"[JOB {job_id}] Starting async video processing with track.py...")
         print(f"[JOB {job_id}] Input: {input_path}")
         print(f"[JOB {job_id}] Output: {output_path}")
         print(f"[JOB {job_id}] Max frames: {max_frames}")
@@ -80,30 +88,27 @@ def process_video_async(job_id, input_path, output_path, max_frames='999999'):
         video_jobs[job_id]['status'] = 'processing'
         video_jobs[job_id]['started_at'] = time.time()
         
-        # Create processor
-        print(f"[JOB {job_id}] Loading detector...")
-        detector = get_hybrid_detector()
-        print(f"[JOB {job_id}] Detector loaded")
+        if not HAS_TRACK_WRAPPER:
+            raise RuntimeError("Track wrapper not available")
         
-        print(f"[JOB {job_id}] Loading mesh renderer...")
-        mesh_renderer = SMPLMeshRenderer()
-        print(f"[JOB {job_id}] Mesh renderer loaded")
+        # Create output directory for track.py
+        track_output_dir = os.path.join(os.path.dirname(output_path), f'track_output_{job_id}')
+        os.makedirs(track_output_dir, exist_ok=True)
         
-        print(f"[JOB {job_id}] Creating processor...")
-        processor = VideoMeshProcessor(detector, mesh_renderer)
-        print(f"[JOB {job_id}] Processor created")
+        print(f"[JOB {job_id}] Track output directory: {track_output_dir}")
         
-        # Process video with max_frames
-        print(f"[JOB {job_id}] Calling process_video with max_frames={max_frames}...")
+        # Process video using track.py
+        print(f"[JOB {job_id}] Calling track.py wrapper...")
         max_frames_int = int(max_frames)
-        result = processor.process_video(input_path, output_path, max_frames=max_frames_int)
-        print(f"[JOB {job_id}] process_video returned: {result}")
+        result = process_video_with_track(input_path, track_output_dir, max_frames_int)
+        
+        print(f"[JOB {job_id}] track.py returned: {result}")
         
         # Store result
         video_jobs[job_id]['status'] = 'complete'
         video_jobs[job_id]['result'] = result
         video_jobs[job_id]['completed_at'] = time.time()
-        print(f"[JOB {job_id}] Γ£ô Processing complete!")
+        print(f"[JOB {job_id}] ✓ Processing complete!")
         
         # Clean up input file
         if os.path.exists(input_path):
@@ -114,7 +119,7 @@ def process_video_async(job_id, input_path, output_path, max_frames='999999'):
                 print(f"[JOB {job_id}] Failed to clean up input file: {e}")
                 
     except Exception as e:
-        print(f"[JOB {job_id}] Γ£ù Error: {e}")
+        print(f"[JOB {job_id}] ✗ Error: {e}")
         import traceback
         traceback.print_exc()
         video_jobs[job_id]['status'] = 'error'
@@ -439,10 +444,12 @@ def process_video():
         if video_file.filename == '':
             return jsonify({'error': 'No video file selected'}), 400
         
-        # Save uploaded video to shared location (Windows filesystem accessible from both WSL and Windows)
+        # Save uploaded video to shared location (accessible from both containers)
         import tempfile
-        # Use /mnt/c/temp if running in WSL, otherwise use system temp
-        if os.path.exists('/mnt/c'):
+        # Use /shared/videos if running in Docker, otherwise use system temp
+        if os.path.exists('/shared/videos'):
+            temp_dir = '/shared/videos'
+        elif os.path.exists('/mnt/c'):
             temp_dir = '/mnt/c/temp'
             os.makedirs(temp_dir, exist_ok=True)
         else:
@@ -506,15 +513,18 @@ def process_video_async_endpoint():
     print(f"[ASYNC] Files: {list(request.files.keys())}")
     print(f"[ASYNC] Form: {list(request.form.keys())}")
     
-    if not HAS_HYBRID or not HAS_VIDEO_PROCESSOR or not HAS_MESH_RENDERER:
-        return jsonify({'error': 'Required components not available'}), 501
+    if not HAS_TRACK_WRAPPER:
+        print("[ASYNC] ✗ Track wrapper not available")
+        return jsonify({'error': 'Track wrapper not available'}), 501
     
     try:
         if 'video' not in request.files:
+            print("[ASYNC] ✗ No video file in request")
             return jsonify({'error': 'video file is required'}), 400
         
         video_file = request.files['video']
         if video_file.filename == '':
+            print("[ASYNC] ✗ Empty video filename")
             return jsonify({'error': 'No video file selected'}), 400
         
         # Extract max_frames from form data
@@ -523,7 +533,9 @@ def process_video_async_endpoint():
         
         # Save video to temp location
         import tempfile
-        if os.path.exists('/mnt/c'):
+        if os.path.exists('/shared/videos'):
+            temp_dir = '/shared/videos'
+        elif os.path.exists('/mnt/c'):
             temp_dir = '/mnt/c/temp'
             os.makedirs(temp_dir, exist_ok=True)
         else:
@@ -535,6 +547,7 @@ def process_video_async_endpoint():
         
         video_file.save(input_path)
         print(f"[ASYNC] Video saved to: {input_path}")
+        print(f"[ASYNC] File size: {os.path.getsize(input_path)} bytes")
         
         # Initialize job
         video_jobs[job_id] = {
@@ -552,7 +565,7 @@ def process_video_async_endpoint():
         thread.daemon = True
         thread.start()
         
-        print(f"[ASYNC] Job {job_id} started with max_frames={max_frames}")
+        print(f"[ASYNC] ✓ Job {job_id} started with max_frames={max_frames}")
         return jsonify({
             'status': 'accepted',
             'job_id': job_id,
@@ -560,6 +573,7 @@ def process_video_async_endpoint():
         })
         
     except Exception as e:
+        print(f"[ASYNC] ✗ Exception: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': f'Server error: {str(e)}'}), 500
@@ -663,8 +677,10 @@ if __name__ == '__main__':
     print("  POST /pose/hybrid                   - HMR2 3D pose detection")
     print("  POST /detect_pose_with_visualization - Pose with mesh overlay")
     print("  POST /process_video                 - Full video mesh overlay processing")
+    print("  POST /process_video_async           - Async video processing with track.py")
     print(f"HMR2 detector: {'available' if HAS_HYBRID else 'NOT available'}")
     print(f"Video processor: {'available' if HAS_VIDEO_PROCESSOR else 'NOT available'}")
+    print(f"Track wrapper: {'available' if HAS_TRACK_WRAPPER else 'NOT available'}")
     print(f"Mesh renderer: {'available' if HAS_MESH_RENDERER else 'NOT available'}")
     
     if HAS_HYBRID:

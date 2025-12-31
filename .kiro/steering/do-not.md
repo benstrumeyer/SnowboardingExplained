@@ -16,16 +16,6 @@
 
 **Why:** Focus is on code and functionality, not documentation. All guidance is in `.kiro/steering/`.
 
-### ❌ Do NOT Change Dependency Versions
-
-- Do not update `requirements.txt` versions
-- Do not upgrade PyTorch, detectron2, ViTDet, 4D-Humans, or PHALP
-- Do not modify `package.json` versions
-- Do not install newer versions of frozen dependencies
-- Do not use `pip install --upgrade`
-
-**Why:** Frozen stack is tightly coupled. Version changes break compatibility.
-
 ## What TO Do Instead
 
 ### For Documentation Needs

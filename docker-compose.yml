@@ -4,13 +4,18 @@ services:
     build:
       context: ./backend/pose-service
       dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: base-python-pose:latest
     container_name: snowboard-pose-service
     ports:
       - "5000:5000"
     volumes:
       - ./backend/pose-service:/app
+      - ../4D-Humans:/app/4D-Humans
       - ./backend/uploads:/app/uploads
+      - shared-video-data:/shared/videos
       - pose-models-cache:/app/models
+      - hmr2-cache:/root/.cache/4DHumans
     environment:
       - CUDA_VISIBLE_DEVICES=0
       - FLASK_ENV=development
@@ -50,6 +55,7 @@ services:
       - ./backend/src:/app/src
       - ./backend/api:/app/api
       - ./backend/uploads:/app/uploads
+      - shared-video-data:/shared/videos
     environment:
       - NODE_ENV=development
       - PORT=3001
@@ -79,8 +85,8 @@ services:
   # Frontend Dev Server
   frontend:
     build:
-      context: ./backend/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/web/Dockerfile.dev
     container_name: snowboard-frontend
     ports:
       - "5173:5173"
@@ -158,3 +164,5 @@ volumes:
   pose-models-cache:
   redis-data:
   mongodb-data:
+  hmr2-cache:
+  shared-video-data:

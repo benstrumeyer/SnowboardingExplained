@@ -19,4 +19,5 @@ COPY backend/web/index.html ./
 EXPOSE 5173
 
 # Start dev server with host binding
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+# Use --host 0.0.0.0 to listen on all interfaces
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--middlewareMode", "false"]

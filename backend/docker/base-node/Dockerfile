@@ -13,22 +13,19 @@ FROM node:18-alpine
 WORKDIR /app
 
 # ============================================
-# Install build tools and Python
+# Install build tools, Python, and ffmpeg
 # ============================================
 # apk add: Alpine's package manager (like apt-get for Ubuntu)
 # --no-cache: Don't cache packages (saves space)
-# build-essential: Compiler toolchain (gcc, g++, make) for compiling native modules
+# build-base: Alpine's equivalent of build-essential (gcc, g++, make)
 # python3: Python interpreter (needed by node-gyp for building native modules)
 # make: Build automation tool
-# g++: C++ compiler
+# ffmpeg: Video processing tool (needed for frame extraction)
 RUN apk add --no-cache \
-    build-essential \
+    build-base \
     python3 \
     make \
-    g++ \
-    # npm install -g: Install npm globally (system-wide)
-    # npm@latest: Update npm to latest version
-    && npm install -g npm@latest
+    ffmpeg
 
 # ============================================
 # Verify Node.js and npm are available

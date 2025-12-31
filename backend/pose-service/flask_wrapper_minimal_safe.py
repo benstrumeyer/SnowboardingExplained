@@ -101,7 +101,8 @@ import uuid
 # Requirement 7: Configuration from environment variables
 POSE_POOL_SIZE = int(os.environ.get('POSE_POOL_SIZE', '1'))
 POSE_TIMEOUT_MS = int(os.environ.get('POSE_TIMEOUT_MS', '180000'))
-POSE_SERVICE_PATH = os.environ.get('POSE_SERVICE_PATH', '/home/ben/pose-service')
+# Use /app for Docker container, fall back to /home/ben/pose-service for WSL
+POSE_SERVICE_PATH = os.environ.get('POSE_SERVICE_PATH', '/app' if os.path.exists('/app') else '/home/ben/pose-service')
 DEBUG_MODE = os.environ.get('DEBUG_MODE', 'false').lower() == 'true'
 
 print(f"[CONFIG] POSE_POOL_SIZE: {POSE_POOL_SIZE}")
@@ -939,31 +940,32 @@ def process_video_subprocess(video_path, job_id=None, video_hash=None):
         # Spawn subprocess to run track.py
         logger.debug(f"[PROCESS] Spawning track.py subprocess for job {job_id}...")
         
-        # CRITICAL: Use WSL paths for bash subprocesses
-        # POSE_SERVICE_PATH should be set to WSL path (e.g., /home/ben/pose-service)
-        # Never use os.path.expanduser('~') for paths passed to bash
-        track_py_dir_wsl = POSE_SERVICE_PATH + '/4D-Humans'
-        venv_activate_wsl = POSE_SERVICE_PATH + '/venv/bin/activate'
+        # Determine if running in Docker or WSL
+        in_docker = os.path.exists('/.dockerenv')
+        logger.info(f"[PROCESS] Running in Docker: {in_docker}")
         
-        logger.info(f"[PROCESS] Using WSL paths:")
-        logger.info(f"[PROCESS]   track_py_dir: {track_py_dir_wsl}")
-        logger.info(f"[PROCESS]   venv_activate: {venv_activate_wsl}")
+        track_py_dir = POSE_SERVICE_PATH + '/4D-Humans'
         
-        # Build command that activates venv and runs track.py
-        # We need to use bash to source the activate script
-        # IMPORTANT: Disable Hydra output directory creation to prevent hanging
-        # Reference: 4D-Humans uses Hydra for config, but we disable output dirs
-        # to avoid file system issues in WSL with symlinked directories
-        
-        # CRITICAL: Pass Hydra args BEFORE video.source to ensure they're parsed correctly
-        # Use cd to ensure we're in the right directory for track.py
-        cmd = ['bash', '-c', f'source {venv_activate_wsl} && cd {track_py_dir_wsl} && python track.py hydra.job.chdir=false hydra.output_subdir=null hydra.run.dir=. video.source={video_path}']
-        logger.info(f"[PROCESS] Command: bash -c 'source venv/bin/activate && cd 4D-Humans && python track.py hydra.job.chdir=false hydra.output_subdir=null hydra.run.dir=. video.source=...'")
+        # Build command based on environment
+        if in_docker:
+            # In Docker: dependencies are already installed globally, no venv needed
+            logger.info(f"[PROCESS] Using Docker paths:")
+            logger.info(f"[PROCESS]   track_py_dir: {track_py_dir}")
+            cmd = ['bash', '-c', f'cd {track_py_dir} && python track.py hydra.job.chdir=false hydra.output_subdir=null hydra.run.dir=. video.source={video_path}']
+            logger.info(f"[PROCESS] Command: bash -c 'cd 4D-Humans && python track.py hydra.job.chdir=false hydra.output_subdir=null hydra.run.dir=. video.source=...'")
+        else:
+            # In WSL: need to activate venv
+            venv_activate = POSE_SERVICE_PATH + '/venv/bin/activate'
+            logger.info(f"[PROCESS] Using WSL paths:")
+            logger.info(f"[PROCESS]   track_py_dir: {track_py_dir}")
+            logger.info(f"[PROCESS]   venv_activate: {venv_activate}")
+            cmd = ['bash', '-c', f'source {venv_activate} && cd {track_py_dir} && python track.py hydra.job.chdir=false hydra.output_subdir=null hydra.run.dir=. video.source={video_path}']
+            logger.info(f"[PROCESS] Command: bash -c 'source venv/bin/activate && cd 4D-Humans && python track.py hydra.job.chdir=false hydra.output_subdir=null hydra.run.dir=. video.source=...'")
         
         # For subprocess.run, we don't need cwd since we're using cd in the bash command
-        track_py_dir = None
+        cwd = None
         
-        logger.info(f"[PROCESS] Working directory: {track_py_dir}")
+        logger.info(f"[PROCESS] Working directory: {cwd}")
         
         import subprocess
         import glob
@@ -976,8 +978,8 @@ def process_video_subprocess(video_path, job_id=None, video_hash=None):
         try:
             logger.info(f"[PROCESS] About to call subprocess.run with:")
             logger.info(f"[PROCESS]   cmd: {cmd}")
-            if track_py_dir is not None:
-                logger.info(f"[PROCESS]   cwd: {track_py_dir}")
+            if cwd is not None:
+                logger.info(f"[PROCESS]   cwd: {cwd}")
             logger.info(f"[PROCESS]   timeout: {timeout_seconds}s")
             logger.info(f"[PROCESS]   capture_output: True")
             logger.info(f"[PROCESS]   text: True")
@@ -990,12 +992,12 @@ def process_video_subprocess(video_path, job_id=None, video_hash=None):
                 'shell': True,  # CRITICAL: Required to properly execute bash -c commands
                 'executable': '/bin/bash'  # CRITICAL: Use bash explicitly, not /bin/sh (which doesn't support 'source')
             }
-            if track_py_dir is not None:
-                run_kwargs['cwd'] = track_py_dir
+            if cwd is not None:
+                run_kwargs['cwd'] = cwd
             
             # CRITICAL FIX: Use cmd[2] (the bash script string) with shell=True
             # When shell=True, we pass the command as a string, not a list
-            # cmd[2] is the bash script: 'source ... && cd ... && python track.py ...'
+            # cmd[2] is the bash script: 'cd ... && python track.py ...' or 'source ... && cd ... && python track.py ...'
             result = subprocess.run(cmd[2], **run_kwargs)
             
             elapsed = time.time() - start_time

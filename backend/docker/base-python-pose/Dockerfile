@@ -1,246 +1,145 @@
-# ============================================
-# BASE IMAGE - Start with NVIDIA CUDA runtime
-# ============================================
-# FROM: Specifies the base image to build on top of
-# nvidia/cuda:12.1.1-runtime-ubuntu22.04 = Ubuntu 22.04 with CUDA 12.1.1 pre-installed
-# This gives us GPU support and NVIDIA drivers out of the box
-FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
 
-# WORKDIR: Sets the working directory inside the container
-# All subsequent commands will run from /app
-# Think of it like: cd /app
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
+ENV PYTHONNOUSERSITE=1
+
 # ============================================
-# STAGE 1: Install Python and build tools
+# Install system dependencies + Python 3.9 + upgrade pip
 # ============================================
-# RUN: Executes a command inside the container during build
-# apt-get update: Refreshes the package list (like apt update on Linux)
-# apt-get install: Installs packages
-# -y: Automatically answer "yes" to prompts
-# --no-install-recommends: Only install required packages, skip optional ones (keeps image smaller)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    # Python 3.10 interpreter (the language runtime)
-    python3.10 \
-    # pip: Python package manager (like npm for Node.js)
-    python3-pip \
-    # venv: Virtual environment tool (isolates Python packages)
-    python3.10-venv \
-    # python3.10-dev: Development headers needed to compile Python packages
-    python3.10-dev \
-    # git: Version control (needed to clone repositories)
-    git \
-    # wget: Download files from the internet
-    wget \
-    # curl: Another tool to download files and make HTTP requests
-    curl \
-    # ca-certificates: SSL certificates for HTTPS connections
-    ca-certificates \
-    # build-essential: Compiler toolchain (gcc, g++, make) for compiling C/C++ code
-    build-essential \
-    # cmake: Build system for C/C++ projects
-    cmake \
-    # pkg-config: Helps find libraries during compilation
-    pkg-config \
-    # Clean up apt cache to reduce image size
+        software-properties-common \
+        wget \
+        curl \
+        git \
+        build-essential \
+        ffmpeg \
+        libgl1 \
+        libglib2.0-0 \
+        libsm6 \
+        libxext6 \
+        libxrender-dev \
+    && add-apt-repository ppa:deadsnakes/ppa \
+    && apt-get update && apt-get install -y --no-install-recommends \
+        python3.9 \
+        python3.9-dev \
+        python3.9-venv \
+        python3-pip \
+    && ln -sf /usr/bin/python3.9 /usr/bin/python \
+    && ln -sf /usr/bin/python3.9 /usr/bin/python3 \
+    && python3 -m pip install --upgrade pip setuptools wheel \
     && rm -rf /var/lib/apt/lists/*
 
-# update-alternatives: Creates symbolic links to set default commands
-# --install: Creates a new alternative
-# /usr/bin/python: The path where the link will be created
-# /usr/bin/python3.10: The actual binary to link to
-# 1: Priority (higher number = higher priority)
-# This makes "python" command use Python 3.10 instead of default Python
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.10 1 && \
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.10 1
+# Set Python 3.9 as default
+RUN ln -sf /usr/bin/python3.9 /usr/bin/python && \
+    ln -sf /usr/bin/python3.9 /usr/bin/python3
+
+# Upgrade pip
+RUN python3 -m pip install --upgrade pip setuptools wheel
+
+# Lock NumPy for Torch 2.0.x compatibility
+RUN pip install "numpy<2.0"
 
 # ============================================
-# STAGE 2: Install graphics and rendering libraries
+# Install PyTorch 2.0.1 with CUDA 11.8
 # ============================================
-# These libraries are needed for 3D rendering and image processing
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    # OpenGL libraries for 3D graphics
-    libgl1-mesa-glx \
-    libgl1-mesa-dev \
-    # Core graphics library
-    libglib2.0-0 \
-    # X11 libraries for display (needed for rendering)
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    # OpenMP library for parallel processing
-    libgomp1 \
-    # GLU library (OpenGL utilities)
-    libglu1-mesa \
-    # X11 keyboard library
-    libxkbcommon-x11-0 \
-    # D-Bus library for system communication
-    libdbus-1-3 \
-    # Font libraries
-    libfontconfig1 \
-    libfreetype6 \
-    libharfbuzz0b \
-    && rm -rf /var/lib/apt/lists/*
+RUN pip install torch==2.0.1+cu118 torchvision==0.15.2+cu118 torchaudio==2.0.2+cu118 \
+    --extra-index-url https://download.pytorch.org/whl/cu118
 
 # ============================================
-# STAGE 3: Install image and math libraries
+# Install PyTorch3D 0.7.4 (binary wheel)
 # ============================================
-# These are needed for image processing and numerical computations
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    # PNG image library
-    libpng16-16 \
-    # JPEG image library
-    libjpeg-turbo8 \
-    # TIFF image library
-    libtiff5 \
-    # WebP image library
-    libwebp7 \
-    # OpenBLAS: Fast linear algebra library (matrix operations)
-    libopenblas0 \
-    # LAPACK: Linear algebra package
-    liblapack3 \
-    # Development headers for OpenBLAS and LAPACK
-    libopenblas-dev \
-    liblapack-dev \
-    && rm -rf /var/lib/apt/lists/*
+RUN pip install pytorch3d==0.7.4 \
+    -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py39_cu118_pyt201/download.html
+
+# Lock Pillow for Detectron2 compatibility
+RUN pip install "Pillow==9.5.0"
+
+# Install Detectron2
+# ============================================
+RUN git clone https://github.com/facebookresearch/detectron2.git /app/detectron2 && \
+    cd /app/detectron2 && \
+    git checkout v0.6 && \
+    pip install --no-build-isolation -e .
 
 # ============================================
-# STAGE 4: Install media utilities
+# Install PHALP runtime dependencies
 # ============================================
-# ffmpeg: Tool for video processing (extracting frames from videos)
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
-    && rm -rf /var/lib/apt/lists/*
+RUN pip install \
+    opencv-python-headless==4.8.1.78 \
+    gdown==5.2.0 \
+    beautifulsoup4==4.12.2 \
+    scikit-image==0.19.3 \
+    einops==0.8.1 \
+    pandas==2.3.3 \
+    timm==1.0.22 \
+    pyrender==0.1.45 \
+    scikit-learn==0.23.2 \
+    joblib
+
+# Re-pin Pillow for Detectron2 compatibility
+RUN pip install Pillow==9.5.0
 
 # ============================================
-# STAGE 5: Upgrade Python package manager
+# Install PHALP
 # ============================================
-# pip install: Installs Python packages
-# --no-cache-dir: Don't cache packages (saves space)
-# --upgrade: Update pip to latest version
-# setuptools: Tool for building Python packages
-# wheel: Format for distributing Python packages
-RUN pip install --no-cache-dir --upgrade pip setuptools wheel
+RUN pip install phalp==0.1.3 --no-deps
+
+# Verify Torch version
+RUN python - << 'EOF'
+import torch
+assert torch.__version__.startswith("2.0.1"), torch.__version__
+print("✓ Torch version locked:", torch.__version__)
+EOF
 
 # ============================================
-# STAGE 6: Install ML dependencies
+# Install 4D-Humans
 # ============================================
-# CRITICAL: Install joblib FIRST before any other dependencies
-# PHALP imports joblib during initialization, so it must be available
-RUN pip install --no-cache-dir joblib
+RUN git clone https://github.com/shubham-goel/4D-Humans.git /app/4D-Humans && \
+    cd /app/4D-Humans && \
+     pip install --no-build-isolation --no-deps -e .
 
-# Install chumpy BEFORE other packages (needed for SMPL models)
-# chumpy needs to be built from source and requires build isolation disabled
-RUN pip install --no-cache-dir --no-build-isolation \
-    'chumpy @ git+https://github.com/mattloper/chumpy'
-
-# Install all other Python packages needed for pose estimation
-# These are the core ML libraries for 4D-Humans, PHALP, and pose detection
-RUN pip install --no-cache-dir \
-    # PyTorch: Deep learning framework (2.0.1 with CUDA 11.8 support)
-    torch==2.0.1 \
-    # Computer vision models for PyTorch
-    torchvision==0.15.2 \
-    # Audio processing for PyTorch
-    torchaudio==2.0.2 \
-    # NumPy: Numerical computing library
-    numpy \
-    # SciPy: Scientific computing library
-    scipy \
-    # scikit-image: Image processing library
-    scikit-image \
-    # OpenCV: Computer vision library
-    opencv-python \
-    # Pillow: Image processing library
-    pillow \
-    # PHALP: Pose and shape estimation library
-    phalp \
-    # SMPL-X: 3D human body model
-    smplx \
-    # Trimesh: 3D mesh processing
-    trimesh \
-    # Pyrender: 3D rendering library
-    pyrender
+RUN python - << 'EOF'
+import torch
+assert torch.__version__.startswith("2.0.1"), torch.__version__
+print("✓ Torch still locked:", torch.__version__)
+EOF
 
 # ============================================
-# STAGE 7: Install pytorch3d (3D vision library)
+# Remove system blinker (Flask 3.x)
 # ============================================
-# pytorch3d v0.7.0 from source - compatible with torch 2.0.1 and CUDA 11.8/12.1
-RUN git clone --depth 1 --branch v0.7.0 https://github.com/facebookresearch/pytorch3d.git /app/pytorch3d && \
-cd /app/pytorch3d && \
-# Install with --no-build-isolation to use system torch
-pip install --no-cache-dir --no-build-isolation -e . && \
-echo "[BUILD] ✓ PyTorch3D v0.7.0 installed from source"
+RUN apt-get update && apt-get remove -y python3-blinker && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# STAGE 8: Verify joblib is still available
+# Install Flask
 # ============================================
-# python3 -c: Run Python code directly
-# import joblib: Load the joblib module
-# print(...): Display version information
-# This verifies that joblib wasn't accidentally removed during other installations
-RUN python3 -c "import joblib; print(f'✓ joblib {joblib.__version__} available')"
+RUN pip install flask==3.0.0 flask-cors==4.0.0
 
 # ============================================
-# STAGE 9: Install Detectron2 (object detection framework)
+# Remove system sklearn (safety)
 # ============================================
-# Detectron2 from git - includes ViTDet models in model_zoo
-# Use --no-build-isolation so detectron2's setup.py can find torch
-RUN pip install --no-cache-dir --no-build-isolation 'detectron2 @ git+https://github.com/facebookresearch/detectron2.git' && \
-    echo "[BUILD] ✓ Detectron2 installed from git"
+RUN apt-get update && apt-get remove -y python3-sklearn && rm -rf /var/lib/apt/lists/*
 
 # ============================================
-# STAGE 10: Verify Detectron2 installation
+# FINAL NumPy pin (PHALP / OpenCV ABI-safe)
 # ============================================
-# Try to import detectron2 and print version
-# || echo: If import fails, print warning message (don't fail the build)
-RUN python3 -c "import detectron2; print(f'[BUILD] ✓ Detectron2 {detectron2.__version__} verified')" || \
-    echo "[BUILD] ⚠ Detectron2 import warning (may still work)"
+RUN pip install --force-reinstall "numpy<1.24"
 
 # ============================================
-# STAGE 11: Verify ViTDet models are available
+# Verify installations
 # ============================================
-# Check that Detectron2's model zoo is accessible
-# This includes ViTDet pre-trained models
-RUN python3 -c "from detectron2.model_zoo import model_zoo; print('[BUILD] ✓ Detectron2 model zoo available (includes ViTDet)')" || \
-    echo "[BUILD] ⚠ Model zoo check skipped"
+RUN python -c "import torch; print(f'✓ PyTorch {torch.__version__}')" && \
+    python -c "import pytorch3d; print('✓ PyTorch3D installed')" && \
+    python -c "import detectron2; print('✓ Detectron2 installed')" && \
+    python -c "import phalp; print('✓ PHALP installed')" && \
+    python -c "import flask; print(f'✓ Flask installed')"
 
 # ============================================
-# STAGE 12: Install Flask and web dependencies
+# Runtime
 # ============================================
-# Flask: Web framework for the pose service API
-# flask-cors: Enable CORS for cross-origin requests
-# requests: HTTP client library
-RUN pip install --no-cache-dir \
-    flask==3.0.0 \
-    flask-cors==4.0.0 \
-    requests==2.31.0 && \
-    python3 -c "import flask; print(f'[BUILD] ✓ Flask {flask.__version__} installed')"
-
-# ============================================
-# EXPOSE: Document which ports the container listens on
-# ============================================
-# 5000: Flask web server port (for pose service API)
-# Note: EXPOSE doesn't actually open the port, it's just documentation
-# The port is opened when running the container with -p flag
 EXPOSE 5000
 
-# ============================================
-# HEALTHCHECK: Define how to check if container is healthy
-# ============================================
-# --interval=30s: Check every 30 seconds
-# --timeout=10s: Wait max 10 seconds for response
-# --start-period=60s: Wait 60 seconds before first check (let app start)
-# --retries=3: Mark unhealthy after 3 failed checks
-# CMD curl: Use curl command to check if service is running
-# curl -f: Fail if HTTP status is not 2xx or 3xx
-# http://localhost:5000/health: Check the health endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:5000/health || exit 1
-
-# ============================================
-# CMD: Default command to run when container starts
-# ============================================
-# CMD ["python3"]: Run Python 3 interpreter
-# This is the default, but can be overridden when running the container
-CMD ["python3"]
