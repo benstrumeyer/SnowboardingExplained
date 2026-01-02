@@ -77,5 +77,9 @@ venv/
 dev-kiro.ps1
 *.pkl
 
+# Large installer files
+*.sh
+Miniconda3-latest-Linux-x86_64.sh
+
 # Exception: SMPL model is required for pose estimation
 !backend/pose-service/data/basicmodel_neutral_lbs_10_207_0_v1.1.0.pkl
