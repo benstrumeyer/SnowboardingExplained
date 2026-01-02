@@ -11,9 +11,18 @@ Web Upload → Backend (Node.js) → Pose Service (Python)
                                       ↓
                     [4D-Humans] → [PHALP] → [Mesh Renderer]
                                       ↓
-                            JSON Response (Pose Timeline)
+                    JSON Response (Pose Timeline + Videos)
                                       ↓
-                    Three.js Visualization → MongoDB
+                    Save to MongoDB (Mesh Data + Videos)
+                                      ↓
+                    Side-by-Side View:
+                    ┌─────────────────────────────────────┐
+                    │ Left: Video Toggle                  │
+                    │ (Original ↔ PHALP Overlay)         │
+                    │                                     │
+                    │ Right: Three.js 3D Mesh             │
+                    │ (Synced frame-by-frame)             │
+                    └─────────────────────────────────────┘
 ```
 
 ## Components
@@ -36,16 +45,27 @@ Web Upload → Backend (Node.js) → Pose Service (Python)
    - 4D-Humans pose estimation
    - PHALP temporal tracking
    - Mesh rendering
-4. **Response** - JSON with pose timeline (native FPS)
-5. **Visualization** - Three.js renders 3D skeleton
-6. **Storage** - Save to MongoDB
+   - Save output video with mesh overlay
+4. **Response** - JSON with pose timeline + video files
+5. **Storage** - Save to MongoDB:
+   - Original video
+   - PHALP mesh overlay video
+   - Mesh data (vertices, faces, camera params)
+   - Video metadata (fps, duration, resolution)
+6. **Visualization** - Side-by-side view:
+   - Left: Toggle between original and overlay videos
+   - Right: Three.js renders 3D mesh in real-time
+   - Both synced frame-by-frame
 
 ## Key Decisions
 
 - **Full Video Processing** - Not frame-by-frame (enables PHALP tracking)
-- **Native FPS** - Playback at original video FPS (60FPS interpolation later)
+- **Native FPS** - Playback at original video FPS
 - **Frozen Stack** - All ML dependencies cloned locally, installed in order
 - **PHALP Critical** - Provides temporal consistency across video
+- **Side-by-Side View** - Left: video toggle (original/overlay), Right: Three.js mesh
+- **Three.js Essential** - 3D mesh visualization is the core value proposition
+- **Frame Sync** - Both video and 3D mesh stay perfectly in sync
 
 ## Deployment
 

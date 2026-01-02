@@ -17,8 +17,10 @@ Process snowboarding videos to extract accurate 3D pose data with temporal consi
 - **Video Upload** - Web-based video upload modal
 - **3D Pose Extraction** - 4D-Humans model for per-frame pose
 - **Temporal Tracking** - PHALP for motion consistency
-- **3D Visualization** - Three.js rendering of skeleton/mesh
-- **Data Storage** - MongoDB for results
+- **3D Visualization** - Three.js rendering of 3D mesh (right panel)
+- **Side-by-Side View** - Left: toggle original/overlay videos, Right: Three.js mesh
+- **Frame-by-Frame Display** - Navigate videos frame-by-frame with sync
+- **Data Storage** - MongoDB for results (mesh data + videos)
 
 ## Tech Stack
 
@@ -38,10 +40,11 @@ Process snowboarding videos to extract accurate 3D pose data with temporal consi
 ## Next Steps
 
 1. Install frozen ML dependencies in correct order
-2. Test full video processing pipeline
-3. Verify PHALP temporal tracking
-4. Build Three.js visualization
-5. Implement database storage
+2. Extract mesh data from PHALP pickle output
+3. Save original and overlay videos to MongoDB
+4. Build side-by-side view component (video toggle + Three.js mesh)
+5. Implement frame-by-frame navigation with sync
+6. Test end-to-end pipeline
 
 ## Important Notes
 
@@ -49,6 +52,9 @@ Process snowboarding videos to extract accurate 3D pose data with temporal consi
 - **Full Video Processing** - Videos processed as a unit (not frame-by-frame)
 - **Frozen Dependencies** - All ML packages cloned locally, must install in order
 - **Local Development** - Running in WSL2 with Kiro IDE
+- **Three.js Essential** - 3D mesh visualization is the core value proposition
+- **Side-by-Side View** - Left: video toggle (original/overlay), Right: Three.js mesh
+- **Frame Sync Critical** - Both video and 3D mesh must stay perfectly in sync
 
 ## Quick Links
 
