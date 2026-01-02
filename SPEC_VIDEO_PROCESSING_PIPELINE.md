@@ -289,6 +289,186 @@ rendered = renderer.render_mesh_on_image(
    - Do we need to merge them or keep separate?
    - How do we handle track_id for temporal consistency?
 
+## Side-by-Side View Requirements
+
+### Overview
+Users need to view the original/overlay videos and 3D mesh visualization side-by-side with frame-by-frame display capability. This requires:
+1. Saving the track.py output .mp4 file to MongoDB
+2. Storing video metadata (fps, duration, resolution, frame count)
+3. Creating a side-by-side view component with:
+   - Left: Video toggle (original ↔ PHALP overlay)
+   - Right: Three.js 3D mesh visualization
+4. Implementing frame-by-frame navigation (next/previous frame, scrubbing)
+5. Keeping both video and 3D mesh in perfect sync
+
+### Data Model for Side-by-Side View
+
+```typescript
+interface VideoDocument {
+  _id: ObjectId;
+  jobId: string;
+  
+  // Original video
+  originalVideo: {
+    filename: string;
+    data: Binary;           // Original uploaded video
+    size: number;           // File size in bytes
+    mimeType: string;       // "video/mp4"
+  };
+  
+  // PHALP mesh overlay video
+  meshOverlayVideo: {
+    filename: string;
+    data: Binary;           // track.py output video with mesh overlay
+    size: number;           // File size in bytes
+    mimeType: string;       // "video/mp4"
+  };
+  
+  // Metadata
+  metadata: {
+    fps: number;            // Frames per second
+    duration: number;       // Duration in seconds
+    resolution: {
+      width: number;
+      height: number;
+    };
+    frameCount: number;     // Total frames in video
+    processingTime: number; // Time to process in seconds
+  };
+  
+  // Mesh data
+  frames: Frame[];          // Array of frame objects with mesh data
+  
+  // Timestamps
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface Frame {
+  frameNumber: number;
+  timestamp: number;
+  vertices: number[][];     // 6890 3D points
+  faces: number[][];        // 13776 triangle indices
+  camera: {
+    tx: number;
+    ty: number;
+    tz: number;
+    focal_length: number;
+  };
+  personId: number;
+  tracked: boolean;
+  confidence: number;
+}
+```
+
+### Implementation Steps
+
+#### Step 1: Save Original Video to Persistent Location
+- When video is uploaded, save to `~/videos/{jobId}_original.mp4`
+- Store filename and size for later retrieval
+
+#### Step 2: Save Output Video from track.py
+- After track.py completes, output video is at `~/videos/mesh_overlay_{jobId}.mp4`
+- Verify file exists and is readable
+- Store filename and size
+
+#### Step 3: Extract Video Metadata
+- Use OpenCV to read video properties:
+  - `fps`: frames per second
+  - `duration`: total duration in seconds
+  - `resolution`: width and height
+  - `frameCount`: total number of frames
+- Store in metadata object
+
+#### Step 4: Save Both Videos to MongoDB
+- Read original video file as binary
+- Read mesh overlay video file as binary
+- Create VideoDocument with both videos and metadata
+- Save to MongoDB collection `videos`
+
+#### Step 5: Create Backend Endpoint to Retrieve Videos
+- `GET /api/video/:jobId` - Returns VideoDocument with metadata
+- `GET /api/video/:jobId/original/stream` - Streams original video
+- `GET /api/video/:jobId/overlay/stream` - Streams mesh overlay video
+- `GET /api/video/:jobId/frame/:frameNumber` - Returns specific frame from either video
+
+#### Step 6: Create Side-by-Side View Component
+Frontend component displays:
+```
+┌─────────────────────────────────────────────────────┐
+│ Left Panel (Video)      │ Right Panel (3D Mesh)     │
+│ ┌───────────────────┐   │ ┌───────────────────────┐ │
+│ │ [Original/Overlay]│   │ │ Three.js Canvas       │ │
+│ │ Toggle Button     │   │ │ (Synced Mesh)         │ │
+│ │                   │   │ │                       │ │
+│ │ Video Player      │   │ │ 3D Mesh Visualization│ │
+│ │ (Frame-by-frame)  │   │ │ (Real-time)           │ │
+│ └───────────────────┘   │ └───────────────────────┘ │
+│ Shared Timeline / Scrubber (both videos + mesh)     │
+│ [◄ Prev] [Play/Pause] [Next ►] [Frame: 0/300]      │
+└─────────────────────────────────────────────────────┘
+```
+
+**Left Panel:**
+- Toggle button to switch between original and overlay videos
+- Video player showing selected video
+- Frame-by-frame navigation
+
+**Right Panel:**
+- Three.js canvas rendering 3D mesh
+- Real-time mesh visualization synced with video
+- Camera parameters applied for correct viewpoint
+
+**Shared Controls:**
+- Timeline/scrubber for seeking
+- Play/Pause button
+- Previous/Next frame buttons
+- Frame counter
+
+#### Step 7: Implement Frame-by-Frame Navigation
+- **Next Frame**: Advance both video and 3D mesh by 1 frame
+- **Previous Frame**: Go back 1 frame in both video and 3D mesh
+- **Scrubber**: Drag to seek to specific frame (both video and mesh follow)
+- **Play/Pause**: Controls both video and mesh together
+- **Speed Control**: Play at different speeds (0.5x, 1x, 2x)
+
+#### Step 8: Implement Frame Extraction and Mesh Rendering
+- Extract specific frame from video file using OpenCV
+- Return as JPEG or PNG for video display
+- For 3D mesh: Load frame data from frames array
+- Create Three.js BufferGeometry from vertices/faces
+- Apply camera parameters for correct viewpoint
+- Render mesh in real-time as user navigates
+
+### Key Considerations
+
+1. **File Size**: Videos can be large (100MB+)
+   - Consider storing as file references instead of binary in MongoDB
+   - Or use GridFS for large files
+   - Or store on disk and reference by path
+
+2. **Sync**: Keep video and 3D mesh perfectly in sync
+   - Use frame numbers, not timestamps (more reliable)
+   - Both video and mesh should display same frame number
+   - Scrubbing should update both simultaneously
+   - Three.js mesh updates in real-time as video plays
+
+3. **Performance**: Loading large videos and rendering 3D
+   - Stream videos instead of loading entire file
+   - Use range requests for seeking
+   - Cache frames locally on frontend
+   - Optimize Three.js rendering for smooth playback
+
+3. **Performance**: Loading large videos
+   - Stream videos instead of loading entire file
+   - Use range requests for seeking
+   - Cache frames locally on frontend
+
+4. **Metadata**: Store enough info for frontend
+   - fps, duration, resolution, frame count
+   - Original filename for reference
+   - Processing time for analytics
+
 ## Success Criteria
 
 - [ ] Pickle file is created and can be loaded
@@ -303,3 +483,12 @@ rendered = renderer.render_mesh_on_image(
 - [ ] Frontend renders mesh in Three.js
 - [ ] Motion is smooth (PHALP temporal tracking working)
 - [ ] Logs show track.py processing progress
+- [ ] Original video saved to persistent location
+- [ ] Output video from track.py saved to persistent location
+- [ ] Video metadata extracted (fps, duration, resolution, frame count)
+- [ ] Both videos saved to MongoDB with metadata
+- [ ] Backend endpoints return videos and metadata
+- [ ] Side-by-side view displays both videos
+- [ ] Frame-by-frame navigation works (next/previous/scrubber)
+- [ ] Both videos stay in sync during playback
+- [ ] Frame extraction endpoint works for specific frames
