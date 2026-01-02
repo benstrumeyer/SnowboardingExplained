@@ -76,55 +76,83 @@ video_jobs = {}  # {job_id: {status: 'processing'|'complete'|'error', result: {.
 
 def process_video_async(job_id, input_path, output_path, max_frames='999999'):
     """Process video in background thread using track.py"""
+    import sys
+    
+    # Create a log file for this job
+    job_log_file = f'/tmp/job_{job_id}.log'
+    
+    def log_message(msg):
+        """Write to both stdout and job log file with immediate flush"""
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+        formatted_msg = f"[{timestamp}] {msg}"
+        sys.stdout.write(formatted_msg + '\n')
+        sys.stdout.flush()
+        try:
+            with open(job_log_file, 'a') as f:
+                f.write(formatted_msg + '\n')
+                f.flush()
+            # Force OS-level flush
+            import os as os_flush
+            os_flush.fsync(open(job_log_file, 'a').fileno())
+        except Exception as e:
+            sys.stderr.write(f"Failed to write to job log: {e}\n")
+            sys.stderr.flush()
+    
+    log_message(f"\n{'='*80}")
+    log_message(f"[JOB {job_id}] ===== BACKGROUND THREAD STARTED =====")
+    log_message(f"{'='*80}")
+    
     try:
-        print(f"[JOB {job_id}] Starting async video processing with track.py...")
-        print(f"[JOB {job_id}] Input: {input_path}")
-        print(f"[JOB {job_id}] Output: {output_path}")
-        print(f"[JOB {job_id}] Max frames: {max_frames}")
-        print(f"[JOB {job_id}] Input file exists: {os.path.exists(input_path)}")
+        log_message(f"[JOB {job_id}] Input: {input_path}")
+        log_message(f"[JOB {job_id}] Output: {output_path}")
+        log_message(f"[JOB {job_id}] Max frames: {max_frames}")
+        log_message(f"[JOB {job_id}] Input file exists: {os.path.exists(input_path)}")
+        
         if os.path.exists(input_path):
-            print(f"[JOB {job_id}] Input file size: {os.path.getsize(input_path)} bytes")
+            log_message(f"[JOB {job_id}] Input file size: {os.path.getsize(input_path)} bytes")
         
         video_jobs[job_id]['status'] = 'processing'
         video_jobs[job_id]['started_at'] = time.time()
+        video_jobs[job_id]['log_file'] = job_log_file
+        log_message(f"[JOB {job_id}] Job status set to 'processing'")
         
         if not HAS_TRACK_WRAPPER:
             raise RuntimeError("Track wrapper not available")
         
-        # Create output directory for track.py
         track_output_dir = os.path.join(os.path.dirname(output_path), f'track_output_{job_id}')
         os.makedirs(track_output_dir, exist_ok=True)
         
-        print(f"[JOB {job_id}] Track output directory: {track_output_dir}")
+        log_message(f"[JOB {job_id}] Track output directory: {track_output_dir}")
+        log_message(f"[JOB {job_id}] About to call process_video_with_track()...")
         
-        # Process video using track.py
-        print(f"[JOB {job_id}] Calling track.py wrapper...")
         max_frames_int = int(max_frames)
-        result = process_video_with_track(input_path, track_output_dir, max_frames_int)
+        log_message(f"[JOB {job_id}] Calling track.py wrapper with max_frames={max_frames_int}...")
         
-        print(f"[JOB {job_id}] track.py returned: {result}")
+        result = process_video_with_track(input_path, track_output_dir, max_frames_int, job_log_file)
         
-        # Store result
+        log_message(f"[JOB {job_id}] track.py returned successfully")
+        log_message(f"[JOB {job_id}] Result: {result}")
+        
         video_jobs[job_id]['status'] = 'complete'
         video_jobs[job_id]['result'] = result
         video_jobs[job_id]['completed_at'] = time.time()
-        print(f"[JOB {job_id}] ✓ Processing complete!")
+        elapsed = video_jobs[job_id]['completed_at'] - video_jobs[job_id]['started_at']
+        log_message(f"[JOB {job_id}] ✓ Processing complete! Total time: {elapsed:.1f}s")
+        log_message(f"{'='*80}")
         
-        # Clean up input file
         if os.path.exists(input_path):
             try:
                 os.remove(input_path)
-                print(f"[JOB {job_id}] Cleaned up input file")
-            except Exception as e:
-                print(f"[JOB {job_id}] Failed to clean up input file: {e}")
+            except:
+                pass
                 
     except Exception as e:
-        print(f"[JOB {job_id}] ✗ Error: {e}")
+        log_message(f"[JOB {job_id}] ✗ EXCEPTION: {type(e).__name__}: {e}")
         import traceback
-        traceback.print_exc()
+        log_message(traceback.format_exc())
         video_jobs[job_id]['status'] = 'error'
         video_jobs[job_id]['error'] = str(e)
-        video_jobs[job_id]['error_traceback'] = traceback.format_exc()
+        video_jobs[job_id]['log_file'] = job_log_file
 CORS(app)
 
 # Track model readiness
@@ -193,6 +221,8 @@ def do_warmup():
         except Exception as e:
             results['hmr2'] = {'status': 'error', 'error': str(e)}
             print(f"[WARMUP] HMR2 failed: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Load ViTDet
         print("[WARMUP] Loading ViTDet model...")
@@ -208,6 +238,8 @@ def do_warmup():
         except Exception as e:
             results['vitdet'] = {'status': 'error', 'error': str(e)}
             print(f"[WARMUP] ViTDet failed: {e}")
+            import traceback
+            traceback.print_exc()
         
         # Overall status
         hmr2_ok = results['hmr2'].get('status') == 'loaded'
@@ -217,16 +249,16 @@ def do_warmup():
             results['status'] = 'ready'
             results['message'] = 'All models loaded and ready'
             _models_ready = True
-            print("[WARMUP] Γ£ô All models ready!")
+            print("[WARMUP] All models ready!")
         elif hmr2_ok:
             results['status'] = 'partial'
             results['message'] = 'HMR2 loaded, ViTDet failed (will use full-image fallback)'
             _models_ready = True
-            print("[WARMUP] ΓÜá Partial ready (HMR2 only)")
+            print("[WARMUP] Partial ready (HMR2 only)")
         else:
             results['status'] = 'error'
             results['message'] = 'Model loading failed'
-            print("[WARMUP] Γ£ù Model loading failed")
+            print("[WARMUP] Model loading failed")
         
         return results
         
@@ -512,34 +544,32 @@ def process_video_async_endpoint():
     print(f"[ASYNC] Content-Type: {request.content_type}")
     print(f"[ASYNC] Files: {list(request.files.keys())}")
     print(f"[ASYNC] Form: {list(request.form.keys())}")
+    sys.stdout.flush()
     
     if not HAS_TRACK_WRAPPER:
         print("[ASYNC] ✗ Track wrapper not available")
+        sys.stdout.flush()
         return jsonify({'error': 'Track wrapper not available'}), 501
     
     try:
         if 'video' not in request.files:
             print("[ASYNC] ✗ No video file in request")
+            sys.stdout.flush()
             return jsonify({'error': 'video file is required'}), 400
         
         video_file = request.files['video']
         if video_file.filename == '':
             print("[ASYNC] ✗ Empty video filename")
+            sys.stdout.flush()
             return jsonify({'error': 'No video file selected'}), 400
         
-        # Extract max_frames from form data
         max_frames = request.form.get('max_frames', '999999')
         print(f"[ASYNC] max_frames from form: {max_frames}")
+        sys.stdout.flush()
         
-        # Save video to temp location
         import tempfile
-        if os.path.exists('/shared/videos'):
-            temp_dir = '/shared/videos'
-        elif os.path.exists('/mnt/c'):
-            temp_dir = '/mnt/c/temp'
-            os.makedirs(temp_dir, exist_ok=True)
-        else:
-            temp_dir = tempfile.gettempdir()
+        temp_dir = os.path.expanduser('~/videos')
+        os.makedirs(temp_dir, exist_ok=True)
         
         job_id = str(uuid.uuid4())[:8]
         input_path = os.path.join(temp_dir, f"upload_{job_id}.mp4")
@@ -548,8 +578,8 @@ def process_video_async_endpoint():
         video_file.save(input_path)
         print(f"[ASYNC] Video saved to: {input_path}")
         print(f"[ASYNC] File size: {os.path.getsize(input_path)} bytes")
+        sys.stdout.flush()
         
-        # Initialize job
         video_jobs[job_id] = {
             'status': 'queued',
             'output_path': output_path,
@@ -557,15 +587,24 @@ def process_video_async_endpoint():
             'max_frames': max_frames
         }
         
-        # Start processing in background thread
+        print(f"[ASYNC] About to start thread for job {job_id}...")
+        sys.stdout.flush()
+        
         thread = threading.Thread(
             target=process_video_async,
-            args=(job_id, input_path, output_path, max_frames)
+            args=(job_id, input_path, output_path, max_frames),
+            daemon=True
         )
-        thread.daemon = True
+        print(f"[ASYNC] Thread created: {thread}")
+        sys.stdout.flush()
+        
         thread.start()
+        print(f"[ASYNC] Thread started")
+        sys.stdout.flush()
         
         print(f"[ASYNC] ✓ Job {job_id} started with max_frames={max_frames}")
+        sys.stdout.flush()
+        
         return jsonify({
             'status': 'accepted',
             'job_id': job_id,
@@ -575,7 +614,8 @@ def process_video_async_endpoint():
     except Exception as e:
         print(f"[ASYNC] ✗ Exception: {e}")
         import traceback
-        traceback.print_exc()
+        print(traceback.format_exc())
+        sys.stdout.flush()
         return jsonify({'error': f'Server error: {str(e)}'}), 500
 
 
@@ -664,6 +704,110 @@ def get_frame_image(job_id, frame_index):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/test_track_direct', methods=['POST'])
+def test_track_direct():
+    """
+    TEST ENDPOINT: Call track.py directly (synchronously) to debug
+    This helps identify if track.py itself is the problem
+    """
+    print("\n" + "="*80)
+    print("[TEST_TRACK] ===== DIRECT TRACK.PY TEST =====")
+    print("="*80)
+    
+    if not HAS_TRACK_WRAPPER:
+        return jsonify({'error': 'Track wrapper not available'}), 501
+    
+    try:
+        if 'video' not in request.files:
+            return jsonify({'error': 'video file is required'}), 400
+        
+        video_file = request.files['video']
+        if video_file.filename == '':
+            return jsonify({'error': 'No video file selected'}), 400
+        
+        max_frames = request.form.get('max_frames', '999999')
+        print(f"[TEST_TRACK] max_frames: {max_frames}")
+        
+        # Save video
+        import tempfile
+        temp_dir = tempfile.gettempdir()
+        input_path = os.path.join(temp_dir, f"test_track_{int(time.time())}.mp4")
+        output_dir = os.path.join(temp_dir, f"test_track_output_{int(time.time())}")
+        
+        video_file.save(input_path)
+        os.makedirs(output_dir, exist_ok=True)
+        
+        print(f"[TEST_TRACK] Video saved to: {input_path}")
+        print(f"[TEST_TRACK] File size: {os.path.getsize(input_path)} bytes")
+        print(f"[TEST_TRACK] Output dir: {output_dir}")
+        print(f"[TEST_TRACK] Calling process_video_with_track() synchronously...")
+        
+        start = time.time()
+        result = process_video_with_track(input_path, output_dir, int(max_frames))
+        elapsed = time.time() - start
+        
+        print(f"[TEST_TRACK] ✓ Completed in {elapsed:.1f}s")
+        print(f"[TEST_TRACK] Result: {result}")
+        print("="*80 + "\n")
+        
+        return jsonify({
+            'status': 'success',
+            'elapsed_time': elapsed,
+            'result': result
+        })
+        
+    except Exception as e:
+        print(f"[TEST_TRACK] ✗ Exception: {type(e).__name__}: {e}")
+        import traceback
+        tb = traceback.format_exc()
+        print(tb)
+        print("="*80 + "\n")
+        return jsonify({
+            'status': 'error',
+            'error': str(e),
+            'traceback': tb
+        }), 500
+
+
+@app.route('/logs/<job_id>', methods=['GET'])
+def get_job_logs(job_id):
+    """Get logs for a specific job"""
+    log_file = f'/tmp/job_{job_id}.log'
+    
+    if not os.path.exists(log_file):
+        return jsonify({'error': f'Log file not found for job {job_id}'}), 404
+    
+    try:
+        with open(log_file, 'r') as f:
+            logs = f.read()
+        
+        return jsonify({
+            'job_id': job_id,
+            'logs': logs
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/logs/track_wrapper', methods=['GET'])
+def get_track_wrapper_logs():
+    """Get track_wrapper.py logs"""
+    log_file = '/tmp/track_wrapper.log'
+    
+    if not os.path.exists(log_file):
+        return jsonify({'error': 'Log file not found'}), 404
+    
+    try:
+        with open(log_file, 'r') as f:
+            logs = f.read()
+        
+        return jsonify({
+            'logs': logs
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 if __name__ == '__main__':
     import threading
     import os
@@ -703,12 +847,17 @@ if __name__ == '__main__':
         print("=" * 60)
         print("[STARTUP] Pre-loading models on startup...")
         print("=" * 60)
-        warmup_result = do_warmup()
-        print("=" * 60)
-        if warmup_result.get('status') in ['ready', 'partial']:
-            print("[STARTUP] ✓ Models loaded successfully")
-        else:
-            print(f"[STARTUP] ⚠ Warmup incomplete: {warmup_result.get('message', 'Unknown')}")
+        try:
+            warmup_result = do_warmup()
+            print("=" * 60)
+            if warmup_result.get('status') in ['ready', 'partial']:
+                print("[STARTUP] Models loaded successfully")
+            else:
+                print(f"[STARTUP] Warmup incomplete: {warmup_result.get('message', 'Unknown')}")
+        except Exception as e:
+            print(f"[STARTUP] Warmup failed (non-fatal): {e}")
+            import traceback
+            traceback.print_exc()
         print("=" * 60)
     else:
         if skip_warmup:
