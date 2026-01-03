@@ -163,6 +163,8 @@ export interface SyncedFrame {
 export interface MeshSequence {
   videoId: string;
   videoUrl: string;
+  originalVideoUrl?: string;
+  overlayVideoUrl?: string;
   fps: number;
   videoDuration: number;
   totalFrames: number;
