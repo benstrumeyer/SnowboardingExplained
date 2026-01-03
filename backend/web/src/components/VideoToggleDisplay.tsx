@@ -14,6 +14,8 @@ interface VideoToggleDisplayProps {
   fps?: number;
 }
 
+const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3001';
+
 export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
   videoId,
   totalFrames,
@@ -41,12 +43,12 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
         for (let i = 0; i < totalFrames; i++) {
           originalFrames.push({
             frameNumber: i,
-            imageUrl: `/api/mesh-data/${videoId}/frame/${i}/original`,
+            imageUrl: `${API_URL}/api/mesh-data/${videoId}/frame/${i}/original`,
           });
 
           overlayFrames.push({
             frameNumber: i,
-            imageUrl: `/api/mesh-data/${videoId}/frame/${i}/overlay`,
+            imageUrl: `${API_URL}/api/mesh-data/${videoId}/frame/${i}/overlay`,
           });
         }
 
@@ -73,17 +75,28 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
     const frameIndex = Math.min(currentFrame, frameArray.length - 1);
     const frame = frameArray[frameIndex];
 
-    if (!frame) return;
+    if (!frame) {
+      console.warn(`[VIDEO_TOGGLE] No frame at index ${frameIndex}`);
+      return;
+    }
+
+    console.log(`[VIDEO_TOGGLE] Loading frame ${frameIndex}: ${frame.imageUrl}`);
 
     const img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload = () => {
+      console.log(`[VIDEO_TOGGLE] ✓ Frame loaded: ${img.width}x${img.height}`);
       canvas.width = img.width;
       canvas.height = img.height;
       ctx.drawImage(img, 0, 0);
     };
-    img.onerror = () => {
-      console.error(`[VIDEO_TOGGLE] Failed to load frame: ${frame.imageUrl}`);
+    img.onerror = (err) => {
+      console.error(`[VIDEO_TOGGLE] ✗ Failed to load frame: ${frame.imageUrl}`, err);
+      ctx.fillStyle = '#FF0000';
+      ctx.fillRect(0, 0, canvas.width || 360, canvas.height || 640);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '16px Arial';
+      ctx.fillText('Failed to load frame', 10, 30);
     };
     img.src = frame.imageUrl;
   }, [currentFrame, showOverlay, frames]);
