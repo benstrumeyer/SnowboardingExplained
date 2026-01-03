@@ -19,7 +19,8 @@
         "list-databases",
         "list-collections",
         "find",
-        "db-stats"
+        "db-stats",
+        "count"
       ],
       "disabledTools": []
     },
@@ -66,7 +67,9 @@
         "browser_type",
         "browser_screenshot",
         "browser_press_key",
-        "browser_get_console_logs"
+        "browser_get_console_logs",
+        "browser_navigate",
+        "browser_navigate"
       ],
       "disabled": false,
       "disabledTools": []
