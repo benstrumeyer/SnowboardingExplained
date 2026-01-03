@@ -3,12 +3,12 @@ import axios from 'axios';
 import '../styles/ModelsCardList.css';
 
 interface Model {
-  _id: string;
+  _id?: string;
   videoId: string;
-  role: 'rider' | 'coach';
+  role?: 'rider' | 'coach';
   fps: number;
   frameCount: number;
-  videoDuration: number;
+  videoDuration?: number;
   createdAt: string;
 }
 
@@ -88,7 +88,7 @@ export const ModelsCardList: React.FC<ModelsCardListProps> = ({ onModelSelect, m
       {models.map(model => (
         <div key={model.videoId} className="model-card">
           <div className="model-card-icon">
-            {model.role === 'rider' ? '🏂' : '👨‍🏫'}
+            {(model.role || 'rider') === 'rider' ? '🏂' : '👨‍🏫'}
           </div>
           <div className="model-card-content">
             <div className="model-card-title">{model.videoId}</div>
@@ -99,7 +99,7 @@ export const ModelsCardList: React.FC<ModelsCardListProps> = ({ onModelSelect, m
           <div className="model-card-actions">
             <button
               className="model-card-btn load-btn"
-              onClick={() => onModelSelect(model.videoId, model.role)}
+              onClick={() => onModelSelect(model.videoId, model.role || 'rider')}
               title="Load this model"
             >
               Load
