@@ -3,6 +3,7 @@ import { TrackingVisualization } from './TrackingVisualization';
 import { MeshViewer } from './MeshViewer';
 import { FloatingControlPanel } from './FloatingControlPanel';
 import { VideoDisplay } from './VideoDisplay';
+import { VideoToggleDisplay } from './VideoToggleDisplay';
 import { fetchRiderMesh, fetchReferenceMesh } from '../services/meshDataService';
 import { MeshSequence } from '../types';
 import { CameraService } from '../services/cameraService';
@@ -318,13 +319,15 @@ export function PoseOverlayViewer({
           <div className="flex-1 bg-gray-950 overflow-hidden relative">
             {viewMode === 'side-by-side' && leftScreen.mesh && leftScreen.isVisible ? (
               <div className="w-full h-full flex">
-                {/* Video */}
+                {/* Video with Toggle */}
                 <div className="w-1/2 bg-black flex items-center justify-center border-r border-gray-700">
-                  <VideoDisplay
-                    videoUrl={leftScreen.mesh.videoUrl}
+                  <VideoToggleDisplay
+                    originalVideoUrl={leftScreen.mesh.originalVideoUrl || leftScreen.mesh.videoUrl}
+                    overlayVideoUrl={leftScreen.mesh.overlayVideoUrl || leftScreen.mesh.videoUrl}
                     currentFrame={leftSceneFrame}
                     totalFrames={totalFrames}
                     isPlaying={isPlaying}
+                    fps={leftScreen.mesh.fps}
                   />
                 </div>
                 {/* Mesh */}

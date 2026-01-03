@@ -65,6 +65,8 @@ export async function getMeshSequence(videoId: string): Promise<MeshSequence> {
     const meshSequence: MeshSequence = {
       videoId,
       videoUrl: `/api/mesh-data/${videoId}/video/original`,
+      originalVideoUrl: `/api/mesh-data/${videoId}/video/original`,
+      overlayVideoUrl: `/api/mesh-data/${videoId}/video/overlay`,
       fps: videoMetadata.fps,
       videoDuration: videoMetadata.duration,
       totalFrames: syncedFrames.length,
