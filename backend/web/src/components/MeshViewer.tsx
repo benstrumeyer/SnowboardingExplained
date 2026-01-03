@@ -237,11 +237,7 @@ export function MeshViewer({
         
         if (cameraParams) {
           console.log('%c[MESH-UPDATE] 📷 Applying weak perspective camera:', 'color: #00FF00;', cameraParams);
-          // Scale affects the size of the mesh
-          mesh.scale.set(cameraParams.scale, cameraParams.scale, cameraParams.scale);
-          // tx, ty are in normalized image coordinates [-1, 1], convert to world space
-          // Assuming image is 256x256 and we want to position in a reasonable 3D space
-          mesh.position.set(cameraParams.tx * 2, -cameraParams.ty * 2, 0);
+          mesh.position.set(cameraParams.tx, cameraParams.ty, 0);
         } else {
           mesh.position.set(0, 0, 0);
         }
@@ -284,8 +280,7 @@ export function MeshViewer({
         
         if (cameraParams) {
           console.log('%c[MESH-UPDATE] 📷 Applying weak perspective camera:', 'color: #00FFFF;', cameraParams);
-          mesh.scale.set(cameraParams.scale, cameraParams.scale, cameraParams.scale);
-          mesh.position.set(cameraParams.tx * 2 + 2, -cameraParams.ty * 2, 0);  // Offset by 2 for reference
+          mesh.position.set(cameraParams.tx + 2, cameraParams.ty, 0);
         } else {
           mesh.position.set(2, 0, 0);
         }
@@ -374,10 +369,18 @@ function createMeshFromFrame(frame: MeshFrame | SyncedFrame, colorHex: string): 
   });
 
   if (!vertices || vertices.length === 0) {
-    console.error('%c[MESH-CREATE] ❌ CRITICAL: No vertices found!', 'color: #FF0000; font-weight: bold; font-size: 14px;');
-    console.error('%c[MESH-CREATE] Frame structure:', 'color: #FF0000;', frame);
-    console.error('%c[MESH-CREATE] Full frame dump:', 'color: #FF0000;', JSON.stringify(frame).substring(0, 500));
-    return null;
+    console.warn('%c[MESH-CREATE] ⚠️  No vertices found, creating placeholder sphere', 'color: #FFAA00; font-weight: bold; font-size: 14px;');
+    console.warn('%c[MESH-CREATE] Frame structure:', 'color: #FFAA00;', frame);
+    
+    const colorNum = parseInt(colorHex.replace('#', ''), 16);
+    const geometry = new THREE.SphereGeometry(0.5, 32, 32);
+    const material = new THREE.MeshPhongMaterial({
+      color: colorNum,
+      side: THREE.DoubleSide,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    console.log('%c[MESH-CREATE] ✅ Placeholder sphere created', 'color: #FFAA00; font-weight: bold;');
+    return mesh;
   }
 
   console.log('%c[MESH-CREATE] ✅ Vertices found, creating geometry', 'color: #00FF00; font-weight: bold;');
