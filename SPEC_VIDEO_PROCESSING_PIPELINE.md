@@ -469,6 +469,176 @@ Frontend component displays:
    - Original filename for reference
    - Processing time for analytics
 
+## Current Implementation Status
+
+### Already Implemented
+
+1. **Mesh Extraction from PHALP Pickle** ✅
+   - `track_wrapper.py` has `_extract_mesh_from_phalp_output()` method
+   - Handles both dict and list pickle structures
+   - Converts numpy arrays to JSON-serializable lists
+   - Extracts vertices, faces, camera parameters, confidence, etc.
+
+2. **Frame Building** ✅
+   - `_build_frame_from_tracklet()` creates frame objects with:
+     - frameNumber, timestamp, vertices, faces
+     - confidence, keypoints, joints3D, personId
+     - tracked flag, has3D flag, meshRendered flag
+
+3. **Backend API** ✅
+   - `POST /api/pose/video` - Upload video, returns immediately with jobId
+   - `GET /api/pose/job_status/:jobId` - Poll for job completion
+   - `GET /api/pose/job_logs/:jobId` - Get job logs
+   - Background processing with `processVideoInBackground()`
+
+4. **MongoDB Integration** ✅
+   - `meshDataService.saveMeshData()` saves frames to MongoDB
+   - Stores fps, videoDuration, frameCount, metadata
+   - Includes uploadedAt, processingTime, extractionMethod
+
+### Next Steps: Focus on Frame Extraction → MongoDB Storage
+
+**Priority 1: Verify End-to-End Flow**
+1. Upload video through backend
+2. Verify track.py runs and creates pickle file
+3. Verify frames extracted with mesh data
+4. Verify frames saved to MongoDB
+5. Verify frontend can query and display frames
+
+**Priority 2: Debug with MCP Tools**
+- Use **MongoDB MCP** to query saved frames
+- Use **Chrome DevTools MCP** to inspect frontend network requests
+- Use **Browser MCP** to test frontend rendering
+
+## MCP Tools Required
+
+### 1. MongoDB MCP
+**Purpose**: Query and inspect frames saved to MongoDB
+
+**Setup**:
+```bash
+# Add to ~/.kiro/settings/mcp.json or .kiro/settings/mcp.json
+{
+  "mcpServers": {
+    "mongodb": {
+      "command": "uvx",
+      "args": ["mongodb-mcp@latest"],
+      "env": {
+        "MONGODB_URI": "mongodb://localhost:27017"
+      }
+    }
+  }
+}
+```
+
+**Verification**:
+- Connect to MongoDB
+- List databases and collections
+- Query `videos` collection to see saved frames
+- Inspect frame structure
+
+### 2. Chrome DevTools MCP
+**Purpose**: Debug backend and frontend communication
+
+**Setup**:
+```bash
+# Add to ~/.kiro/settings/mcp.json
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "uvx",
+      "args": ["chrome-devtools-mcp@latest"]
+    }
+  }
+}
+```
+
+**Verification**:
+- Open browser DevTools
+- Monitor network requests to `/api/pose/video`
+- Monitor network requests to `/api/pose/job_status/:jobId`
+- Inspect console logs
+
+### 3. Browser MCP
+**Purpose**: Test frontend rendering and interaction
+
+**Setup**:
+```bash
+# Add to ~/.kiro/settings/mcp.json
+{
+  "mcpServers": {
+    "browser": {
+      "command": "uvx",
+      "args": ["browser-mcp@latest"]
+    }
+  }
+}
+```
+
+**Verification**:
+- Navigate to frontend
+- Upload test video
+- Monitor job status polling
+- Verify frames loaded from MongoDB
+- Verify Three.js mesh renders
+
+## Debugging Workflow
+
+### Step 1: Verify Pickle Extraction
+```bash
+# Run test video through track.py
+cd backend/pose-service
+python inspect_phalp_output.py ~/videos/test_video.mp4
+
+# Check if pickle file created
+ls -la ~/videos/track_output_*/
+```
+
+### Step 2: Verify Backend Receives Frames
+```bash
+# Upload video and check logs
+curl -X POST -F "video=@test.mp4" http://localhost:3001/api/pose/video
+
+# Monitor backend logs
+tail -f backend/logs/app.log
+```
+
+### Step 3: Verify MongoDB Storage (MongoDB MCP)
+```
+# Connect to MongoDB
+mcp mongodb connect mongodb://localhost:27017
+
+# Query saved frames
+mcp mongodb find videos {} --limit 1
+
+# Inspect frame structure
+mcp mongodb find videos {"frames": {$exists: true}} --limit 1
+```
+
+### Step 4: Verify Frontend Receives Data (Chrome DevTools MCP)
+```
+# Open DevTools
+mcp chrome-devtools open
+
+# Monitor network requests
+mcp chrome-devtools network-monitor
+
+# Check console for errors
+mcp chrome-devtools console-logs
+```
+
+### Step 5: Verify Three.js Rendering (Browser MCP)
+```
+# Navigate to frontend
+mcp browser navigate http://localhost:3001
+
+# Take screenshot
+mcp browser screenshot
+
+# Check if mesh renders
+mcp browser evaluate "document.querySelector('canvas').getContext('webgl')"
+```
+
 ## Success Criteria
 
 - [ ] Pickle file is created and can be loaded
@@ -478,9 +648,12 @@ Frontend component displays:
 - [ ] Video upload returns immediately with jobId
 - [ ] Backend polls pose service and gets job status
 - [ ] Pose service returns frames array with mesh data
-- [ ] Backend saves frames to MongoDB
+- [ ] **Backend saves frames to MongoDB** ← FOCUS HERE
+- [ ] **MongoDB MCP can query saved frames** ← VERIFY WITH MCP
 - [ ] Frontend loads frames from MongoDB
+- [ ] **Chrome DevTools MCP shows network requests** ← DEBUG WITH MCP
 - [ ] Frontend renders mesh in Three.js
+- [ ] **Browser MCP shows Three.js canvas rendering** ← VERIFY WITH MCP
 - [ ] Motion is smooth (PHALP temporal tracking working)
 - [ ] Logs show track.py processing progress
 - [ ] Original video saved to persistent location
