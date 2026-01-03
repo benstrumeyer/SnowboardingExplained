@@ -40,23 +40,17 @@ class TrackWrapper:
         Initialize the track wrapper.
         
         Args:
-            track_py_path: Path to track.py (default: /app/4D-Humans/track.py in container)
+            track_py_path: Path to track.py (default: ~/repos/4D-Humans/track.py)
             four_d_humans_root: Root directory of 4D-Humans repo
             job_log_file: Optional file to write logs to (for job tracking)
         """
         if track_py_path is None:
-            # Try container path first, then absolute path to ~/repos
-            if os.path.exists('/app/4D-Humans/track.py'):
-                track_py_path = '/app/4D-Humans/track.py'
-            else:
-                track_py_path = os.path.expanduser('~/repos/4D-Humans/track.py')
+            # Try ~/repos/4D-Humans/track.py first
+            track_py_path = os.path.expanduser('~/repos/4D-Humans/track.py')
         
         if four_d_humans_root is None:
-            # Try container path first, then absolute path to ~/repos
-            if os.path.exists('/app/4D-Humans'):
-                four_d_humans_root = '/app/4D-Humans'
-            else:
-                four_d_humans_root = os.path.expanduser('~/repos/4D-Humans')
+            # Try ~/repos/4D-Humans first
+            four_d_humans_root = os.path.expanduser('~/repos/4D-Humans')
         
         self.track_py_path = os.path.abspath(track_py_path)
         self.four_d_humans_root = os.path.abspath(four_d_humans_root)
@@ -121,8 +115,36 @@ class TrackWrapper:
         log_msg(f"[TRACK_WRAPPER] Processing video: {video_path}")
         log_msg(f"[TRACK_WRAPPER] Max frames: {max_frames if max_frames else 'unlimited'}")
         
-        # Build command - exactly as it works in isolation
-        venv_python = self.four_d_humans_root.replace('4D-Humans', '') + 'SnowboardingExplained/backend/pose-service/venv/bin/python'
+        # Build command - use the venv Python where dependencies are installed
+        # The venv is in backend/pose-service/venv
+        pose_service_root = os.path.dirname(os.path.abspath(__file__))
+        log_msg(f"[TRACK_WRAPPER] pose_service_root: {pose_service_root}")
+        
+        venv_python = os.path.join(pose_service_root, 'venv', 'bin', 'python')
+        log_msg(f"[TRACK_WRAPPER] Checking venv python at: {venv_python}")
+        log_msg(f"[TRACK_WRAPPER] venv_python exists: {os.path.exists(venv_python)}")
+        
+        # Also check for python3
+        if not os.path.exists(venv_python):
+            venv_python3 = os.path.join(pose_service_root, 'venv', 'bin', 'python3')
+            log_msg(f"[TRACK_WRAPPER] Checking venv python3 at: {venv_python3}")
+            log_msg(f"[TRACK_WRAPPER] venv_python3 exists: {os.path.exists(venv_python3)}")
+            if os.path.exists(venv_python3):
+                venv_python = venv_python3
+        
+        # Fallback to system python if venv doesn't exist
+        if not os.path.exists(venv_python):
+            log_msg(f"[TRACK_WRAPPER] WARNING: venv python not found at {venv_python}")
+            log_msg(f"[TRACK_WRAPPER] Falling back to sys.executable: {sys.executable}")
+            venv_python = sys.executable
+        
+        log_msg(f"[TRACK_WRAPPER] Final Python: {venv_python}")
+        log_msg(f"[TRACK_WRAPPER] Python exists: {os.path.exists(venv_python)}")
+        
+        # Verify python is executable
+        if not os.access(venv_python, os.X_OK):
+            log_msg(f"[TRACK_WRAPPER] WARNING: Python is not executable: {venv_python}")
+            log_msg(f"[TRACK_WRAPPER] File permissions: {oct(os.stat(venv_python).st_mode)}")
         
         end_frame = max_frames if max_frames is not None else 999999
         
@@ -144,19 +166,28 @@ class TrackWrapper:
             env = os_module.environ.copy()
             env['PYTHONUNBUFFERED'] = '1'
             
+            log_msg(f"[TRACK_WRAPPER] Working directory: {self.four_d_humans_root}")
+            log_msg(f"[TRACK_WRAPPER] Working directory exists: {os.path.exists(self.four_d_humans_root)}")
+            
             subprocess_start = time.time()
             
             # Run with unbuffered output, streaming to logger
-            process = subprocess.Popen(
-                cmd,
-                cwd=self.four_d_humans_root,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                env=env,
-                bufsize=1,
-                universal_newlines=True
-            )
+            try:
+                process = subprocess.Popen(
+                    cmd,
+                    cwd=self.four_d_humans_root,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    env=env,
+                    bufsize=1,
+                    universal_newlines=True
+                )
+            except Exception as e:
+                log_msg(f"[TRACK_WRAPPER] FAILED TO START SUBPROCESS: {type(e).__name__}: {e}")
+                import traceback
+                log_msg(traceback.format_exc())
+                raise
             
             log_msg(f"[TRACK_WRAPPER] Subprocess PID: {process.pid}")
             log_msg(f"[TRACK_WRAPPER] ===== TRACK.PY OUTPUT STREAM START =====")
@@ -178,6 +209,8 @@ class TrackWrapper:
                                 pass
             except Exception as e:
                 log_msg(f"[TRACK_WRAPPER] Error reading subprocess output: {e}")
+                import traceback
+                log_msg(traceback.format_exc())
             
             log_msg(f"[TRACK_WRAPPER] ===== TRACK.PY OUTPUT STREAM END (captured {line_count} lines) =====")
             
@@ -187,7 +220,9 @@ class TrackWrapper:
             log_msg(f"[TRACK_WRAPPER] Subprocess completed in {subprocess_duration:.2f} seconds")
             log_msg(f"[TRACK_WRAPPER] Return code: {process.returncode}")
             
-            if process.returncode != 0:
+            if process.returncode is None:
+                log_msg(f"[TRACK_WRAPPER] WARNING: Return code is None (process may not have started)")
+            elif process.returncode != 0:
                 log_msg(f"[TRACK_WRAPPER] SUBPROCESS FAILED with return code {process.returncode}")
                 raise RuntimeError(f"track.py failed with return code {process.returncode}")
             
