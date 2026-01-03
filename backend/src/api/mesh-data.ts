@@ -181,6 +181,57 @@ router.get('/:videoId/video/original', async (req: Request, res: Response) => {
 });
 
 /**
+ * DELETE /api/mesh-data/:videoId
+ * Delete a video and all associated data
+ */
+router.delete('/:videoId', async (req: Request, res: Response) => {
+  try {
+    const { videoId } = req.params;
+
+    console.log(`[MESH_DATA] 🗑️  DELETE /api/mesh-data/${videoId}`);
+
+    await connectToMongoDB();
+
+    const { MongoClient } = await import('mongodb');
+    const mongoUrl = process.env.MONGODB_URL || 'mongodb://localhost:27017';
+    const dbName = process.env.MONGODB_DB || 'snowboarding_explained';
+
+    const client = new MongoClient(mongoUrl);
+    await client.connect();
+    const database = client.db(dbName);
+
+    const framesCollection = database.collection('frames');
+    const videosCollection = database.collection('videos');
+    const videoFramesCollection = database.collection('video_frames');
+
+    const deleteFramesResult = await framesCollection.deleteMany({ videoId });
+    const deleteVideosResult = await videosCollection.deleteMany({ videoId });
+    const deleteVideoFramesResult = await videoFramesCollection.deleteMany({ videoId });
+
+    await client.close();
+
+    console.log(`[MESH_DATA] ✓ Deleted ${deleteFramesResult.deletedCount} frames, ${deleteVideosResult.deletedCount} videos, ${deleteVideoFramesResult.deletedCount} video frames`);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        framesDeleted: deleteFramesResult.deletedCount,
+        videosDeleted: deleteVideosResult.deletedCount,
+        videoFramesDeleted: deleteVideoFramesResult.deletedCount,
+      },
+      timestamp: new Date().toISOString(),
+    } as ApiResponse<any>);
+  } catch (err: any) {
+    console.error(`[MESH_DATA] ✗ Error deleting video: ${err.message}`);
+    res.status(500).json({
+      success: false,
+      error: `Failed to delete video: ${err.message}`,
+      timestamp: new Date().toISOString(),
+    } as ApiResponse<null>);
+  }
+});
+
+/**
  * GET /api/mesh-data/:videoId/frame/:frameNumber/:videoType
  * Retrieve a specific video frame (original or overlay)
  */
@@ -190,11 +241,14 @@ router.get('/:videoId/frame/:frameNumber/:videoType', async (req: Request, res: 
     const frameNum = parseInt(frameNumber, 10);
     const isMeshOverlay = videoType === 'overlay';
 
+    console.log(`[MESH_DATA] 🎬 GET /api/mesh-data/${videoId}/frame/${frameNum}/${videoType}`);
+
     await connectVideoFramesMongo();
 
     const imageBuffer = await getVideoFrame(videoId, frameNum, isMeshOverlay);
 
     if (!imageBuffer) {
+      console.log(`[MESH_DATA] ✗ Frame not found: videoId=${videoId}, frameNumber=${frameNum}, videoType=${videoType}`);
       return res.status(404).json({
         success: false,
         error: `Frame not found: videoId=${videoId}, frameNumber=${frameNum}, videoType=${videoType}`,
@@ -202,10 +256,18 @@ router.get('/:videoId/frame/:frameNumber/:videoType', async (req: Request, res: 
       } as ApiResponse<null>);
     }
 
+    console.log(`[MESH_DATA] ✓ Returning frame: ${imageBuffer.length} bytes`);
     res.setHeader('Content-Type', 'image/png');
     res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.send(imageBuffer);
+    res.setHeader('Content-Length', imageBuffer.length);
+
+    if (Buffer.isBuffer(imageBuffer)) {
+      res.send(imageBuffer);
+    } else {
+      res.send(Buffer.from(imageBuffer));
+    }
   } catch (err: any) {
+    console.error(`[MESH_DATA] ✗ Error retrieving frame: ${err.message}`);
     res.status(500).json({
       success: false,
       error: 'Failed to retrieve frame',

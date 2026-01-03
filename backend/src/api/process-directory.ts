@@ -46,7 +46,7 @@ router.post('/process-directory', async (req: Request, res: Response) => {
 
     // 3. Find original video file
     console.log(`[PROCESS-DIRECTORY] 🔍 Searching for video file in ${TEMP_DIR}`);
-    const videoFiles = glob.sync(`${TEMP_DIR}/*.mp4`).filter((f) => !f.includes('output'));
+    const videoFiles = glob.sync(`${TEMP_DIR}/**/*.mp4`).filter((f) => !f.includes('PHALP') && !f.includes('output'));
 
     if (videoFiles.length === 0) {
       console.log(`[PROCESS-DIRECTORY] ✗ No video file found`);
@@ -61,7 +61,7 @@ router.post('/process-directory', async (req: Request, res: Response) => {
 
     // 3b. Find overlay video file (track.py output)
     console.log(`[PROCESS-DIRECTORY] 🔍 Searching for overlay video in ${TEMP_DIR}`);
-    const overlayVideoFiles = glob.sync(`${TEMP_DIR}/**/*.mp4`).filter((f) => f.includes('output') || f.includes('overlay'));
+    const overlayVideoFiles = glob.sync(`${TEMP_DIR}/**/*.mp4`).filter((f) => f.includes('PHALP'));
     const overlayVideoPath = overlayVideoFiles.length > 0 ? overlayVideoFiles[0] : null;
 
     if (overlayVideoPath) {
@@ -163,22 +163,36 @@ router.post('/process-directory', async (req: Request, res: Response) => {
 
       if (overlayVideoPath && fs.existsSync(overlayVideoPath)) {
         console.log(`[PROCESS-DIRECTORY] Extracting frames from both original and overlay videos`);
+        console.log(`[PROCESS-DIRECTORY] Original video: ${videoPath}`);
+        console.log(`[PROCESS-DIRECTORY] Overlay video: ${overlayVideoPath}`);
+
         const { original, overlay } = await extractBothVideoFrames(videoPath, overlayVideoPath, fps);
 
+        console.log(`[PROCESS-DIRECTORY] Storing ${original.length} original frames...`);
         await storeVideoFrames(videoId, original);
+
+        console.log(`[PROCESS-DIRECTORY] Storing ${overlay.length} overlay frames...`);
         await storeVideoFrames(videoId, overlay);
 
         console.log(`[PROCESS-DIRECTORY] ✓ Stored ${original.length} original + ${overlay.length} overlay frames`);
       } else {
         console.log(`[PROCESS-DIRECTORY] Extracting frames from original video only`);
+        console.log(`[PROCESS-DIRECTORY] Original video: ${videoPath}`);
+
         const { original } = await extractBothVideoFrames(videoPath, videoPath, fps);
 
+        console.log(`[PROCESS-DIRECTORY] Storing ${original.length} original frames...`);
         await storeVideoFrames(videoId, original);
 
         console.log(`[PROCESS-DIRECTORY] ✓ Stored ${original.length} original frames`);
       }
     } catch (err: any) {
-      console.log(`[PROCESS-DIRECTORY] ⚠ Failed to extract/store video frames: ${err.message}`);
+      console.error(`[PROCESS-DIRECTORY] ✗ CRITICAL: Failed to extract/store video frames: ${err.message}`);
+      console.error(`[PROCESS-DIRECTORY] Stack trace:`, err.stack);
+      return res.status(500).json({
+        success: false,
+        error: `Failed to extract video frames: ${err.message}`,
+      });
     }
 
     // 10. Return success
