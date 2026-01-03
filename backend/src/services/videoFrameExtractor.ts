@@ -24,13 +24,23 @@ export async function extractVideoFrames(
   const tempDir = path.join(path.dirname(videoPath), `frames_${videoType}_${Date.now()}`);
 
   try {
+    console.log(`[FRAME_EXTRACTOR] Creating temp directory: ${tempDir}`);
     fs.mkdirSync(tempDir, { recursive: true });
 
     const framePattern = path.join(tempDir, 'frame_%06d.png');
     const ffmpegCmd = `ffmpeg -i "${videoPath}" -vf fps=${fps} "${framePattern}" -y 2>&1`;
 
-    console.log(`[FRAME_EXTRACTOR] Running ffmpeg...`);
-    execSync(ffmpegCmd, { encoding: 'utf-8', maxBuffer: 50 * 1024 * 1024 });
+    console.log(`[FRAME_EXTRACTOR] Running ffmpeg command...`);
+    console.log(`[FRAME_EXTRACTOR] Command: ${ffmpegCmd}`);
+
+    try {
+      const output = execSync(ffmpegCmd, { encoding: 'utf-8', maxBuffer: 50 * 1024 * 1024 });
+      console.log(`[FRAME_EXTRACTOR] ffmpeg output: ${output.substring(0, 200)}...`);
+    } catch (execError: any) {
+      console.error(`[FRAME_EXTRACTOR] ffmpeg execution error: ${execError.message}`);
+      console.error(`[FRAME_EXTRACTOR] ffmpeg stderr: ${execError.stderr || 'N/A'}`);
+      throw execError;
+    }
 
     const frameFiles = fs.readdirSync(tempDir)
       .filter(f => f.endsWith('.png'))
@@ -40,11 +50,21 @@ export async function extractVideoFrames(
         return numA - numB;
       });
 
-    console.log(`[FRAME_EXTRACTOR] ✓ Found ${frameFiles.length} frame files`);
+    console.log(`[FRAME_EXTRACTOR] ✓ Found ${frameFiles.length} frame files in ${tempDir}`);
+
+    if (frameFiles.length === 0) {
+      throw new Error(`No frames extracted from video. Check ffmpeg output above.`);
+    }
 
     for (let i = 0; i < frameFiles.length; i++) {
       const frameFile = frameFiles[i];
       const framePath = path.join(tempDir, frameFile);
+
+      if (!fs.existsSync(framePath)) {
+        console.warn(`[FRAME_EXTRACTOR] Frame file missing: ${framePath}`);
+        continue;
+      }
+
       const imageBuffer = fs.readFileSync(framePath);
 
       frames.push({
@@ -60,6 +80,10 @@ export async function extractVideoFrames(
     }
 
     console.log(`[FRAME_EXTRACTOR] ✓ Extracted ${frames.length} frames from ${videoType} video`);
+
+    if (frames.length === 0) {
+      throw new Error(`Failed to extract any frames from video`);
+    }
 
     fs.rmSync(tempDir, { recursive: true, force: true });
 

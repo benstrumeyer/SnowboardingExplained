@@ -6,7 +6,7 @@ let db: Db | null = null;
 let videoFramesCollection: Collection | null = null;
 
 export async function connectToMongoDB(): Promise<void> {
-  if (db) return;
+  if (videoFramesCollection) return;
 
   const mongoUrl = process.env.MONGODB_URL || 'mongodb://localhost:27017';
   const dbName = process.env.MONGODB_DB || 'snowboarding_explained';
@@ -76,7 +76,36 @@ export async function getVideoFrame(
       return null;
     }
 
-    return doc.imageData;
+    const imageData = doc.imageData;
+
+    if (!imageData) {
+      return null;
+    }
+
+    console.log(`[VIDEO_FRAME_STORAGE] imageData type: ${typeof imageData}, constructor: ${imageData?.constructor?.name}`);
+
+    if (Buffer.isBuffer(imageData)) {
+      console.log(`[VIDEO_FRAME_STORAGE] ✓ Already a Buffer`);
+      return imageData;
+    }
+
+    if (imageData._bsontype === 'Binary') {
+      console.log(`[VIDEO_FRAME_STORAGE] Converting from BSON Binary`);
+      return imageData.buffer;
+    }
+
+    if (imageData.buffer && typeof imageData.buffer === 'object') {
+      console.log(`[VIDEO_FRAME_STORAGE] Converting from .buffer property`);
+      return Buffer.from(imageData.buffer);
+    }
+
+    if (typeof imageData === 'object' && imageData.$binary) {
+      console.log(`[VIDEO_FRAME_STORAGE] Converting from $binary property`);
+      return Buffer.from(imageData.$binary, 'base64');
+    }
+
+    console.log(`[VIDEO_FRAME_STORAGE] Converting to Buffer from unknown type`);
+    return Buffer.from(imageData);
   } catch (err: any) {
     console.error(`[VIDEO_FRAME_STORAGE] ✗ Error retrieving video frame: ${err.message}`);
     throw err;
