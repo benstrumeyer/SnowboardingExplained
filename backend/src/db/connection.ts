@@ -3,7 +3,7 @@ import { MongoClient, Db } from 'mongodb';
 let mongoClient: MongoClient | null = null;
 let database: Db | null = null;
 
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://admin:password@localhost:27017/snowboarding-explained?authSource=admin';
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/snowboarding-explained';
 const DB_NAME = process.env.DB_NAME || 'snowboarding-explained';
 
 export async function connectToDatabase(): Promise<Db> {

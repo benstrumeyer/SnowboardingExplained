@@ -33,6 +33,10 @@ import stackedPositionRouter from '../api/stacked-position';
 import referenceLibraryRouter from '../api/reference-library';
 import frameDataRouter from '../api/frame-data';
 import smoothingControlRouter from '../api/smoothing-control';
+import framesRouter from './api/frames';
+import videosRouter from './api/videos';
+import finalizeUploadRouter from './api/finalize-upload';
+import meshDataRouter from './api/mesh-data';
 
 // Load environment variables from .env.local
 const envPath = path.join(__dirname, '../../.env.local');
@@ -63,7 +67,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 // CORS configuration for ngrok tunnel and local development
 app.use((req: Request, res: Response, next: NextFunction) => {
   const origin = req.headers.origin || '';
-  
+
   // Allow ngrok tunnel, localhost, and local IPs
   const allowedOrigins = [
     'https://uncongenial-nonobstetrically-norene.ngrok-free.dev',
@@ -75,25 +79,25 @@ app.use((req: Request, res: Response, next: NextFunction) => {
     /^http:\/\/192\.168\./,
     /^http:\/\/127\./,
   ];
-  
+
   const isAllowed = allowedOrigins.some(allowed => {
     if (typeof allowed === 'string') {
       return origin === allowed;
     }
     return allowed.test(origin);
   });
-  
+
   if (isAllowed || !origin) {
     res.header('Access-Control-Allow-Origin', origin || '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, PATCH');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Cache-Control, Pragma, Expires');
     res.header('Access-Control-Allow-Credentials', 'true');
   }
-  
+
   if (req.method === 'OPTIONS') {
     return res.sendStatus(200);
   }
-  
+
   next();
 });
 
@@ -109,7 +113,7 @@ app.get('/health', (_req: Request, res: Response) => {
 
 // Configure multer for video uploads
 // Use shared volume if running in Docker, otherwise use local uploads directory
-const uploadDir = fs.existsSync('/shared/videos') 
+const uploadDir = fs.existsSync('/shared/videos')
   ? '/shared/videos'
   : path.join(__dirname, '../uploads');
 if (!fs.existsSync(uploadDir)) {
@@ -133,7 +137,7 @@ const upload = multer({
     const allowedMimes = ['video/mp4', 'video/quicktime', 'video/webm', 'video/x-quicktime', 'video/x-msvideo'];
     const allowedExtensions = ['.mp4', '.mov', '.webm', '.avi'];
     const ext = path.extname(file.originalname).toLowerCase();
-    
+
     // Check both MIME type and file extension for flexibility
     if (allowedMimes.includes(file.mimetype) || allowedExtensions.includes(ext)) {
       cb(null, true);
@@ -170,18 +174,18 @@ async function visualize4DHumansSkeleton(
   const metadata = await sharp(imageBuffer).metadata();
   const width = metadata.width || 640;
   const height = metadata.height || 480;
-  
+
   // Build keypoint lookup - keypoints are now in pixel coordinates from Python
   const kpMap = new Map<string, { x: number; y: number; z?: number }>();
   for (const kp of poseData.keypoints) {
     // x, y are already in pixel coordinates from the Python service
     kpMap.set(kp.name, { x: kp.x, y: kp.y, z: kp.z });
   }
-  
+
   // Generate SVG
   const lines: string[] = [];
   const circles: string[] = [];
-  
+
   for (const [startName, endName] of SMPL_SKELETON_CONNECTIONS) {
     const start = kpMap.get(startName);
     const end = kpMap.get(endName);
@@ -192,14 +196,14 @@ async function visualize4DHumansSkeleton(
       );
     }
   }
-  
+
   // Draw joints - small circles
   for (const [name, pos] of kpMap) {
     circles.push(
       `<circle cx="${pos.x}" cy="${pos.y}" r="5" fill="#FFFF00" stroke="#FF6600" stroke-width="2"/>`
     );
   }
-  
+
   // Info overlay
   const infoSvg = `
     <rect x="10" y="10" width="280" height="70" fill="rgba(0,0,0,0.8)" rx="8"/>
@@ -207,7 +211,7 @@ async function visualize4DHumansSkeleton(
     <text x="20" y="55" fill="white" font-size="14" font-family="Arial">Frame ${frameIndex + 1}/${totalFrames} • ${poseData.keypointCount} joints</text>
     <text x="20" y="72" fill="#888" font-size="11" font-family="Arial">3D: ${poseData.has3d ? 'YES' : 'NO'} • ${poseData.processingTimeMs}ms</text>
   `;
-  
+
   // Joint angles if available
   let anglesSvg = '';
   if (poseData.jointAngles3d) {
@@ -222,7 +226,7 @@ async function visualize4DHumansSkeleton(
       <text x="${width - 150}" y="108" fill="white" font-size="11" font-family="Arial">Spine: ${angles.spine?.toFixed(0) || '?'}°</text>
     `;
   }
-  
+
   const svg = `
     <svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
       ${lines.join('\n')}
@@ -231,12 +235,12 @@ async function visualize4DHumansSkeleton(
       ${anglesSvg}
     </svg>
   `;
-  
+
   const result = await sharp(imageBuffer)
     .composite([{ input: Buffer.from(svg), top: 0, left: 0 }])
     .png()
     .toBuffer();
-  
+
   return result.toString('base64');
 }
 
@@ -268,18 +272,18 @@ app.get('/api/health', (req: Request, res: Response) => {
 app.get('/videos/:videoId', (req: Request, res: Response) => {
   try {
     const { videoId } = req.params;
-    
+
     // Ensure CORS headers are set for video responses
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Range');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges');
-    
+
     // Look for the video file in the uploads directory
     // Try with common video extensions
     const extensions = ['.mp4', '.mov', '.webm', '.avi', '.mkv'];
     let videoPath: string | null = null;
-    
+
     for (const ext of extensions) {
       const testPath = path.join(uploadDir, videoId + ext);
       if (fs.existsSync(testPath)) {
@@ -287,7 +291,7 @@ app.get('/videos/:videoId', (req: Request, res: Response) => {
         break;
       }
     }
-    
+
     // Also try without extension (for backward compatibility)
     if (!videoPath) {
       const testPath = path.join(uploadDir, videoId);
@@ -295,7 +299,7 @@ app.get('/videos/:videoId', (req: Request, res: Response) => {
         videoPath = testPath;
       }
     }
-    
+
     // Check if file exists
     if (!videoPath) {
       logger.warn(`Video not found: ${videoId}`);
@@ -305,35 +309,35 @@ app.get('/videos/:videoId', (req: Request, res: Response) => {
         timestamp: new Date().toISOString()
       } as ApiResponse<null>);
     }
-    
+
     // Get file stats
     const stats = fs.statSync(videoPath);
     const fileSize = stats.size;
-    
+
     // Set proper headers for video streaming
     res.setHeader('Content-Type', 'video/mp4');
     res.setHeader('Content-Length', fileSize);
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'public, max-age=3600');
-    
+
     // Handle range requests for seeking
     const range = req.headers.range;
     if (range) {
       const parts = range.replace(/bytes=/, '').split('-');
       const start = parseInt(parts[0], 10);
       const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      
+
       res.status(206);
       res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
       res.setHeader('Content-Length', end - start + 1);
-      
+
       const stream = fs.createReadStream(videoPath, { start, end });
       stream.pipe(res);
     } else {
       const stream = fs.createReadStream(videoPath);
       stream.pipe(res);
     }
-    
+
     logger.info(`Video served: ${videoId}`, { fileSize });
   } catch (error: any) {
     logger.error(`Error serving video: ${error.message}`, { error });
@@ -356,6 +360,10 @@ app.use('/api', referenceLibraryRouter);
 app.use('/api', frameDataRouter);
 app.use('/api', smoothingControlRouter);
 app.use('/api/pose', upload.single('video'), poseVideoRouter);
+app.use('/api/frames', framesRouter);
+app.use('/api/videos', videosRouter);
+app.use('/api/mesh-data', meshDataRouter);
+app.use('/api/finalize-upload', finalizeUploadRouter);
 
 // Chunked Video Upload Endpoints
 // Use shared volume if running in Docker, otherwise use system temp
@@ -378,7 +386,7 @@ const chunkStorage = multer.diskStorage({
   },
 });
 
-const chunkUpload = multer({ 
+const chunkUpload = multer({
   storage: chunkStorage
 });
 
@@ -423,7 +431,7 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
     console.log(`[FINALIZE] ========================================`);
     console.log(`[FINALIZE] 🚀 FINALIZE-UPLOAD ENDPOINT CALLED`);
     console.log(`[FINALIZE] Request body:`, JSON.stringify(req.body, null, 2));
-    
+
     const { role, sessionId, filename, filesize, fps: requestFps, videoDuration: requestDuration } = req.body;
     const fps = parseInt(requestFps) || 30;
     const videoDuration = parseFloat(requestDuration) || 0;
@@ -435,7 +443,7 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
 
     // Generate video ID
     const videoId = generateVideoId();
-    
+
     console.log(`[FINALIZE] ========================================`);
     console.log(`[FINALIZE] Generated videoId: ${videoId}`);
     console.log(`[FINALIZE] Role: ${role}`);
@@ -446,7 +454,7 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
     // Assemble chunks into final video file
     const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks (must match frontend)
     const totalChunks = Math.ceil(filesize / CHUNK_SIZE);
-    
+
     console.log(`[FINALIZE] 📦 CHUNK ASSEMBLY STARTING`);
     console.log(`[FINALIZE] CHUNK_SIZE: ${CHUNK_SIZE} bytes`);
     console.log(`[FINALIZE] Total chunks expected: ${totalChunks}`);
@@ -458,7 +466,7 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
     const videoPath = path.join(uploadDir, videoId + ext);
     console.log(`[FINALIZE] Output video path: ${videoPath}`);
     console.log(`[FINALIZE] Upload directory exists: ${fs.existsSync(uploadDir)}`);
-    
+
     const writeStream = fs.createWriteStream(videoPath);
 
     let assembledSize = 0;
@@ -467,23 +475,23 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
     for (let i = 0; i < totalChunks; i++) {
       const chunkPath = path.join(chunksDir, `${sessionId}-chunk-${i}`);
       console.log(`[FINALIZE] 📥 Chunk ${i + 1}/${totalChunks}: ${chunkPath}`);
-      
+
       if (!fs.existsSync(chunkPath)) {
         console.error(`[FINALIZE] ✗ CRITICAL: Missing chunk ${i}: ${chunkPath}`);
         console.error(`[FINALIZE] Files in chunks directory:`, fs.readdirSync(chunksDir).slice(0, 10));
-        return res.status(400).json({ 
-          error: `Missing chunk ${i}/${totalChunks}. Upload may have been interrupted.` 
+        return res.status(400).json({
+          error: `Missing chunk ${i}/${totalChunks}. Upload may have been interrupted.`
         });
       }
 
       const chunkData = fs.readFileSync(chunkPath);
       console.log(`[FINALIZE]   ✓ Read chunk ${i}: ${chunkData.length} bytes`);
-      
+
       writeStream.write(chunkData);
       assembledSize += chunkData.length;
-      
+
       console.log(`[FINALIZE]   ✓ Wrote chunk ${i + 1}/${totalChunks} (${chunkData.length} bytes, total: ${assembledSize})`);
-      
+
       // Delete chunk after assembly
       fs.unlinkSync(chunkPath);
       console.log(`[FINALIZE]   ✓ Deleted chunk file`);
@@ -506,7 +514,7 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
     console.log(`[FINALIZE] ✓ Video assembled: ${videoPath} (${assembledSize} bytes)`);
     console.log(`[FINALIZE] File exists after assembly: ${fs.existsSync(videoPath)}`);
     console.log(`[FINALIZE] File size on disk: ${fs.statSync(videoPath).size} bytes`);
-    
+
     logger.info(`Video uploaded and ready for pose extraction: ${videoId}`, {
       role,
       videoPath,
@@ -539,9 +547,9 @@ app.post('/api/finalize-upload', express.json(), async (req: Request, res: Respo
     console.error(`[FINALIZE] Error message: ${(error as any).message}`);
     console.error(`[FINALIZE] Error stack:`, (error as any).stack);
     console.error(`[FINALIZE] ========================================`);
-    
+
     logger.error('Finalize upload error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to finalize upload',
       details: (error as any).message,
       errorType: (error as any).constructor.name
@@ -559,7 +567,7 @@ function generateVideoId(): string {
 // Alternative endpoint for direct video upload with pose extraction
 app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Request, res: Response) => {
   const videoId = generateVideoId();
-  
+
   try {
     const { role } = req.body;
 
@@ -575,17 +583,17 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
 
     const videoPath = req.file.path;
     const newVideoPath = path.join(uploadDir, videoId + path.extname(req.file.originalname));
-    
+
     // Rename the file to match the videoId
     fs.renameSync(videoPath, newVideoPath);
-    
+
     console.log(`[UPLOAD] ========================================`);
     console.log(`[UPLOAD] Generated videoId: ${videoId}`);
     console.log(`[UPLOAD] Role: ${role}`);
     console.log(`[UPLOAD] File: ${req.file.originalname}`);
     console.log(`[UPLOAD] Size: ${(req.file.size / 1024 / 1024).toFixed(2)}MB`);
     console.log(`[UPLOAD] Path: ${newVideoPath}`);
-    
+
     logger.info(`Processing video for pose extraction: ${videoId}`, {
       role,
       videoPath: newVideoPath,
@@ -615,9 +623,9 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
       logger.info(`Extracted ${frameResult.frameCount} frames`);
     } catch (err: any) {
       logger.error(`Frame extraction failed for ${videoId}:`, err);
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Failed to extract frames from video. The file may be corrupted or in an unsupported format.',
-        details: err.message 
+        details: err.message
       });
     }
 
@@ -626,7 +634,7 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
     console.log(`[UPLOAD] Starting pose extraction for ${frameResult.frameCount} frames`);
     console.log(`[UPLOAD] Frames array length: ${frameResult.frames.length}`);
     console.log(`[UPLOAD] First 3 frames:`, frameResult.frames.slice(0, 3).map(f => ({ frameNumber: f.frameNumber, imagePath: f.imagePath.split('/').pop() })));
-    
+
     // Prepare frames for pool processing
     const framesToProcess: any[] = [];
     for (let i = 0; i < frameResult.frameCount; i++) {
@@ -645,9 +653,9 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
         }
       }
     }
-    
+
     console.log(`[UPLOAD] Prepared ${framesToProcess.length} frames for pool processing`);
-    
+
     // ARCHITECTURE: Process frames through the pool with one frame per process request
     // WHY: This design ensures true parallelization and resource management:
     // POOL MANAGER DISABLED - Using direct bash execution via track.py instead
@@ -752,7 +760,7 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
     */
 
     logger.info(`Pose extraction complete: ${meshSequence.length} frames with pose data`);
-    
+
     // Store mesh data in MongoDB for later retrieval
     const meshData = {
       videoId,
@@ -778,7 +786,7 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
       console.log(`[UPLOAD] Connecting to MongoDB...`);
       await meshDataService.connect();
       console.log(`[UPLOAD] ✓ Connected to MongoDB`);
-      
+
       // Save with new unified structure
       console.log(`%c[UPLOAD] 🔍 DEBUG: About to save mesh data for ${videoId}`, 'color: #FF6B6B; font-weight: bold;');
       console.log(`%c[UPLOAD] 🔍 DEBUG: meshSequence.length = ${meshSequence.length}`, 'color: #FF6B6B;');
@@ -791,7 +799,7 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
           meshVertexCount: meshData.frames[0].mesh_vertices_data?.length || 0
         });
       }
-      
+
       await meshDataService.saveMeshData({
         videoId,
         videoUrl: `${req.protocol}://${req.get('host')}/videos/${videoId}`,
@@ -809,11 +817,11 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
       const meshFrameIndices = meshSequence.map((_, index) => index);
       console.log(`[UPLOAD] Filtering frames: keeping ${meshFrameIndices.length} frames with mesh data`);
       FrameExtractionService.filterFramesToMeshData(videoId, meshFrameIndices);
-      
+
       // Rename frames to be sequential
       console.log(`[UPLOAD] Renaming frames to sequential order`);
       FrameExtractionService.renameFramesToSequential(videoId, meshFrameIndices);
-      
+
     } catch (err) {
       console.error(`[UPLOAD] Failed to store mesh data in MongoDB:`, err);
       logger.error('Failed to store mesh data in MongoDB', { error: err });
@@ -830,7 +838,7 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
   } catch (error: any) {
     console.error(`[UPLOAD] Caught error in upload endpoint:`, error);
     logger.error('Video upload with pose error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to process video',
       details: error.message,
       stack: error.stack
@@ -870,9 +878,9 @@ app.post('/api/mesh-data/:videoId', express.json(), async (req: Request, res: Re
     });
   } catch (error: any) {
     logger.error('Error storing mesh data:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to store mesh data',
-      details: error.message 
+      details: error.message
     });
   }
 });
@@ -882,13 +890,13 @@ app.get('/api/mesh-data/list', async (req: Request, res: Response) => {
   try {
     await meshDataService.connect();
     const models = await meshDataService.getAllMeshData();
-    
+
     console.log(`[DEBUG] Mesh data list endpoint called`);
     console.log(`[DEBUG] Found ${models.length} mesh data entries in MongoDB`);
     models.forEach((model, idx) => {
       console.log(`[DEBUG] Entry ${idx}: videoId=${model.videoId}, frameCount=${model.frameCount}, fps=${model.fps}, role=${model.role}`);
     });
-    
+
     res.json({
       success: true,
       data: models,
@@ -910,10 +918,10 @@ app.get('/api/debug/mesh-db/:videoId', async (req: Request, res: Response) => {
   try {
     const { videoId } = req.params;
     console.log(`[DEBUG-DB] Checking database for videoId: ${videoId}`);
-    
+
     await meshDataService.connect();
     const meshData = await meshDataService.getMeshData(videoId);
-    
+
     if (!meshData) {
       console.log(`[DEBUG-DB] ✗ No data found for ${videoId}`);
       return res.json({
@@ -922,7 +930,7 @@ app.get('/api/debug/mesh-db/:videoId', async (req: Request, res: Response) => {
         videoId
       });
     }
-    
+
     console.log(`[DEBUG-DB] ✓ Found data for ${videoId}:`);
     console.log(`[DEBUG-DB]   videoId: ${meshData.videoId}`);
     console.log(`[DEBUG-DB]   frameCount: ${meshData.frameCount}`);
@@ -932,7 +940,7 @@ app.get('/api/debug/mesh-db/:videoId', async (req: Request, res: Response) => {
     if (meshData.frames && meshData.frames.length > 0) {
       console.log(`[DEBUG-DB]   first frame keypoints: ${(meshData.frames[0] as any).keypoints?.length || 0}`);
     }
-    
+
     res.json({
       success: true,
       data: {
@@ -957,28 +965,28 @@ app.get('/api/debug/mesh-db/:videoId', async (req: Request, res: Response) => {
 app.get('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
   try {
     const { videoId } = req.params;
-    
+
     console.log(`%c[API] 📥 Request for ${videoId}`, 'color: #00BFFF; font-weight: bold;');
-    
+
     await meshDataService.connect();
     const meshData = await meshDataService.getMeshData(videoId);
-    
+
     if (!meshData) {
       console.log(`%c[API] ❌ Not found: ${videoId}`, 'color: #FF0000;');
-      return res.status(404).json({ 
+      return res.status(404).json({
         success: false,
         error: `Mesh data not found for ${videoId}`,
         timestamp: new Date().toISOString()
       } as ApiResponse<null>);
     }
-    
+
     console.log(`%c[API] ✅ Found: ${meshData.frames?.length || 0} frames`, 'color: #00FF00;');
-    
+
     // CRITICAL: Verify videoId matches
     if (meshData.videoId !== videoId) {
       console.error(`%c[API] ❌ MISMATCH: req=${videoId} got=${meshData.videoId}`, 'color: #FF0000; font-weight: bold;');
     }
-    
+
     // Debug: Log first frame structure
     if (meshData.frames && meshData.frames.length > 0) {
       const firstFrame = meshData.frames[0] as any;
@@ -995,7 +1003,7 @@ app.get('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
         skeletonKeys: firstFrame.skeleton ? Object.keys(firstFrame.skeleton) : []
       });
     }
-    
+
     // Return unified MeshSequence format
     const frames: SyncedFrame[] = meshData.frames.map((frame: any) => {
       // Handle both DatabaseFrame and SyncedFrame formats
@@ -1005,14 +1013,14 @@ app.get('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
       }
       // Convert DatabaseFrame to SyncedFrame
       const dbFrame = frame as DatabaseFrame;
-      
+
       // Transform keypoints to frontend format
       const transformedKeypoints = (dbFrame.keypoints || []).map((kp: any, index: number) => {
         // Handle both formats: { x, y, z, confidence, name } and { position: [x, y, z], ... }
         const position: [number, number, number] = Array.isArray(kp.position)
           ? kp.position
           : [kp.x || 0, kp.y || 0, kp.z || 0];
-        
+
         return {
           index,
           name: kp.name || `keypoint_${index}`,
@@ -1020,7 +1028,7 @@ app.get('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
           confidence: kp.confidence || 0.5
         };
       });
-      
+
       return {
         frameIndex: dbFrame.frameNumber,
         timestamp: dbFrame.timestamp,
@@ -1049,21 +1057,21 @@ app.get('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
         extractionMethod: 'mediapipe'
       }
     };
-    
+
     console.log(`%c[API] 📤 Sending ${meshSequence.frames.length} frames`, 'color: #00BFFF;');
     console.log(`%c[API] 📋 First frame keypoint count: ${meshSequence.frames[0]?.meshData?.keypoints?.length || 0}`, 'color: #00BFFF;');
-    
+
     // Set cache-busting headers to prevent browser/proxy caching
     res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');
-    
+
     res.json({
       success: true,
       data: meshSequence,
       timestamp: new Date().toISOString()
     } as ApiResponse<any>);
-    
+
   } catch (error: any) {
     console.error(`%c[API] ❌ Error: ${error.message}`, 'color: #FF0000;');
     logger.error('Error retrieving mesh data:', error);
@@ -1888,9 +1896,9 @@ app.post('/api/pose/warmup', async (req: Request, res: Response) => {
     const response = await axios.get(`${poseServiceUrl}/warmup`, { timeout: 120000 });
     res.json(response.data);
   } catch (error: any) {
-    res.status(500).json({ 
-      status: 'error', 
-      error: error.message || 'Failed to warmup pose service' 
+    res.status(500).json({
+      status: 'error',
+      error: error.message || 'Failed to warmup pose service'
     });
   }
 });
@@ -1903,9 +1911,9 @@ app.post('/api/pose/reload', async (req: Request, res: Response) => {
     const response = await axios.post(`${poseServiceUrl}/reload`, {}, { timeout: 10000 });
     res.json(response.data);
   } catch (error: any) {
-    res.status(500).json({ 
-      status: 'error', 
-      error: error.message || 'Failed to reload pose service' 
+    res.status(500).json({
+      status: 'error',
+      error: error.message || 'Failed to reload pose service'
     });
   }
 });
@@ -1915,7 +1923,7 @@ app.post('/api/pose/hybrid', upload.single('frame'), async (req: Request, res: R
   try {
     const axios = (await import('axios')).default;
     const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
-    
+
     if (!req.file) {
       return res.status(400).json({ error: 'No frame provided' });
     }
@@ -1925,7 +1933,7 @@ app.post('/api/pose/hybrid', upload.single('frame'), async (req: Request, res: R
       filename: req.file.originalname || 'frame.jpg',
       contentType: 'image/jpeg'
     });
-    
+
     if (req.body.frameNumber) {
       form.append('frameNumber', req.body.frameNumber);
     }
@@ -1936,12 +1944,12 @@ app.post('/api/pose/hybrid', upload.single('frame'), async (req: Request, res: R
     });
 
     // Clean up uploaded file
-    fs.unlink(req.file.path, () => {});
+    fs.unlink(req.file.path, () => { });
 
     res.json(response.data);
   } catch (error: any) {
     if (req.file) {
-      fs.unlink(req.file.path, () => {});
+      fs.unlink(req.file.path, () => { });
     }
     logger.error(`[POSE_HYBRID] Error: ${error.message}`);
     res.status(500).json({ error: error.message });
@@ -1995,7 +2003,7 @@ app.post('/api/video/analyze-4d', upload.single('video'), async (req: Request, r
 
     // Limit to 5 frames for 4D-Humans (GPU intensive)
     const framesToAnalyze = frameResult.frames.slice(0, 5);
-    
+
     // Read frames as base64
     const framesWithBase64 = framesToAnalyze.map(f => ({
       imageBase64: fs.readFileSync(f.imagePath).toString('base64'),
@@ -2158,7 +2166,7 @@ app.get('/api/debug/frames', (req: Request, res: Response) => {
         const frameNum = parseInt(f.replace(/frame-?/, '')) || f;
         const framePath = path.join(debugDir, f);
         const metadataPath = path.join(framePath, 'metadata.json');
-        
+
         let metadata = null;
         if (fs.existsSync(metadataPath)) {
           try {
@@ -2191,7 +2199,7 @@ app.get('/api/debug/frame/:frameNumber', (req: Request, res: Response) => {
   try {
     const frameNumber = req.params.frameNumber;
     const debugDir = path.join(process.cwd(), '.debug-frames');
-    
+
     // Try both naming conventions
     let frameDir = path.join(debugDir, `frame-${frameNumber}`);
     if (!fs.existsSync(frameDir)) {
@@ -2200,7 +2208,7 @@ app.get('/api/debug/frame/:frameNumber', (req: Request, res: Response) => {
     if (!fs.existsSync(frameDir)) {
       frameDir = path.join(debugDir, frameNumber);
     }
-    
+
     const imagePath = path.join(frameDir, 'frame.png');
     const metadataPath = path.join(frameDir, 'metadata.json');
 
@@ -2275,7 +2283,7 @@ app.get('/debug-frames', (req: Request, res: Response) => {
 app.post('/api/video/:videoId/auto-fix-mesh', async (req: Request, res: Response) => {
   try {
     const { videoId } = req.params;
-    
+
     // DEPRECATED - mesh auto-fixer not available
     res.status(501).json({
       success: false,
@@ -2295,7 +2303,7 @@ app.post('/api/video/:videoId/auto-fix-mesh', async (req: Request, res: Response
 app.post('/api/debug/test-capture', async (req: Request, res: Response) => {
   try {
     logger.info('Testing debug frame capture...');
-    
+
     // Create a simple test image (100x100 RGB)
     const testImageBuffer = Buffer.alloc(100 * 100 * 3);
     for (let i = 0; i < testImageBuffer.length; i += 3) {
@@ -2303,22 +2311,22 @@ app.post('/api/debug/test-capture', async (req: Request, res: Response) => {
       testImageBuffer[i + 1] = Math.random() * 255; // G
       testImageBuffer[i + 2] = Math.random() * 255; // B
     }
-    
+
     // Convert to PNG (simple approach - just use raw data as base64)
     const base64Image = testImageBuffer.toString('base64');
-    
+
     // Save debug frame
     const debugDir = path.join(process.cwd(), '.debug-frames');
     if (!fs.existsSync(debugDir)) {
       fs.mkdirSync(debugDir, { recursive: true });
     }
-    
+
     const frameNumber = Math.floor(Date.now() / 1000) % 1000;
     const frameDir = path.join(debugDir, `frame-${frameNumber}`);
     if (!fs.existsSync(frameDir)) {
       fs.mkdirSync(frameDir, { recursive: true });
     }
-    
+
     // Save metadata
     const metadata = {
       timestamp: new Date().toISOString(),
@@ -2331,12 +2339,12 @@ app.post('/api/debug/test-capture', async (req: Request, res: Response) => {
       model: 'HMR2/ViTDet',
       message: 'This is a test frame. Upload a real video to see actual pose data.'
     };
-    
+
     const metadataPath = path.join(frameDir, 'metadata.json');
     fs.writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
-    
+
     logger.info(`Test frame saved: frame-${frameNumber}`);
-    
+
     res.json({
       success: true,
       message: `Test frame ${frameNumber} created. Check http://localhost:${PORT}/debug-frames`,
@@ -2354,7 +2362,7 @@ app.post('/api/video/process_video', upload.single('video'), async (req: Request
   try {
     logger.info(`[PROCESS_VIDEO] Request received`);
     logger.info(`[PROCESS_VIDEO] req.file exists: ${!!req.file}`);
-    
+
     if (!req.file) {
       logger.error(`[PROCESS_VIDEO] No file in req.file`);
       return res.status(400).json({
@@ -2370,15 +2378,15 @@ app.post('/api/video/process_video', upload.single('video'), async (req: Request
 
     // Call the pose service to process the video
     const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
-    
+
     // Get parameters from request (FormData fields are in req.body)
     const maxFrames = (req as any).body?.max_frames || (req as any).query?.max_frames || '999999';
     const outputFormat = (req as any).body?.output_format || (req as any).query?.output_format || 'file_path';
-    
+
     logger.info(`[PROCESS_VIDEO] req.body keys:`, Object.keys((req as any).body || {}));
     logger.info(`[PROCESS_VIDEO] req.query keys:`, Object.keys((req as any).query || {}));
     logger.info(`[PROCESS_VIDEO] Parameters: max_frames=${maxFrames}, output_format=${outputFormat}`);
-    
+
     // Use file stream with FormData for proper multipart/form-data encoding
     const form = new FormData();
     const fileStream = fs.createReadStream(videoPath);
@@ -2420,7 +2428,7 @@ app.post('/api/video/process_video', upload.single('video'), async (req: Request
 
     // Extract data from pose service response
     const result = poseServiceResponse.data || poseServiceResponse;
-    
+
     res.json({
       status: 'success',
       data: result
@@ -2430,7 +2438,7 @@ app.post('/api/video/process_video', upload.single('video'), async (req: Request
     const errorMessage = err?.message || String(err) || 'Unknown error';
     logger.error(`[PROCESS_VIDEO] Error: ${errorMessage}`, { error: err });
     logger.error(`[PROCESS_VIDEO] Stack:`, err?.stack);
-    
+
     // Clean up on error
     if (req.file) {
       fs.unlink(req.file.path, (err) => {
@@ -2453,7 +2461,7 @@ app.post('/api/video/process_async', upload.fields([{ name: 'video', maxCount: 1
     logger.info(`[ASYNC] req.body:`, (req as any).body);
     logger.info(`[ASYNC] req.query keys:`, Object.keys((req as any).query || {}));
     logger.info(`[ASYNC] req.files keys:`, Object.keys((req as any).files || {}));
-    
+
     const files = (req as any).files;
     if (!files || !files.video || !files.video[0]) {
       return res.status(400).json({ error: 'No video file provided' });
@@ -2462,18 +2470,18 @@ app.post('/api/video/process_async', upload.fields([{ name: 'video', maxCount: 1
     const videoFile = files.video[0];
     const videoPath = videoFile.path;
     const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
-    
+
     // Extract max_frames from FormData fields (multer parses as array)
     let maxFrames = '999999';
     if ((req as any).body?.max_frames) {
-      maxFrames = Array.isArray((req as any).body.max_frames) 
-        ? (req as any).body.max_frames[0] 
+      maxFrames = Array.isArray((req as any).body.max_frames)
+        ? (req as any).body.max_frames[0]
         : (req as any).body.max_frames;
     } else if ((req as any).query?.max_frames) {
       maxFrames = (req as any).query.max_frames;
     }
     logger.info(`[ASYNC] max_frames extracted: ${maxFrames}`);
-    
+
     // Forward to pose service async endpoint
     const form = new FormData();
     form.append('video', fs.createReadStream(videoPath), {
@@ -2481,7 +2489,7 @@ app.post('/api/video/process_async', upload.fields([{ name: 'video', maxCount: 1
       contentType: 'video/mp4'
     });
     form.append('max_frames', maxFrames);
-    
+
     logger.info(`[ASYNC] Forwarding to pose service with max_frames=${maxFrames}`);
     logger.info(`[ASYNC] Pose service URL: ${poseServiceUrl}/process_video_async`);
 
@@ -2491,7 +2499,7 @@ app.post('/api/video/process_async', upload.fields([{ name: 'video', maxCount: 1
     });
 
     // Clean up uploaded file
-    fs.unlink(videoPath, () => {});
+    fs.unlink(videoPath, () => { });
 
     logger.info(`[ASYNC] Job submitted: ${response.data.job_id}`);
     res.json(response.data);
@@ -2506,7 +2514,7 @@ app.get('/api/video/job_status/:jobId', async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
     const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
-    
+
     const response = await axios.get(`${poseServiceUrl}/job_status/${jobId}`, {
       timeout: 10000
     });
@@ -2526,37 +2534,37 @@ app.get('/api/video/output/:jobId', async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
     const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
-    
+
     logger.info(`[VIDEO_OUTPUT] Fetching output video for job ${jobId}`);
-    
+
     // Get job status to find output video path
     const statusResponse = await axios.get(`${poseServiceUrl}/job_status/${jobId}`, {
       timeout: 10000
     });
-    
+
     if (statusResponse.data.status !== 'complete') {
       return res.status(400).json({ error: 'Job not complete' });
     }
-    
+
     const outputPath = statusResponse.data.result?.output_path;
     if (!outputPath) {
       return res.status(404).json({ error: 'Output video not found' });
     }
-    
+
     logger.info(`[VIDEO_OUTPUT] Serving video from: ${outputPath}`);
-    
+
     // Serve the video file
     const fs = require('fs');
     if (!fs.existsSync(outputPath)) {
       return res.status(404).json({ error: 'Video file not found on disk' });
     }
-    
+
     res.setHeader('Content-Type', 'video/mp4');
     res.setHeader('Content-Disposition', `attachment; filename="output_${jobId}.mp4"`);
-    
+
     const fileStream = fs.createReadStream(outputPath);
     fileStream.pipe(res);
-    
+
   } catch (err: any) {
     logger.error(`[VIDEO_OUTPUT] Error: ${err.message}`);
     res.status(500).json({ error: err.message });
@@ -2568,19 +2576,19 @@ app.get('/api/video/frame/:jobId/:frameIndex', async (req: Request, res: Respons
   try {
     const { jobId, frameIndex } = req.params;
     const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
-    
+
     logger.info(`[FRAME] Fetching frame ${frameIndex} for job ${jobId}`);
-    
+
     // Proxy to pose service frame endpoint
     const response = await axios.get(`${poseServiceUrl}/frame/${jobId}/${frameIndex}`, {
       responseType: 'arraybuffer',
       timeout: 30000
     });
-    
+
     res.setHeader('Content-Type', 'image/jpeg');
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.send(response.data);
-    
+
   } catch (err: any) {
     if (err.response?.status === 404) {
       return res.status(404).json({ error: 'Frame not found' });
@@ -2595,18 +2603,18 @@ app.get('/api/video/frame/:jobId/:frameIndex', async (req: Request, res: Respons
 app.get('/api/video/download', (req: Request, res: Response) => {
   try {
     let { path: videoPath } = req.query;
-    
+
     if (!videoPath || typeof videoPath !== 'string') {
       return res.status(400).json({ error: 'Missing path query parameter' });
     }
-    
+
     logger.info(`[DOWNLOAD] Download request for: ${videoPath}`);
 
     // Security: prevent directory traversal
     if (videoPath.includes('..')) {
       return res.status(400).json({ error: 'Invalid path' });
     }
-    
+
     logger.info(`[DOWNLOAD] Using path as-is (Docker container path): ${videoPath}`);
     logger.info(`[DOWNLOAD] Attempting to download: ${videoPath}`);
 
@@ -2620,7 +2628,7 @@ app.get('/api/video/download', (req: Request, res: Response) => {
     // Get file size
     const stats = fs.statSync(videoPath);
     const fileSizeInMB = (stats.size / (1024 * 1024)).toFixed(2);
-    
+
     // Extract just the filename for the response header
     const responseFilename = path.basename(videoPath);
     logger.info(`[DOWNLOAD] Serving video: ${responseFilename} (${fileSizeInMB} MB)`);
@@ -2650,10 +2658,10 @@ app.get('/api/video/download', (req: Request, res: Response) => {
 app.delete('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
   try {
     const { videoId } = req.params;
-    
+
     await meshDataService.connect();
     const deleted = await meshDataService.deleteMeshData(videoId);
-    
+
     if (!deleted) {
       return res.status(404).json({
         success: false,
@@ -2683,12 +2691,12 @@ async function startServer() {
   try {
     // Initialize knowledge base
     await KnowledgeBaseService.initialize();
-    
+
     // Initialize frame data service
     initializeFrameDataService({
       uploadDir: uploadDir
     });
-    
+
     // DISABLED: Process pool manager (using pose-video direct bash execution instead)
     // const posePoolConfig = loadPosePoolConfig();
     // console.log(`[STARTUP] Pose pool config loaded:`, {
@@ -2698,7 +2706,7 @@ async function startServer() {
     // });
     // poolManager = new ProcessPoolManager(posePoolConfig);
     // app.use('/api/pose', createPoseRouter(poolManager));
-    
+
     // Initialize database connection
     const { connectToDatabase } = await import('./db/connection');
     await connectToDatabase();
@@ -2707,7 +2715,7 @@ async function startServer() {
     console.log(`[STARTUP] Checking pose service health...`);
     const poseServiceUrl = process.env.POSE_SERVICE_URL || 'http://localhost:5000';
     console.log(`[STARTUP] Pose service URL: ${poseServiceUrl}`);
-    
+
     try {
       const healthResponse = await axios.get(`${poseServiceUrl}/health`, { timeout: 5000 });
       console.log(`[STARTUP] ✓ Pose service is responding`);
@@ -2777,27 +2785,27 @@ async function startServer() {
     // Graceful shutdown
     process.on('SIGINT', async () => {
       console.log('\n\nShutting down gracefully...');
-      
+
       // Shutdown process pool (DISABLED - pool manager not in use)
       // if (poolManager) {
       //   await poolManager.shutdown();
       // }
-      
+
       await meshDataService.disconnect();
       server.close(() => {
         console.log('Server closed');
         process.exit(0);
       });
     });
-    
+
     process.on('SIGTERM', async () => {
       console.log('\n\nShutting down gracefully (SIGTERM)...');
-      
+
       // Shutdown process pool (DISABLED - pool manager not in use)
       // if (poolManager) {
       //   await poolManager.shutdown();
       // }
-      
+
       await meshDataService.disconnect();
       server.close(() => {
         console.log('Server closed');
