@@ -322,10 +322,9 @@ export function PoseOverlayViewer({
                 {/* Video with Toggle */}
                 <div className="w-1/2 bg-black flex items-center justify-center border-r border-gray-700">
                   <VideoToggleDisplay
-                    originalVideoUrl={leftScreen.mesh.originalVideoUrl || leftScreen.mesh.videoUrl}
-                    overlayVideoUrl={leftScreen.mesh.overlayVideoUrl || leftScreen.mesh.videoUrl}
-                    currentFrame={leftSceneFrame}
+                    videoId={leftScreen.mesh.videoId}
                     totalFrames={totalFrames}
+                    currentFrame={leftSceneFrame}
                     isPlaying={isPlaying}
                     fps={leftScreen.mesh.fps}
                   />

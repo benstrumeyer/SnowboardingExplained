@@ -1,108 +1,116 @@
 import React, { useEffect, useRef, useState } from 'react';
 import '../styles/VideoDisplay.css';
 
+interface VideoFrame {
+  frameNumber: number;
+  imageUrl: string;
+}
+
 interface VideoToggleDisplayProps {
-  originalVideoUrl: string;
-  overlayVideoUrl: string;
-  currentFrame: number;
+  videoId: string;
   totalFrames: number;
+  currentFrame: number;
   isPlaying: boolean;
   fps?: number;
 }
 
 export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
-  originalVideoUrl,
-  overlayVideoUrl,
-  currentFrame,
+  videoId,
   totalFrames,
+  currentFrame,
   isPlaying,
   fps = 30,
 }) => {
-  const originalVideoRef = useRef<HTMLVideoElement>(null);
-  const overlayVideoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [showOverlay, setShowOverlay] = useState(false);
+  const [frames, setFrames] = useState<{ original: VideoFrame[]; overlay: VideoFrame[] }>({
+    original: [],
+    overlay: [],
+  });
+  const [loading, setLoading] = useState(true);
 
-  const currentVideoRef = showOverlay ? overlayVideoRef : originalVideoRef;
-
-  // Sync both videos with frame position
   useEffect(() => {
-    const targetTime = currentFrame / fps;
+    const loadFrames = async () => {
+      try {
+        console.log(`[VIDEO_TOGGLE] Loading frames for videoId=${videoId}`);
+        setLoading(true);
 
-    if (originalVideoRef.current) {
-      if (Math.abs(originalVideoRef.current.currentTime - targetTime) > 1 / fps) {
-        originalVideoRef.current.currentTime = targetTime;
+        const originalFrames: VideoFrame[] = [];
+        const overlayFrames: VideoFrame[] = [];
+
+        for (let i = 0; i < totalFrames; i++) {
+          originalFrames.push({
+            frameNumber: i,
+            imageUrl: `/api/mesh-data/${videoId}/frame/${i}/original`,
+          });
+
+          overlayFrames.push({
+            frameNumber: i,
+            imageUrl: `/api/mesh-data/${videoId}/frame/${i}/overlay`,
+          });
+        }
+
+        setFrames({ original: originalFrames, overlay: overlayFrames });
+        console.log(`[VIDEO_TOGGLE] Loaded ${totalFrames} frame references`);
+        setLoading(false);
+      } catch (error) {
+        console.error(`[VIDEO_TOGGLE] Error loading frames:`, error);
+        setLoading(false);
       }
-    }
-
-    if (overlayVideoRef.current) {
-      if (Math.abs(overlayVideoRef.current.currentTime - targetTime) > 1 / fps) {
-        overlayVideoRef.current.currentTime = targetTime;
-      }
-    }
-  }, [currentFrame, fps]);
-
-  // Sync play/pause state for both videos
-  useEffect(() => {
-    const playVideo = (video: HTMLVideoElement | null) => {
-      if (!video) return;
-      video.play().catch(() => {
-        // Playback may fail due to autoplay policies
-      });
     };
 
-    const pauseVideo = (video: HTMLVideoElement | null) => {
-      if (!video) return;
-      video.pause();
-    };
+    loadFrames();
+  }, [videoId, totalFrames]);
 
-    if (isPlaying) {
-      playVideo(originalVideoRef.current);
-      playVideo(overlayVideoRef.current);
-    } else {
-      pauseVideo(originalVideoRef.current);
-      pauseVideo(overlayVideoRef.current);
-    }
-  }, [isPlaying]);
+  useEffect(() => {
+    if (!canvasRef.current || frames.original.length === 0) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const frameArray = showOverlay ? frames.overlay : frames.original;
+    const frameIndex = Math.min(currentFrame, frameArray.length - 1);
+    const frame = frameArray[frameIndex];
+
+    if (!frame) return;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx.drawImage(img, 0, 0);
+    };
+    img.onerror = () => {
+      console.error(`[VIDEO_TOGGLE] Failed to load frame: ${frame.imageUrl}`);
+    };
+    img.src = frame.imageUrl;
+  }, [currentFrame, showOverlay, frames]);
+
+  if (loading) {
+    return (
+      <div className="video-display-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', color: '#999' }}>
+          <div style={{ marginBottom: '10px' }}>Loading frames...</div>
+          <div style={{ fontSize: '12px' }}>({frames.original.length}/{totalFrames})</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="video-display-container" style={{ position: 'relative', width: '100%', height: '100%' }}>
-      {/* Original Video */}
-      <video
-        ref={originalVideoRef}
-        src={originalVideoUrl}
-        className="video-display"
+      <canvas
+        ref={canvasRef}
         style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
           width: '100%',
           height: '100%',
-          opacity: showOverlay ? 0 : 1,
-          transition: 'opacity 0.2s ease-in-out',
+          objectFit: 'contain',
+          backgroundColor: '#000',
         }}
-        controls={false}
-        muted
       />
 
-      {/* Overlay Video */}
-      <video
-        ref={overlayVideoRef}
-        src={overlayVideoUrl}
-        className="video-display"
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '100%',
-          opacity: showOverlay ? 1 : 0,
-          transition: 'opacity 0.2s ease-in-out',
-        }}
-        controls={false}
-        muted
-      />
-
-      {/* Toggle Button */}
       <button
         onClick={() => setShowOverlay(!showOverlay)}
         style={{
@@ -132,7 +140,6 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
         {showOverlay ? '🎬 Overlay' : '📹 Original'}
       </button>
 
-      {/* Frame Info */}
       <div className="video-frame-info">
         Frame: {currentFrame} / {totalFrames}
       </div>

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getMeshSequence } from '../services/meshDataAdapter';
 import { getVideoMetadata, getAllVideos, connectToMongoDB } from '../services/frameQueryService';
+import { getVideoFrame, connectToMongoDB as connectVideoFramesMongo } from '../services/videoFrameStorage';
 import { ApiResponse, MeshSequence } from '../types';
 import fs from 'fs';
 import path from 'path';
@@ -180,75 +181,34 @@ router.get('/:videoId/video/original', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/mesh-data/:videoId/video/overlay
- * Stream PHALP mesh overlay video
+ * GET /api/mesh-data/:videoId/frame/:frameNumber/:videoType
+ * Retrieve a specific video frame (original or overlay)
  */
-router.get('/:videoId/video/overlay', async (req: Request, res: Response) => {
+router.get('/:videoId/frame/:frameNumber/:videoType', async (req: Request, res: Response) => {
   try {
-    const { videoId } = req.params;
+    const { videoId, frameNumber, videoType } = req.params;
+    const frameNum = parseInt(frameNumber, 10);
+    const isMeshOverlay = videoType === 'overlay';
 
-    // console.log(`[MESH_DATA_ENDPOINT] 🚀 GET /api/mesh-data/${videoId}/video/overlay`);
+    await connectVideoFramesMongo();
 
-    // Ensure MongoDB is connected
-    await connectToMongoDB();
+    const imageBuffer = await getVideoFrame(videoId, frameNum, isMeshOverlay);
 
-    // Get video metadata to find the overlay video path
-    const metadata = await getVideoMetadata(videoId);
-
-    if (!metadata) {
-      // console.log(`[MESH_DATA_ENDPOINT] ✗ Video metadata not found for videoId=${videoId}`);
+    if (!imageBuffer) {
       return res.status(404).json({
         success: false,
-        error: `Video not found: ${videoId}`,
+        error: `Frame not found: videoId=${videoId}, frameNumber=${frameNum}, videoType=${videoType}`,
         timestamp: new Date().toISOString(),
       } as ApiResponse<null>);
     }
 
-    // Use the overlay video path from metadata
-    const overlayVideoPath = metadata.overlayVideoPath;
-
-    if (!overlayVideoPath || !fs.existsSync(overlayVideoPath)) {
-      // console.log(`[MESH_DATA_ENDPOINT] ✗ Overlay video file not found: ${overlayVideoPath}`);
-      return res.status(404).json({
-        success: false,
-        error: `Overlay video not found: ${videoId}`,
-        timestamp: new Date().toISOString(),
-      } as ApiResponse<null>);
-    }
-
-    // Stream the video
-    const stats = fs.statSync(overlayVideoPath);
-    const fileSize = stats.size;
-
-    res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Content-Length', fileSize);
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
-
-    // Handle range requests for seeking
-    const range = req.headers.range;
-    if (range) {
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-
-      res.status(206);
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
-      res.setHeader('Content-Length', end - start + 1);
-
-      const stream = fs.createReadStream(overlayVideoPath, { start, end });
-      stream.pipe(res);
-    } else {
-      const stream = fs.createReadStream(overlayVideoPath);
-      stream.pipe(res);
-    }
-
-    // console.log(`[MESH_DATA_ENDPOINT] ✓ Streaming overlay video: ${videoId} (${fileSize} bytes)`);
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(imageBuffer);
   } catch (err: any) {
-    // console.error(`[MESH_DATA_ENDPOINT] ✗ Error streaming overlay video: ${err.message}`);
     res.status(500).json({
       success: false,
-      error: 'Failed to stream overlay video',
+      error: 'Failed to retrieve frame',
       timestamp: new Date().toISOString(),
     } as ApiResponse<null>);
   }
