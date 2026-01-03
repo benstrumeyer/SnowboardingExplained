@@ -2,8 +2,8 @@
 """
 Pickle Parser - Extract PHALP output to JSON format
 
-This script loads a PHALP pickle file and extracts frame data with proper
-3D→Three.js coordinate transformation using camera parameters from pose-service.
+This script loads a PHALP pickle file and extracts frame data.
+Computes mesh vertices from SMPL parameters using the SMPL model.
 
 Usage:
     python pickle_parser.py /path/to/results.pkl
@@ -15,8 +15,13 @@ Output:
 import sys
 import json
 import pickle
-import numpy as np
 import logging
+import gzip
+import bz2
+import zlib
+import io
+import numpy as np
+import torch
 
 logging.basicConfig(
     level=logging.DEBUG,
@@ -24,85 +29,119 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+try:
+    import joblib
+    HAS_JOBLIB = True
+except ImportError:
+    HAS_JOBLIB = False
+    logger.warning("[INIT] joblib not available, will skip joblib decompression")
 
-def cam_crop_to_full(cam_bbox, box_center, box_size, img_size, focal_length=5000.):
-    """
-    Convert camera parameters from crop space to full image space.
+try:
+    from smplx import SMPLLayer
+    HAS_SMPLX = True
+    logger.info("[INIT] smplx available for SMPL vertex computation")
+except ImportError:
+    HAS_SMPLX = False
+    logger.warning("[INIT] smplx not available, will skip vertex computation")
+
+SMPL_MODEL = None
+
+def get_smpl_model():
+    """Lazy load SMPL model"""
+    global SMPL_MODEL
+    if SMPL_MODEL is not None:
+        return SMPL_MODEL
     
-    This is the EXACT function from 4D-Humans/hmr2/utils/renderer.py
-    Ported to numpy for use in pickle parser.
+    if not HAS_SMPLX:
+        logger.warning("[SMPL] smplx not available")
+        return None
+    
+    try:
+        import os
+        model_path = os.path.expanduser('~/pose-service/basicmodel_m_lbs_10_207_0_v1.1.0_p3.pkl')
+        if not os.path.exists(model_path):
+            model_path = os.path.expanduser('~/pose-service/basicmodel_m_lbs_10_207_0_v1.1.0.pkl')
+        
+        if not os.path.exists(model_path):
+            logger.warning(f"[SMPL] Model file not found at {model_path}")
+            return None
+        
+        logger.info(f"[SMPL] Loading SMPL model from {model_path}")
+        SMPL_MODEL = SMPLLayer(model_path=model_path, gender='male')
+        logger.info("[SMPL] ✓ SMPL model loaded")
+        return SMPL_MODEL
+    
+    except Exception as e:
+        logger.error(f"[SMPL] Failed to load SMPL model: {e}")
+        return None
+
+
+def get_smpl_faces():
+    """Get SMPL face indices (triangles) - these are static"""
+    smpl_model = get_smpl_model()
+    if smpl_model is None:
+        logger.debug("[PARSE] SMPL model not available, cannot get faces")
+        return None
+    
+    try:
+        faces = smpl_model.faces
+        if isinstance(faces, torch.Tensor):
+            faces = faces.cpu().numpy()
+        logger.debug(f"[PARSE] Got {len(faces)} SMPL faces")
+        return faces
+    except Exception as e:
+        logger.debug(f"[PARSE] Failed to get SMPL faces: {e}")
+        return None
+
+
+def compute_smpl_vertices(smpl_params):
+    """
+    Compute mesh vertices from SMPL parameters using SMPL model.
     
     Args:
-        cam_bbox: (3,) array with [s, tx, ty] in crop space
-        box_center: (2,) array with crop center in image pixels
-        box_size: scalar with crop size in pixels
-        img_size: (2,) array with [width, height] of full image
-        focal_length: focal length for perspective projection
+        smpl_params: dict with 'global_orient', 'body_pose', 'betas'
     
     Returns:
-        (3,) array with [tx, ty, tz] camera translation in full image space
+        (V, 3) array of vertices or None if computation fails
     """
-    img_w, img_h = img_size[0], img_size[1]
-    cx, cy, b = box_center[0], box_center[1], box_size
-    w_2, h_2 = img_w / 2., img_h / 2.
-    bs = b * cam_bbox[0] + 1e-9
-    tz = 2 * focal_length / bs
-    tx = (2 * (cx - w_2) / bs) + cam_bbox[1]
-    ty = (2 * (cy - h_2) / bs) + cam_bbox[2]
-    full_cam = np.array([tx, ty, tz])
-    return full_cam
-
-
-def apply_mesh_transformation(vertices):
-    """
-    Apply 180° X-axis rotation to mesh vertices for Three.js compatibility.
+    smpl_model = get_smpl_model()
+    if smpl_model is None:
+        logger.debug("[PARSE] SMPL model not available, skipping vertex computation")
+        return None
     
-    From mesh_renderer.py:
-    - 180° rotation around X-axis: flip Y and Z coordinates
+    try:
+        global_orient = smpl_params.get('global_orient')
+        body_pose = smpl_params.get('body_pose')
+        betas = smpl_params.get('betas')
+        
+        if global_orient is None or body_pose is None or betas is None:
+            logger.debug("[PARSE] Missing SMPL parameters for vertex computation")
+            return None
+        
+        global_orient = torch.tensor(np.array(global_orient).reshape(1, 3, 3), dtype=torch.float32)
+        body_pose = torch.tensor(np.array(body_pose).reshape(1, 23, 3, 3), dtype=torch.float32)
+        betas = torch.tensor(np.array(betas).reshape(1, 10), dtype=torch.float32)
+        
+        with torch.no_grad():
+            output = smpl_model(
+                global_orient=global_orient,
+                body_pose=body_pose,
+                betas=betas
+            )
+        
+        vertices = output.vertices[0].cpu().numpy()
+        logger.debug(f"[PARSE] Computed {len(vertices)} vertices from SMPL")
+        return vertices
     
-    Args:
-        vertices: (V, 3) array with [x, y, z] coordinates
-    
-    Returns:
-        (V, 3) array with transformed vertices
-    """
-    vertices_transformed = vertices.copy()
-    
-    # 180° rotation around X-axis: flip Y and Z
-    vertices_transformed[:, 1] *= -1.0  # Flip Y
-    vertices_transformed[:, 2] *= -1.0  # Flip Z
-    
-    logger.debug(f"[TRANSFORM] Applied 180° X-axis rotation to {len(vertices)} vertices")
-    
-    return vertices_transformed
-
-
-def apply_camera_transformation(cam_t_full):
-    """
-    Apply X-component flip for Three.js compatibility.
-    
-    From mesh_renderer.py:
-    - X-component flip: camera_translation_adjusted[0] *= -1.0
-    
-    Args:
-        cam_t_full: (3,) array with [tx, ty, tz]
-    
-    Returns:
-        (3,) array with transformed camera translation
-    """
-    cam_adjusted = cam_t_full.copy()
-    
-    # Flip X component (from mesh_renderer.py line: camera_translation_adjusted[0] *= -1.0)
-    cam_adjusted[0] *= -1.0
-    
-    logger.debug(f"[TRANSFORM] Applied X-component flip: {cam_t_full[0]} -> {cam_adjusted[0]}")
-    
-    return cam_adjusted
+    except Exception as e:
+        logger.debug(f"[PARSE] Failed to compute SMPL vertices: {e}")
+        return None
 
 
 def parse_pickle_file(pkl_path):
     """
     Parse PHALP pickle file and extract frame data.
+    Handles joblib, gzip, bz2, zlib, and uncompressed pickle files.
     
     Args:
         pkl_path: Path to pickle file
@@ -112,20 +151,73 @@ def parse_pickle_file(pkl_path):
     """
     logger.info(f"[PARSING] Loading pickle file: {pkl_path}")
     
-    try:
-        with open(pkl_path, 'rb') as f:
-            data = pickle.load(f)
-    except Exception as e:
-        logger.error(f"[PARSING] ✗ Failed to load pickle: {e}")
-        return None
+    data = None
+    
+    if HAS_JOBLIB:
+        try:
+            data = joblib.load(pkl_path)
+            logger.info(f"[PARSING] ✓ Successfully loaded with joblib")
+        except Exception as e:
+            logger.debug(f"[PARSING] ⚠ joblib failed: {e}")
+            data = None
+    
+    if data is None:
+        try:
+            with open(pkl_path, 'rb') as f:
+                compressed_data = f.read()
+            decompressed = zlib.decompress(compressed_data)
+            data = pickle.loads(decompressed, encoding='latin1')
+            logger.info(f"[PARSING] ✓ Successfully loaded as zlib compressed")
+        except Exception as e:
+            logger.debug(f"[PARSING] ⚠ Not zlib format: {e}")
+            data = None
+    
+    if data is None:
+        try:
+            with gzip.open(pkl_path, 'rb') as f:
+                data = pickle.load(f, encoding='latin1')
+            logger.info(f"[PARSING] ✓ Successfully loaded as gzip")
+        except Exception as e:
+            logger.debug(f"[PARSING] ⚠ Not gzip format: {e}")
+            data = None
+    
+    if data is None:
+        try:
+            with bz2.open(pkl_path, 'rb') as f:
+                data = pickle.load(f, encoding='latin1')
+            logger.info(f"[PARSING] ✓ Successfully loaded as bz2")
+        except Exception as e:
+            logger.debug(f"[PARSING] ⚠ Not bz2 format: {e}")
+            data = None
+    
+    if data is None:
+        try:
+            with open(pkl_path, 'rb') as f:
+                data = pickle.load(f, encoding='latin1')
+            logger.info(f"[PARSING] ✓ Successfully loaded as regular pickle (latin1)")
+        except Exception as e:
+            logger.error(f"[PARSING] ✗ Failed to load pickle with latin1: {e}")
+            try:
+                with open(pkl_path, 'rb') as f:
+                    data = pickle.load(f, encoding='utf-8')
+                logger.info(f"[PARSING] ✓ Successfully loaded as regular pickle (utf-8)")
+            except Exception as e2:
+                logger.error(f"[PARSING] ✗ Failed to load pickle with utf-8: {e2}")
+                try:
+                    with open(pkl_path, 'rb') as f:
+                        data = pickle.load(f)
+                    logger.info(f"[PARSING] ✓ Successfully loaded as regular pickle (default)")
+                except Exception as e3:
+                    logger.error(f"[PARSING] ✗ Failed to load pickle with default encoding: {e3}")
+                    return None
     
     logger.info(f"[PARSING] ✓ Pickle loaded, type: {type(data)}")
     
-    # PHALP output structure varies, try common formats
+    smpl_faces = get_smpl_faces()
+    
     frames_data = []
     
     if isinstance(data, dict):
-        # Try common PHALP dict keys
         if 'frames' in data:
             frames_list = data['frames']
         elif 'results' in data:
@@ -133,14 +225,13 @@ def parse_pickle_file(pkl_path):
         elif 'predictions' in data:
             frames_list = data['predictions']
         else:
-            # Assume dict values are frames
             frames_list = list(data.values())
         
         logger.info(f"[PARSING] Found {len(frames_list)} frames in dict")
         
         for frame_idx, frame_data in enumerate(frames_list):
             try:
-                frame_obj = parse_frame(frame_data, frame_idx)
+                frame_obj = parse_frame(frame_data, frame_idx, smpl_faces)
                 if frame_obj:
                     frames_data.append(frame_obj)
             except Exception as e:
@@ -152,7 +243,7 @@ def parse_pickle_file(pkl_path):
         
         for frame_idx, frame_data in enumerate(data):
             try:
-                frame_obj = parse_frame(frame_data, frame_idx)
+                frame_obj = parse_frame(frame_data, frame_idx, smpl_faces)
                 if frame_obj:
                     frames_data.append(frame_obj)
             except Exception as e:
@@ -169,19 +260,79 @@ def parse_pickle_file(pkl_path):
         'frames': frames_data,
         'frameCount': len(frames_data),
         'metadata': {
-            'parserVersion': '1.0',
-            'timestamp': str(np.datetime64('now'))
+            'parserVersion': '1.0'
         }
     }
 
 
-def parse_frame(frame_data, frame_idx):
+def get_smpl_faces():
+    """Get SMPL face indices (triangles) - these are static"""
+    smpl_model = get_smpl_model()
+    if smpl_model is None:
+        logger.debug("[PARSE] SMPL model not available, cannot get faces")
+        return None
+    
+    try:
+        faces = smpl_model.faces
+        if isinstance(faces, torch.Tensor):
+            faces = faces.cpu().numpy()
+        logger.debug(f"[PARSE] Got {len(faces)} SMPL faces")
+        return faces
+    except Exception as e:
+        logger.debug(f"[PARSE] Failed to get SMPL faces: {e}")
+        return None
     """
-    Parse a single frame from PHALP output.
+    Compute mesh vertices from SMPL parameters using SMPL model.
     
     Args:
-        frame_data: Frame data (dict or object)
+        smpl_params: dict with 'global_orient', 'body_pose', 'betas'
+    
+    Returns:
+        (V, 3) array of vertices or None if computation fails
+    """
+    smpl_model = get_smpl_model()
+    if smpl_model is None:
+        logger.debug("[PARSE] SMPL model not available, skipping vertex computation")
+        return None
+    
+    try:
+        global_orient = smpl_params.get('global_orient')
+        body_pose = smpl_params.get('body_pose')
+        betas = smpl_params.get('betas')
+        
+        if global_orient is None or body_pose is None or betas is None:
+            logger.debug("[PARSE] Missing SMPL parameters for vertex computation")
+            return None
+        
+        global_orient = torch.tensor(np.array(global_orient).reshape(1, 3), dtype=torch.float32)
+        body_pose = torch.tensor(np.array(body_pose).reshape(1, 69), dtype=torch.float32)
+        betas = torch.tensor(np.array(betas).reshape(1, 10), dtype=torch.float32)
+        
+        with torch.no_grad():
+            output = smpl_model(
+                global_orient=global_orient,
+                body_pose=body_pose,
+                betas=betas
+            )
+        
+        vertices = output.vertices[0].cpu().numpy()
+        logger.debug(f"[PARSE] Computed {len(vertices)} vertices from SMPL")
+        return vertices
+    
+    except Exception as e:
+        logger.debug(f"[PARSE] Failed to compute SMPL vertices: {e}")
+        return None
+
+
+def parse_frame(frame_data, frame_idx, smpl_faces=None):
+    """
+    Parse a single frame from PHALP output.
+    PHALP format: dict with lists of data (multiple people per frame)
+    
+    Args:
+        frame_data: Frame data (dict)
         frame_idx: Frame index
+        smpl_faces: SMPL face indices (optional, cached from model)
     
     Returns:
         dict with frame information or None if parsing fails
@@ -191,72 +342,95 @@ def parse_frame(frame_data, frame_idx):
     
     frame_obj = {
         'frameNumber': frame_idx,
-        'timestamp': frame_idx / 30.0,  # Assume 30 FPS
+        'timestamp': frame_idx / 30.0,
         'persons': []
     }
     
-    # Extract person detections
-    # PHALP typically stores: track_id, vertices, faces, camera, etc.
+    smpl_list = frame_data.get('smpl', [])
+    camera_list = frame_data.get('camera', [])
+    conf_list = frame_data.get('conf', [])
+    tid_list = frame_data.get('tid', [])
+    verts_list = frame_data.get('verts', [])
+    faces_list = frame_data.get('faces', [])
     
-    # Try to extract vertices and faces
-    vertices = None
-    faces = None
-    camera = None
+    num_people = len(smpl_list)
     
-    if 'vertices' in frame_data:
-        vertices = np.array(frame_data['vertices'], dtype=np.float32)
-    elif 'pred_vertices' in frame_data:
-        vertices = np.array(frame_data['pred_vertices'], dtype=np.float32)
-    
-    if 'faces' in frame_data:
-        faces = np.array(frame_data['faces'], dtype=np.int32)
-    elif 'pred_faces' in frame_data:
-        faces = np.array(frame_data['pred_faces'], dtype=np.int32)
-    
-    # Extract camera parameters
-    if 'camera' in frame_data:
-        camera = frame_data['camera']
-    elif 'pred_cam' in frame_data:
-        camera = frame_data['pred_cam']
-    
-    # Build person object
-    person_obj = {
-        'personId': frame_data.get('track_id', 0),
-        'confidence': float(frame_data.get('confidence', 1.0)),
-        'tracked': frame_data.get('tracked', True)
-    }
-    
-    # Add mesh data with transformation if available
-    if vertices is not None:
-        # Apply 180° X-axis rotation to vertices for Three.js
-        vertices_transformed = apply_mesh_transformation(vertices)
-        person_obj['meshVertices'] = vertices_transformed.tolist()
-        person_obj['meshVertexCount'] = len(vertices_transformed)
-    
-    if faces is not None:
-        person_obj['meshFaces'] = faces.tolist()
-        person_obj['meshFaceCount'] = len(faces)
-    
-    # Add camera data with transformation
-    if camera is not None:
-        try:
-            cam_array = np.array(camera, dtype=np.float32)
+    for person_idx in range(num_people):
+        person_obj = {
+            'personId': tid_list[person_idx] if person_idx < len(tid_list) else person_idx,
+            'confidence': float(conf_list[person_idx]) if person_idx < len(conf_list) else 1.0,
+            'tracked': True
+        }
+        
+        if person_idx < len(camera_list):
+            try:
+                cam = camera_list[person_idx]
+                cam_list = cam if isinstance(cam, list) else cam.tolist()
+                if len(cam_list) >= 3:
+                    person_obj['camera'] = {
+                        'tx': float(cam_list[0]),
+                        'ty': float(cam_list[1]),
+                        'tz': float(cam_list[2]),
+                        'focalLength': 5000.0
+                    }
+            except Exception as e:
+                logger.debug(f"[PARSE] Frame {frame_idx} person {person_idx}: camera parse failed: {e}")
+        
+        if person_idx < len(smpl_list):
+            try:
+                smpl = smpl_list[person_idx]
+                smpl_obj = {}
+                
+                if 'global_orient' in smpl:
+                    go = smpl['global_orient']
+                    smpl_obj['globalOrient'] = go.tolist() if hasattr(go, 'tolist') else go
+                
+                if 'body_pose' in smpl:
+                    bp = smpl['body_pose']
+                    smpl_obj['bodyPose'] = bp.tolist() if hasattr(bp, 'tolist') else bp
+                
+                if 'betas' in smpl:
+                    betas = smpl['betas']
+                    smpl_obj['betas'] = betas.tolist() if hasattr(betas, 'tolist') else betas
+                
+                if smpl_obj:
+                    person_obj['smpl'] = smpl_obj
+                    
+                    vertices = compute_smpl_vertices(smpl)
+                    if vertices is not None:
+                        person_obj['meshVertices'] = vertices.tolist()
+                        logger.debug(f"[PARSE] Frame {frame_idx} person {person_idx}: computed {len(vertices)} vertices")
             
-            # Apply camera transformation (X-component flip)
-            cam_transformed = apply_camera_transformation(cam_array)
-            
-            person_obj['camera'] = {
-                'tx': float(cam_transformed[0]),
-                'ty': float(cam_transformed[1]),
-                'tz': float(cam_transformed[2]),
-                'focalLength': 5000.0  # Default, may be overridden
-            }
-            
-            logger.debug(f"[TRANSFORM] Frame {frame_idx}: camera {cam_array} -> {cam_transformed}")
-        except Exception as e:
-            logger.warning(f"[TRANSFORM] ⚠ Failed to transform camera for frame {frame_idx}: {e}")
-    
-    frame_obj['persons'].append(person_obj)
+            except Exception as e:
+                logger.debug(f"[PARSE] Frame {frame_idx} person {person_idx}: SMPL parse failed: {e}")
+        
+        if person_idx < len(verts_list):
+            try:
+                verts = verts_list[person_idx]
+                verts_list_data = verts.tolist() if hasattr(verts, 'tolist') else verts
+                person_obj['meshVertices'] = verts_list_data
+                logger.debug(f"[PARSE] Frame {frame_idx} person {person_idx}: extracted {len(verts_list_data)} vertices from PHALP")
+            except Exception as e:
+                logger.debug(f"[PARSE] Frame {frame_idx} person {person_idx}: vertices parse failed: {e}")
+        
+        if smpl_faces is not None:
+            try:
+                faces_data = smpl_faces.tolist() if hasattr(smpl_faces, 'tolist') else smpl_faces
+                person_obj['meshFaces'] = faces_data
+                logger.debug(f"[PARSE] Frame {frame_idx} person {person_idx}: using {len(faces_data)} SMPL faces")
+            except Exception as e:
+                logger.debug(f"[PARSE] Frame {frame_idx} person {person_idx}: faces assignment failed: {e}")
+        
+        elif faces_list:
+            try:
+                faces = faces_list[0] if isinstance(faces_list, list) and len(faces_list) > 0 else faces_list
+                faces_data = faces.tolist() if hasattr(faces, 'tolist') else faces
+                person_obj['meshFaces'] = faces_data
+                logger.debug(f"[PARSE] Frame {frame_idx} person {person_idx}: extracted {len(faces_data)} faces")
+            except Exception as e:
+                logger.debug(f"[PARSE] Frame {frame_idx} person {person_idx}: faces parse failed: {e}")
+        
+        frame_obj['persons'].append(person_obj)
     
     return frame_obj
 
