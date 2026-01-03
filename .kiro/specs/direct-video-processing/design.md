@@ -2,76 +2,73 @@
 
 ## Overview
 
-This design implements video-level PHALP processing by spawning `track.py` directly from the Node.js backend using subprocess. No Flask wrapper needed. Simple, fast, perfect for MVP.
+This design implements a two-stage video processing workflow:
+1. **Stage 1 (Manual):** User runs `track.py` directly in WSL terminal to generate output files in `/tmp/video_processing/`
+2. **Stage 2 (Automated):** User clicks "Process" button in web UI, backend parses pkl and stores to MongoDB
 
-**Key Insight:** Node.js handles everything - video saving, subprocess spawning, pickle parsing, and MongoDB storage. All in one place.
+**Key Insight:** Separate concerns - let track.py run reliably in terminal, backend only handles parsing and storage.
 
 ## Architecture
 
 ### High-Level Flow
 
 ```
-User uploads video
-    ↓
-Backend: /api/finalize-upload
-    ├─ Assemble chunks into video file
-    ├─ Save to disk: /tmp/videos/{videoId}.mp4
-    └─ Spawn subprocess
-    ↓
-Subprocess: python track.py video.source=/tmp/videos/{videoId}.mp4
-    ├─ Loads models (2-3s)
-    ├─ Processes video (60-120s)
-    └─ Outputs results.pkl
-    ↓
-Backend: Parse .pkl output
-    ├─ Load pickle file
-    ├─ Extract frames to JSON
-    ├─ Compute mesh vertices
-    └─ Convert numpy arrays to lists
-    ↓
-Backend: Store in MongoDB
-    ├─ Create frames collection
-    ├─ For each frame:
-    │  ├─ Create document with video_id, frame_number
-    │  ├─ Store vertices, faces, camera params
-    │  └─ Insert into MongoDB
-    └─ Create indexes
-    ↓
+User Terminal (WSL)
+├─ Place original video in /tmp/video_processing/
+├─ Run track.py manually: python track.py video.source=/tmp/video_processing/video.mp4 video.output_dir=/tmp/video_processing/ ...
+└─ track.py generates: output.mp4 (overlay) + results.pkl (pose data)
+
+Directory Contents After track.py (/tmp/video_processing/)
+├─ video.mp4 (original)
+├─ output.mp4 (mesh overlay)
+└─ results.pkl (pose data)
+
+Web UI
+├─ User clicks "Process" button
+└─ Backend automatically processes /tmp/video_processing/
+
+Backend: /api/video/process-directory
+├─ Access /tmp/video_processing/ directory
+├─ Read .pkl file
+├─ Parse pkl to extract frame data
+├─ Read original video for metadata (fps, duration, resolution)
+├─ Store all frames in MongoDB
+└─ Return success response with video_id
+
 Frontend: Query and render
-    ├─ GET /api/frames?video_id={videoId}
-    ├─ Load frames from MongoDB
-    ├─ Create Three.js BufferGeometry
-    └─ Render 3D mesh
+├─ GET /api/frames?video_id={videoId}
+├─ Load frames from MongoDB
+├─ Create Three.js BufferGeometry
+└─ Render 3D mesh
 ```
 
 ### Components
 
-#### 1. Video Processing Service (Node.js)
+#### 1. Directory Processing Endpoint (Node.js)
 
-**File:** `backend/src/services/videoProcessingService.ts`
+**File:** `backend/src/api/process-directory.ts`
 
 **Responsibilities:**
-- Spawn `track.py` subprocess
-- Monitor subprocess completion
-- Capture stdout/stderr
-- Handle timeouts and errors
-- Return exit code and output
+- Receive POST request from frontend
+- Access `/tmp/video_processing/` directory
+- Validate .pkl file exists
+- Trigger parsing and storage
+- Return success/error response
 
 **Interface:**
 ```typescript
-interface VideoProcessingResult {
+interface ProcessDirectoryRequest {
+  // No parameters - always uses /tmp/video_processing/
+}
+
+interface ProcessDirectoryResponse {
   success: boolean;
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-  pklPath?: string;
+  videoId?: string;
+  frameCount?: number;
   error?: string;
 }
 
-async function processVideoWithTrackPy(
-  videoPath: string,
-  timeout: number = 180000
-): Promise<VideoProcessingResult>
+async function processDirectory(): Promise<ProcessDirectoryResponse>
 ```
 
 #### 2. Pickle Parser Service (Node.js)
@@ -79,7 +76,7 @@ async function processVideoWithTrackPy(
 **File:** `backend/src/services/pickleParserService.ts`
 
 **Responsibilities:**
-- Load `.pkl` file using Python subprocess
+- Load `.pkl` file from `/tmp/video_processing/`
 - Parse pickle data to JSON
 - Extract frame data
 - Compute mesh vertices from SMPL params
@@ -120,7 +117,32 @@ async function parsePickleToFrames(
 ): Promise<FrameData[]>
 ```
 
-#### 3. MongoDB Frame Storage Service (Node.js)
+#### 3. Video Metadata Service (Node.js)
+
+**File:** `backend/src/services/videoMetadataService.ts`
+
+**Responsibilities:**
+- Read original video file from `/tmp/video_processing/`
+- Extract metadata (fps, duration, resolution, frame count)
+- Return metadata for storage with frames
+
+**Interface:**
+```typescript
+interface VideoMetadata {
+  fps: number;
+  duration: number;
+  resolution: [number, number];
+  frameCount: number;
+  filename: string;
+  filesize: number;
+}
+
+async function extractVideoMetadata(
+  videoPath: string
+): Promise<VideoMetadata>
+```
+
+#### 4. MongoDB Frame Storage Service (Node.js)
 
 **File:** `backend/src/services/frameStorageService.ts`
 
@@ -144,7 +166,8 @@ interface FrameDocument {
 
 async function storeFrames(
   videoId: string,
-  frames: FrameData[]
+  frames: FrameData[],
+  metadata: VideoMetadata
 ): Promise<void>
 
 async function getFrame(
@@ -157,36 +180,55 @@ async function getAllFrames(
 ): Promise<FrameDocument[]>
 ```
 
-#### 4. Backend Integration (Node.js)
+#### 5. Backend Integration (Node.js)
 
-**File:** `backend/src/server.ts` - `/api/finalize-upload` endpoint
+**File:** `backend/src/server.ts` - `/api/video/process-directory` endpoint
 
 **Flow:**
 ```typescript
-app.post('/api/finalize-upload', async (req, res) => {
-  // 1. Assemble chunks into video file
-  const videoPath = await assembleChunks(sessionId, filesize);
-  
-  // 2. Spawn track.py subprocess
-  const result = await processVideoWithTrackPy(videoPath);
-  if (!result.success) {
-    return res.status(500).json({ error: result.error });
+app.post('/api/video/process-directory', async (req, res) => {
+  try {
+    // 1. Validate directory exists
+    const dirPath = '/tmp/video_processing';
+    if (!fs.existsSync(dirPath)) {
+      return res.status(400).json({ error: 'Directory not found' });
+    }
+    
+    // 2. Find .pkl file
+    const pklFiles = glob.sync(`${dirPath}/**/*.pkl`);
+    if (pklFiles.length === 0) {
+      return res.status(400).json({ error: 'No pickle file found' });
+    }
+    const pklPath = pklFiles[0];
+    
+    // 3. Find original video file
+    const videoFiles = glob.sync(`${dirPath}/*.mp4`);
+    if (videoFiles.length === 0) {
+      return res.status(400).json({ error: 'No video file found' });
+    }
+    const videoPath = videoFiles[0];
+    
+    // 4. Extract video metadata
+    const metadata = await extractVideoMetadata(videoPath);
+    
+    // 5. Parse .pkl output
+    const frames = await parsePickleToFrames(pklPath);
+    
+    // 6. Store in MongoDB
+    const videoId = generateVideoId();
+    await storeFrames(videoId, frames, metadata);
+    
+    // 7. Return success
+    res.json({
+      success: true,
+      videoId,
+      frameCount: frames.length,
+      message: 'Video processed successfully'
+    });
+  } catch (error) {
+    console.error('[PROCESS-DIRECTORY] Error:', error);
+    res.status(500).json({ error: error.message });
   }
-  
-  // 3. Parse .pkl output
-  const frames = await parsePickleToFrames(result.pklPath);
-  
-  // 4. Store in MongoDB
-  const videoId = generateVideoId();
-  await storeFrames(videoId, frames);
-  
-  // 5. Return success
-  res.json({
-    success: true,
-    videoId,
-    frameCount: frames.length,
-    message: 'Video processed successfully'
-  });
 });
 ```
 
@@ -259,22 +301,21 @@ db.frames.createIndex(
 
 ## Error Handling
 
-### Subprocess Errors
+### Directory Access Errors
 
 | Error | Cause | Response |
 |-------|-------|----------|
-| Video not found | Invalid path | 400 Bad Request |
-| Subprocess timeout | GPU too slow | 500 + "Processing timeout" |
-| Subprocess crash | track.py error | 500 + stderr output |
-| Exit code non-zero | track.py failed | 500 + stderr output |
+| Directory not found | /tmp/video_processing/ doesn't exist | 400 Bad Request |
+| .pkl not found | track.py didn't output pickle | 400 Bad Request |
+| Video file not found | Original video missing | 400 Bad Request |
 
 ### Parsing Errors
 
 | Error | Cause | Response |
 |-------|-------|----------|
-| .pkl not found | track.py didn't output | 500 + "Pickle file not found" |
 | .pkl parse error | Corrupted pickle | 500 + "Failed to parse pickle" |
 | Invalid frame data | Missing fields | 500 + "Invalid frame structure" |
+| Metadata extraction failed | Video file corrupted | 500 + "Failed to extract metadata" |
 
 ### Storage Errors
 
@@ -284,15 +325,63 @@ db.frames.createIndex(
 | Insert failed | Duplicate key | 500 + "Frame storage failed" |
 | Index creation | Permission denied | 500 + "Index creation failed" |
 
+## Correctness Properties
+
+A property is a characteristic or behavior that should hold true across all valid executions of a system—essentially, a formal statement about what the system should do. Properties serve as the bridge between human-readable specifications and machine-verifiable correctness guarantees.
+
+### Property 1: Frame Coverage
+
+**For any** pkl file with N frames, the parsed output SHALL contain exactly N frames with sequential frame numbers from 0 to N-1.
+
+**Validates: Requirements 1.4, 3.1**
+
+### Property 2: Track ID Consistency
+
+**For any** person appearing in multiple frames, their track_id SHALL remain constant across all frames they appear in.
+
+**Validates: Requirements 3.4, 6.3**
+
+### Property 3: Mesh Vertex Count
+
+**For any** frame with persons, each person SHALL have exactly 6890 mesh vertices.
+
+**Validates: Requirements 2.6, 3.3**
+
+### Property 4: Mesh Face Count
+
+**For any** frame with persons, each person SHALL have exactly 13776 mesh faces.
+
+**Validates: Requirements 2.6, 3.3**
+
+### Property 5: Keypoint Count
+
+**For any** frame with persons, each person SHALL have exactly 45 3D keypoints and 45 2D keypoints.
+
+**Validates: Requirements 2.3, 3.3**
+
+### Property 6: Confidence Range
+
+**For any** frame with persons, tracking_confidence SHALL be between 0.0 and 1.0 (inclusive).
+
+**Validates: Requirements 2.4, 2.5**
+
+### Property 7: MongoDB Round-Trip
+
+**For any** set of frames stored in MongoDB, querying by video_id and frame_number SHALL return the exact same frame data.
+
+**Validates: Requirements 4.4, 4.5**
+
 ## Testing Strategy
 
 ### Unit Tests
 
-1. **Subprocess spawning**
-   - Test subprocess starts correctly
-   - Test subprocess timeout handling
-   - Test subprocess crash handling
-   - Test exit code checking
+1. **Directory validation**
+   - Test directory exists check
+   - Test .pkl file detection
+   - Test video file detection
+   - Test missing directory handling
+   - Test missing .pkl handling
+   - Test missing video handling
 
 2. **Pickle parsing**
    - Test .pkl loading
@@ -302,62 +391,94 @@ db.frames.createIndex(
    - Test mesh vertex computation
    - Test numpy array conversion
 
-3. **MongoDB storage**
+3. **Video metadata extraction**
+   - Test fps extraction
+   - Test duration extraction
+   - Test resolution extraction
+   - Test frame count extraction
+   - Test corrupted video handling
+
+4. **MongoDB storage**
    - Test frame document creation
    - Test index creation
    - Test query by video_id + frame_number
    - Test query all frames for video
+   - Test TTL index functionality
 
-4. **Error handling**
-   - Test invalid video path
+5. **Error handling**
+   - Test missing directory
    - Test missing .pkl file
+   - Test missing video file
    - Test corrupted pickle
-   - Test subprocess timeout
+   - Test corrupted video
    - Test MongoDB connection failure
 
 ### Property-Based Tests
 
-**Property 1: Frame coverage**
-- For any video with N frames, output SHALL contain exactly N frames
-- **Validates: Requirement 3.1**
+**Property 1: Frame Coverage**
+- Generate random pkl files with varying frame counts
+- Parse each pkl file
+- Verify output frame count matches input
+- **Validates: Requirements 1.4, 3.1**
 
-**Property 2: Track ID consistency**
-- For any person track, track_id SHALL be consistent across all frames they appear in
-- **Validates: Requirement 6.3**
+**Property 2: Track ID Consistency**
+- Generate random frames with multiple persons
+- Store in MongoDB
+- Query each frame
+- Verify track IDs are consistent across frames
+- **Validates: Requirements 3.4, 6.3**
 
-**Property 3: Mesh vertex count**
-- For any frame with persons, each person SHALL have exactly 6890 mesh vertices
-- **Validates: Requirement 3.3**
+**Property 3: Mesh Vertex Count**
+- Generate random frames with persons
+- Parse and store
+- Query frames
+- Verify each person has exactly 6890 vertices
+- **Validates: Requirements 2.6, 3.3**
 
-**Property 4: Mesh face count**
-- For any frame with persons, each person SHALL have exactly 13776 mesh faces
-- **Validates: Requirement 3.3**
+**Property 4: Mesh Face Count**
+- Generate random frames with persons
+- Parse and store
+- Query frames
+- Verify each person has exactly 13776 faces
+- **Validates: Requirements 2.6, 3.3**
 
-**Property 5: Keypoint count**
-- For any frame with persons, each person SHALL have exactly 45 3D keypoints and 45 2D keypoints
-- **Validates: Requirement 3.3**
+**Property 5: Keypoint Count**
+- Generate random frames with persons
+- Parse and store
+- Query frames
+- Verify each person has exactly 45 3D and 45 2D keypoints
+- **Validates: Requirements 2.3, 3.3**
 
-**Property 6: Temporal smoothness**
-- For any two consecutive frames with same person, pose change SHALL be smooth (no sudden jumps)
-- **Validates: Requirement 6.1**
+**Property 6: Confidence Range**
+- Generate random frames with varying confidence values
+- Parse and store
+- Query frames
+- Verify all confidence values are between 0.0 and 1.0
+- **Validates: Requirements 2.4, 2.5**
+
+**Property 7: MongoDB Round-Trip**
+- Generate random frame data
+- Store in MongoDB
+- Query by video_id and frame_number
+- Verify returned data matches original
+- **Validates: Requirements 4.4, 4.5**
 
 ## Performance Considerations
 
 ### Bottlenecks
 
-1. **GPU processing** (60-120s) - Dominant bottleneck
-   - Cannot parallelize (single GPU)
-   - Mitigation: Process one video at a time (MVP)
+1. **Manual track.py execution** (60-120s) - User responsibility
+   - Cannot optimize in backend
+   - Mitigation: Document best practices for WSL
 
-2. **Subprocess startup** (2-3s)
-   - Python interpreter startup
-   - Model loading
-   - Mitigation: Pre-warm models on backend startup
-
-3. **Pickle parsing** (1-2s)
+2. **Pickle parsing** (1-2s)
    - Loading large pickle file
    - Iterating through frames
    - Mitigation: Optimize with streaming if needed
+
+3. **Video metadata extraction** (100-500ms)
+   - Reading video file headers
+   - Mitigation: Cache metadata
 
 4. **MongoDB storage** (1-2s)
    - Batch insert frames
@@ -366,60 +487,51 @@ db.frames.createIndex(
 
 ### Optimization Opportunities
 
-1. **Async subprocess** - Use `child_process.spawn()` with async/await
-2. **Streaming parsing** - Parse pickle incrementally (not all at once)
-3. **Batch MongoDB inserts** - Use `insertMany()` for all frames
-4. **Caching** - Cache results by video hash (if same video uploaded twice)
-5. **Pre-warming** - Load models on backend startup (not per-request)
+1. **Streaming parsing** - Parse pickle incrementally (not all at once)
+2. **Batch MongoDB inserts** - Use `insertMany()` for all frames
+3. **Caching** - Cache results by video hash (if same video processed twice)
+4. **Async operations** - Use async/await for all I/O operations
+5. **Connection pooling** - Reuse MongoDB connections
 
 ## Deployment
 
 ### Prerequisites
 
-- 4D-Humans installed at `/home/ben/pose-service/4D-Humans`
-- track.py executable and working
-- GPU with 8-10GB VRAM
-- Python environment with all dependencies
-- Node.js with child_process module
+- `/tmp/video_processing/` directory exists and is writable
+- Original video file placed in `/tmp/video_processing/`
+- track.py executed manually to generate `.pkl` and `output.mp4`
+- MongoDB running and accessible
+- Node.js with fs and glob modules
 
 ### Configuration
 
 Backend needs to know:
-- Path to track.py: `/home/ben/pose-service/4D-Humans/track.py`
-- Working directory: `/home/ben/pose-service/4D-Humans`
-- Timeout: 180 seconds (configurable)
-- Video storage path: `/tmp/videos/` (configurable)
+- Temp directory path: `/tmp/video_processing/` (hardcoded)
 - MongoDB connection string (from env)
 
 ### Environment Variables
 
 ```bash
-TRACK_PY_PATH=/home/ben/pose-service/4D-Humans/track.py
-TRACK_PY_WORKING_DIR=/home/ben/pose-service/4D-Humans
-TRACK_PY_TIMEOUT=180000
-VIDEO_STORAGE_PATH=/tmp/videos
 MONGODB_URI=mongodb://localhost:27017
+MONGODB_DB=snowboarding_explained
 ```
 
 ## Monitoring
 
 Track:
-- Subprocess spawn success/failure
-- Processing time per video
-- Error rates
+- Directory access success/failure
+- .pkl file detection success/failure
+- Parsing success/failure
 - MongoDB storage success/failure
 - Frame count per video
+- Processing time per request
 
 ## Backward Compatibility
 
 **Keep existing endpoints:**
-- `/api/pose/hybrid` - Frame-by-frame processing (for debugging)
-- `/api/finalize-upload` - Modified to use direct processing
+- `/api/mesh-data` - Query existing mesh data
+- `/api/video/:jobId` - Query video metadata
 
-**Feature flag (optional):**
-```typescript
-const USE_DIRECT_PROCESSING = true;  // Toggle between approaches
-```
-
-If `false`, fall back to frame-by-frame processing.
+**New endpoint:**
+- `/api/video/process-directory` - Process files from `/tmp/video_processing/`
 

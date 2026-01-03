@@ -2,63 +2,74 @@
 
 ## Introduction
 
-This feature implements video-level PHALP processing by spawning `track.py` directly from the Node.js backend using subprocess, eliminating the Flask wrapper entirely. This is the simplest, fastest approach for MVP.
+This feature implements a two-stage video processing workflow:
+1. **Stage 1 (Manual):** User runs `track.py` directly in WSL terminal to generate output files in a temp directory
+2. **Stage 2 (Automated):** User clicks "Process" button in web UI, backend parses pkl and stores to MongoDB
 
-**Key Insight:** Skip Flask entirely. Node.js backend handles everything:
-1. Saves video to disk
-2. Spawns `track.py` subprocess directly
-3. Parses `.pkl` output
-4. Saves to MongoDB
+**Key Insight:** Separate concerns - let track.py run reliably in terminal, backend only handles parsing and storage.
+
+**Workflow:**
+1. User places original video file in temp directory (e.g., `/tmp/video_processing/`)
+2. User runs track.py command manually in WSL terminal: `python track.py video.source=/tmp/video_processing/video.mp4 video.output_dir=/tmp/video_processing/ ...`
+3. track.py generates in same directory: `output.mp4` (mesh overlay video) and `results.pkl` (pose data)
+4. Directory now contains: `video.mp4` (original), `output.mp4` (overlay), `results.pkl` (pose data)
+5. User clicks "Process" button in web UI, specifies directory path
+6. Backend reads all 3 files from directory, parses pkl, extracts mesh data, stores to MongoDB
+7. Frontend retrieves data from MongoDB and renders in Three.js
+8. Temp directory can be cleaned up by user (MongoDB holds all final data)
 
 **Benefits:**
-- Simpler architecture (no Flask layer)
-- Faster (no HTTP overhead)
-- Less memory (no Flask process)
-- Perfect for MVP (single video at a time)
+- No subprocess complexity in backend
+- track.py runs reliably in terminal (proven working)
+- Backend only handles parsing and storage (simpler, more robust)
+- No upload modal needed
+- Clean separation of concerns
+- MongoDB handles all final data storage
+- Temp directory keeps WSL clean (user manages cleanup)
 
 **Trade-offs:**
-- Less modular (harder to scale to multiple machines later)
-- Node.js must handle Python subprocess management
-- Can refactor to Flask later if needed
+- Manual track.py execution step (acceptable for MVP)
+- Requires temp directory management by user
+- User must specify directory path via web UI
 
 ## Glossary
 
 - **PHALP**: Probabilistic Human Appearance, Location, and Pose tracker
 - **track.py**: 4D-Humans entry point that runs PHALP with HMR2 model
 - **HMR2**: Human Mesh Recovery 2.0 - 3D mesh recovery model
-- **Subprocess**: Node.js spawned Python process running track.py
+- **Temp_Directory**: WSL directory containing original video, output video, and pkl file
 - **Tracklet**: Continuous track of a person across multiple frames
 - **Ghost_Detection**: PHALP's predicted pose when detection fails
 - **SMPL**: Skinned Multi-Person Linear model - 6890 mesh vertices
-- **Pickle_Output**: Binary serialized Python object (.pkl file)
+- **Pickle_Output**: Binary serialized Python object (.pkl file) containing pose data
 - **Frame_Extraction**: Converting PHALP output to per-frame JSON
 - **Mesh_Data**: 3D vertices, faces, and camera parameters per frame
 
 ## Requirements
 
-### Requirement 1: Direct Subprocess Spawning
+### Requirement 1: Directory-Based Processing Endpoint
 
-**User Story:** As a backend developer, I want to spawn `track.py` directly from Node.js, so that I can process videos without Flask overhead.
-
-#### Acceptance Criteria
-
-1. WHEN a video is ready for processing, THE Backend SHALL spawn a subprocess: `python track.py video.source=/path/to/video.mp4`
-2. WHEN the subprocess is spawned, THE Backend SHALL set working directory to `/home/ben/pose-service/4D-Humans`
-3. WHEN track.py is running, THE Backend SHALL capture stdout/stderr output
-4. WHEN track.py completes, THE Backend SHALL check the exit code
-5. IF exit code is 0, THEN THE Backend SHALL proceed to parse output
-6. IF exit code is non-zero, THEN THE Backend SHALL return error with stderr message
-7. IF subprocess times out (>180 seconds), THEN THE Backend SHALL terminate it and return timeout error
-
-### Requirement 2: Pickle Output Parsing
-
-**User Story:** As a backend developer, I want to parse PHALP's `.pkl` output into JSON, so that I can store it in MongoDB.
+**User Story:** As a frontend user, I want to click a "Process" button, so that the backend automatically processes track.py output from the tmp folder.
 
 #### Acceptance Criteria
 
-1. WHEN track.py completes successfully, THE Backend SHALL locate the output `.pkl` file
-2. WHEN the `.pkl` file is found, THE Backend SHALL load it using Python subprocess (pickle module)
-3. WHEN parsing the pickle, THE Backend SHALL extract for each frame:
+1. WHEN the user clicks "Process" button, THE Frontend SHALL POST to `/api/video/process-directory`
+2. WHEN the backend receives the request, THE Backend SHALL look for files in `/tmp/video_processing/` directory
+3. WHEN the directory is accessed, THE Backend SHALL search for `.pkl` file in that directory
+4. IF `.pkl` file is not found, THEN THE Backend SHALL return HTTP 400 with error message
+5. IF `.pkl` file is found, THEN THE Backend SHALL proceed to parse it
+6. WHEN parsing completes, THE Backend SHALL store all frames in MongoDB
+7. WHEN storage completes, THE Backend SHALL return success response with video_id
+8. WHEN processing completes, THE Backend SHALL NOT delete the tmp directory (user manages cleanup)
+
+### Requirement 2: Pickle File Parsing
+
+**User Story:** As a backend developer, I want to parse PHALP's `.pkl` output into frame data, so that I can store it in MongoDB.
+
+#### Acceptance Criteria
+
+1. WHEN the `.pkl` file is found in the directory, THE Backend SHALL load it using Python's pickle module
+2. WHEN parsing the pickle, THE Backend SHALL extract for each frame:
    - Frame number and timestamp
    - SMPL parameters (betas, body_pose, global_orient)
    - 3D keypoints (45 joints)
@@ -67,10 +78,11 @@ This feature implements video-level PHALP processing by spawning `track.py` dire
    - Bounding box [x0, y0, w, h]
    - Track ID for each person
    - Detection confidence score
-4. WHEN a frame contains a ghost detection, THE response SHALL include `tracking_confidence` < 1.0
-5. WHEN a frame contains a direct detection, THE response SHALL include `tracking_confidence` = 1.0
-6. WHEN computing mesh vertices, THE system SHALL use SMPL parameters to generate 6890 vertices
-7. WHEN parsing completes, THE Backend SHALL return valid JSON (all numpy arrays converted to lists)
+3. WHEN a frame contains a ghost detection, THE response SHALL include `tracking_confidence` < 1.0
+4. WHEN a frame contains a direct detection, THE response SHALL include `tracking_confidence` = 1.0
+5. WHEN computing mesh vertices, THE system SHALL use SMPL parameters to generate 6890 vertices
+6. WHEN parsing completes, THE Backend SHALL return valid JSON (all numpy arrays converted to lists)
+7. WHEN the pkl file is parsed, THE Backend SHALL also read the original video file to extract metadata (fps, duration, resolution)
 
 ### Requirement 3: Frame-by-Frame Breakdown
 
@@ -110,16 +122,18 @@ This feature implements video-level PHALP processing by spawning `track.py` dire
 
 ### Requirement 5: Backend Integration
 
-**User Story:** As a backend developer, I want to integrate video processing into the upload flow, so that videos are automatically processed.
+**User Story:** As a backend developer, I want to integrate pkl parsing into the process endpoint, so that videos are processed when the user clicks "Process".
 
 #### Acceptance Criteria
 
-1. WHEN a video is uploaded via `/api/finalize-upload`, THE Backend SHALL save the video file to disk
-2. WHEN the video is saved, THE Backend SHALL spawn track.py subprocess
-3. WHEN track.py completes, THE Backend SHALL parse the `.pkl` output
-4. WHEN parsing completes, THE Backend SHALL store all frames in MongoDB
-5. WHEN storing completes, THE Backend SHALL return success response with video_id
-6. IF any step fails, THE Backend SHALL log error and return error response
+1. WHEN the user clicks "Process" button, THE Frontend SHALL POST to `/api/video/process-directory`
+2. WHEN the backend receives the request, THE Backend SHALL access `/tmp/video_processing/` directory
+3. WHEN the directory is accessed, THE Backend SHALL search for `.pkl` file
+4. WHEN the `.pkl` file is found, THE Backend SHALL parse it to extract frame data
+5. WHEN parsing completes, THE Backend SHALL store all frames in MongoDB
+6. WHEN storing completes, THE Backend SHALL return success response with video_id
+7. IF any step fails, THE Backend SHALL log error and return error response
+8. WHEN processing completes, THE Backend SHALL NOT delete the tmp directory (user manages cleanup)
 
 ### Requirement 6: Temporal Coherence
 
@@ -135,15 +149,15 @@ This feature implements video-level PHALP processing by spawning `track.py` dire
 
 ### Requirement 7: Performance
 
-**User Story:** As a DevOps engineer, I want video processing to complete in reasonable time, so that users don't wait excessively.
+**User Story:** As a DevOps engineer, I want pkl parsing and MongoDB storage to complete quickly, so that the user sees results immediately after clicking "Process".
 
 #### Acceptance Criteria
 
-1. WHEN processing a 140-frame video, THE system SHALL complete in under 2 minutes with GPU
-2. WHEN the first video is processed, THE system SHALL have models pre-loaded (no download delay)
-3. WHEN processing completes, THE system SHALL return results without requiring additional HTTP calls
-4. WHEN the GPU is available, THE system SHALL utilize CUDA for acceleration
-5. WHEN processing, THE system SHALL NOT block other backend operations (use async/await)
+1. WHEN the user clicks "Process", THE Backend SHALL parse pkl and store frames in under 5 seconds
+2. WHEN parsing completes, THE Backend SHALL return results without requiring additional HTTP calls
+3. WHEN the GPU is available, THE system SHALL utilize CUDA for acceleration (during manual track.py execution)
+4. WHEN processing, THE Backend SHALL NOT block other backend operations (use async/await)
+5. WHEN storing frames, THE Backend SHALL use batch insert for performance
 
 ### Requirement 8: Error Handling
 
@@ -151,17 +165,17 @@ This feature implements video-level PHALP processing by spawning `track.py` dire
 
 #### Acceptance Criteria
 
-1. IF video file is invalid, THEN THE Backend SHALL return HTTP 400 with error details
-2. IF subprocess times out, THEN THE Backend SHALL terminate it and return HTTP 500
-3. IF subprocess crashes, THEN THE Backend SHALL NOT crash the backend itself
-4. IF `.pkl` file is not found, THEN THE Backend SHALL return HTTP 500 with error
-5. IF `.pkl` parsing fails, THEN THE Backend SHALL return HTTP 500 with error
-6. IF MongoDB storage fails, THEN THE Backend SHALL return HTTP 500 with error
-7. WHEN an error occurs, THE Backend SHALL log full error details for debugging
+1. IF directory path is invalid, THEN THE Backend SHALL return HTTP 400 with error details
+2. IF `.pkl` file is not found in directory, THEN THE Backend SHALL return HTTP 400 with error message
+3. IF `.pkl` parsing fails, THEN THE Backend SHALL return HTTP 500 with error details
+4. IF original video file is not found, THEN THE Backend SHALL return HTTP 400 with error message
+5. IF MongoDB storage fails, THEN THE Backend SHALL return HTTP 500 with error details
+6. WHEN an error occurs, THE Backend SHALL log full error details for debugging
+7. IF any step fails, THE Backend SHALL NOT crash the backend itself
 
 ## Architecture Comparison
 
-### Current Architecture (Frame-by-Frame via Flask)
+### Old Architecture (Frame-by-Frame via Flask)
 
 ```
 Node.js Backend
@@ -181,29 +195,36 @@ Flask Wrapper
 Result: 90/140 frames (36% loss), jittery motion
 ```
 
-### New Architecture (Direct Subprocess - Option 3)
+### New Architecture (Directory-Based Processing - Option 3)
 
 ```
-Node.js Backend
-├─ Receive video upload
-├─ Save video file to disk
-├─ Spawn subprocess: python track.py video.source=/path/to/video.mp4
-├─ Wait for subprocess completion
-├─ Parse .pkl output to JSON
-├─ Store frames in MongoDB
-└─ Return success response
+User Terminal (WSL)
+├─ Place original video in /tmp/video_processing/
+├─ Run track.py manually: python track.py video.source=/tmp/video_processing/video.mp4 video.output_dir=/tmp/video_processing/ ...
+└─ track.py generates: output.mp4 (overlay) + results.pkl (pose data)
 
-track.py subprocess (4D-Humans)
-├─ Initialize HMR2_4dhuman (extends PHALP)
-├─ Call phalp_tracker.track() on entire video
-├─ PHALP internally:
-│  ├─ Extracts frames from video
-│  ├─ Runs ViTDet detection per frame
-│  ├─ Runs HMR2 on detected persons
-│  ├─ Maintains tracklets with appearance/location/pose features
-│  ├─ Predicts poses when detection fails (ghost detection)
-│  └─ Applies temporal smoothing
-└─ Output: results.pkl with all frame poses
+Directory Contents After track.py (/tmp/video_processing/)
+├─ video.mp4 (original)
+├─ output.mp4 (mesh overlay)
+└─ results.pkl (pose data)
+
+Web UI
+├─ User clicks "Process" button
+└─ Backend automatically processes /tmp/video_processing/
+
+Node.js Backend
+├─ Receive POST to /api/video/process-directory
+├─ Access /tmp/video_processing/ directory
+├─ Read .pkl file from directory
+├─ Parse pkl to extract frame data
+├─ Read original video for metadata (fps, duration, resolution)
+├─ Store all frames in MongoDB
+└─ Return success response with video_id
+
+MongoDB
+├─ Store frames collection with mesh data
+├─ Store video metadata
+└─ Frontend queries for rendering
 
 Result: 140/140 frames (0% loss), smooth motion, temporal coherence
 ```
@@ -214,12 +235,12 @@ For a 140-frame video:
 
 | Phase | Time | Notes |
 |-------|------|-------|
-| Subprocess spawn | 2-3s | Python startup + imports |
-| track.py execution | 60-120s | GPU batched processing (bottleneck) |
+| Manual track.py execution | 60-120s | GPU batched processing (user runs in terminal) |
 | .pkl parsing | 1-2s | Load and convert to JSON |
 | Frame breakdown | 50-100ms | Extract per-frame data |
 | MongoDB storage | 1-2s | Batch insert frames |
-| **Total** | **~65-127s** | Dominated by GPU processing |
+| **Backend Processing** | **~3-5s** | After user clicks "Process" |
+| **Total (user perspective)** | **~65-127s** | Dominated by manual track.py execution |
 
 **Concurrent capacity:** 1 video at a time (MVP - no queuing needed)
 
@@ -227,14 +248,15 @@ For a 140-frame video:
 
 ## Success Criteria
 
-1. Subprocess spawning implemented and functional
-2. `.pkl` output parsed to JSON format
+1. Directory validation implemented and functional
+2. `.pkl` file detection and parsing working
 3. 100% frame coverage achieved (0 frames lost)
 4. Temporal coherence verified (smooth motion in rendered mesh)
 5. Output format compatible with MongoDB schema
-6. Backend integration complete (finalize-upload uses direct processing)
+6. Backend endpoint `/api/video/process-directory` complete
 7. Error handling robust (no backend crashes)
 8. Multi-person tracking produces consistent track IDs
-9. Processing time under 2 minutes for 140-frame video with GPU
+9. Backend processing time under 5 seconds for 140-frame video
 10. All frames stored in MongoDB and queryable by frontend
+11. Temp directory remains intact after processing (user manages cleanup)
 
