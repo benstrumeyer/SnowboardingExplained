@@ -37,6 +37,7 @@ import framesRouter from './api/frames';
 import videosRouter from './api/videos';
 import finalizeUploadRouter from './api/finalize-upload';
 import meshDataRouter from './api/mesh-data';
+import processDirectoryRouter from './api/process-directory';
 
 // Load environment variables from .env.local
 const envPath = path.join(__dirname, '../../.env.local');
@@ -254,6 +255,9 @@ app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   } as ApiResponse<null>);
 });
 
+// Register process-directory endpoint
+app.use('/api/video', processDirectoryRouter);
+
 // Health check endpoint
 app.get('/api/health', (req: Request, res: Response) => {
   logger.info('Health check requested');
@@ -364,6 +368,7 @@ app.use('/api/frames', framesRouter);
 app.use('/api/videos', videosRouter);
 app.use('/api/mesh-data', meshDataRouter);
 app.use('/api/finalize-upload', finalizeUploadRouter);
+app.use('/api/video', processDirectoryRouter);
 
 // Chunked Video Upload Endpoints
 // Use shared volume if running in Docker, otherwise use system temp
@@ -846,73 +851,6 @@ app.post('/api/upload-video-with-pose', upload.single('video'), async (req: Requ
   }
 });
 
-// Endpoint to store mesh data from frontend
-app.post('/api/mesh-data/:videoId', express.json(), async (req: Request, res: Response) => {
-  try {
-    const { videoId } = req.params;
-    const meshData = req.body;
-
-    if (!videoId || !meshData) {
-      return res.status(400).json({ error: 'Missing videoId or mesh data' });
-    }
-
-    // Connect to MongoDB before saving
-    await meshDataService.connect();
-
-    await meshDataService.saveMeshData({
-      videoId,
-      videoUrl: meshData.videoUrl || `${req.protocol}://${req.get('host')}/videos/${videoId}`,
-      role: (meshData.role || 'rider') as 'rider' | 'coach',
-      fps: meshData.fps || 4,
-      videoDuration: meshData.videoDuration || 0,
-      frameCount: meshData.frameCount || meshData.frames?.length || 0,
-      totalFrames: meshData.totalFrames || meshData.frameCount || meshData.frames?.length || 0,
-      frames: meshData.frames || []
-    });
-
-    logger.info(`Stored mesh data for ${videoId}`);
-
-    res.status(200).json({
-      success: true,
-      message: `Mesh data stored for ${videoId}`
-    });
-  } catch (error: any) {
-    logger.error('Error storing mesh data:', error);
-    res.status(500).json({
-      error: 'Failed to store mesh data',
-      details: error.message
-    });
-  }
-});
-
-// Mesh data list endpoint (must come BEFORE /:videoId to avoid route conflict)
-app.get('/api/mesh-data/list', async (req: Request, res: Response) => {
-  try {
-    await meshDataService.connect();
-    const models = await meshDataService.getAllMeshData();
-
-    console.log(`[DEBUG] Mesh data list endpoint called`);
-    console.log(`[DEBUG] Found ${models.length} mesh data entries in MongoDB`);
-    models.forEach((model, idx) => {
-      console.log(`[DEBUG] Entry ${idx}: videoId=${model.videoId}, frameCount=${model.frameCount}, fps=${model.fps}, role=${model.role}`);
-    });
-
-    res.json({
-      success: true,
-      data: models,
-      timestamp: new Date().toISOString()
-    } as ApiResponse<any>);
-
-  } catch (err: any) {
-    logger.error(`[MESH-DATA-LIST] Error: ${err.message}`, { error: err });
-    res.status(500).json({
-      success: false,
-      error: err.message || 'Failed to list mesh data',
-      timestamp: new Date().toISOString()
-    } as ApiResponse<null>);
-  }
-});
-
 // DEBUG: Check what's in the database for a specific videoId
 app.get('/api/debug/mesh-db/:videoId', async (req: Request, res: Response) => {
   try {
@@ -958,128 +896,6 @@ app.get('/api/debug/mesh-db/:videoId', async (req: Request, res: Response) => {
       success: false,
       error: err.message
     });
-  }
-});
-
-// Endpoint to retrieve mesh data from MongoDB
-app.get('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
-  try {
-    const { videoId } = req.params;
-
-    console.log(`%c[API] 📥 Request for ${videoId}`, 'color: #00BFFF; font-weight: bold;');
-
-    await meshDataService.connect();
-    const meshData = await meshDataService.getMeshData(videoId);
-
-    if (!meshData) {
-      console.log(`%c[API] ❌ Not found: ${videoId}`, 'color: #FF0000;');
-      return res.status(404).json({
-        success: false,
-        error: `Mesh data not found for ${videoId}`,
-        timestamp: new Date().toISOString()
-      } as ApiResponse<null>);
-    }
-
-    console.log(`%c[API] ✅ Found: ${meshData.frames?.length || 0} frames`, 'color: #00FF00;');
-
-    // CRITICAL: Verify videoId matches
-    if (meshData.videoId !== videoId) {
-      console.error(`%c[API] ❌ MISMATCH: req=${videoId} got=${meshData.videoId}`, 'color: #FF0000; font-weight: bold;');
-    }
-
-    // Debug: Log first frame structure
-    if (meshData.frames && meshData.frames.length > 0) {
-      const firstFrame = meshData.frames[0] as any;
-      console.log(`%c[API] 📊 First frame structure:`, 'color: #00BFFF;', {
-        frameNumber: firstFrame.frameNumber || firstFrame.frameIndex,
-        timestamp: firstFrame.timestamp,
-        hasKeypoints: !!firstFrame.keypoints,
-        keypointCount: firstFrame.keypoints?.length || 0,
-        hasMeshVerticesData: !!firstFrame.mesh_vertices_data,
-        meshVerticesCount: firstFrame.mesh_vertices_data?.length || 0,
-        hasMeshFacesData: !!firstFrame.mesh_faces_data,
-        meshFacesCount: firstFrame.mesh_faces_data?.length || 0,
-        hasSkeleton: !!firstFrame.skeleton,
-        skeletonKeys: firstFrame.skeleton ? Object.keys(firstFrame.skeleton) : []
-      });
-    }
-
-    // Return unified MeshSequence format
-    const frames: SyncedFrame[] = meshData.frames.map((frame: any) => {
-      // Handle both DatabaseFrame and SyncedFrame formats
-      if ('frameIndex' in frame) {
-        // Already a SyncedFrame
-        return frame as SyncedFrame;
-      }
-      // Convert DatabaseFrame to SyncedFrame
-      const dbFrame = frame as DatabaseFrame;
-
-      // Transform keypoints to frontend format
-      const transformedKeypoints = (dbFrame.keypoints || []).map((kp: any, index: number) => {
-        // Handle both formats: { x, y, z, confidence, name } and { position: [x, y, z], ... }
-        const position: [number, number, number] = Array.isArray(kp.position)
-          ? kp.position
-          : [kp.x || 0, kp.y || 0, kp.z || 0];
-
-        return {
-          index,
-          name: kp.name || `keypoint_${index}`,
-          position,
-          confidence: kp.confidence || 0.5
-        };
-      });
-
-      return {
-        frameIndex: dbFrame.frameNumber,
-        timestamp: dbFrame.timestamp,
-        videoFrameData: {
-          offset: dbFrame.frameNumber
-        },
-        meshData: {
-          keypoints: transformedKeypoints,
-          skeleton: dbFrame.skeleton || [],
-          vertices: (dbFrame.mesh_vertices_data || []) as [number, number, number][],
-          faces: (dbFrame.mesh_faces_data || []) as [number, number, number][]
-        }
-      };
-    });
-
-    const meshSequence: MeshSequence = {
-      videoId: meshData.videoId,
-      videoUrl: meshData.videoUrl || `${req.protocol}://${req.get('host')}/videos/${videoId}`,
-      fps: meshData.fps,
-      videoDuration: meshData.videoDuration,
-      totalFrames: meshData.totalFrames || meshData.frameCount,
-      frames,
-      metadata: {
-        uploadedAt: meshData.createdAt || new Date(),
-        processingTime: 0,
-        extractionMethod: 'mediapipe'
-      }
-    };
-
-    console.log(`%c[API] 📤 Sending ${meshSequence.frames.length} frames`, 'color: #00BFFF;');
-    console.log(`%c[API] 📋 First frame keypoint count: ${meshSequence.frames[0]?.meshData?.keypoints?.length || 0}`, 'color: #00BFFF;');
-
-    // Set cache-busting headers to prevent browser/proxy caching
-    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate, max-age=0');
-    res.setHeader('Pragma', 'no-cache');
-    res.setHeader('Expires', '0');
-
-    res.json({
-      success: true,
-      data: meshSequence,
-      timestamp: new Date().toISOString()
-    } as ApiResponse<any>);
-
-  } catch (error: any) {
-    console.error(`%c[API] ❌ Error: ${error.message}`, 'color: #FF0000;');
-    logger.error('Error retrieving mesh data:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to retrieve mesh data',
-      timestamp: new Date().toISOString()
-    } as ApiResponse<null>);
   }
 });
 
@@ -2651,38 +2467,6 @@ app.get('/api/video/download', (req: Request, res: Response) => {
   } catch (error: any) {
     logger.error(`[DOWNLOAD] Error: ${error.message}`);
     res.status(500).json({ error: error.message });
-  }
-});
-
-// Delete mesh data endpoint
-app.delete('/api/mesh-data/:videoId', async (req: Request, res: Response) => {
-  try {
-    const { videoId } = req.params;
-
-    await meshDataService.connect();
-    const deleted = await meshDataService.deleteMeshData(videoId);
-
-    if (!deleted) {
-      return res.status(404).json({
-        success: false,
-        error: 'Mesh data not found',
-        timestamp: new Date().toISOString()
-      } as ApiResponse<null>);
-    }
-
-    res.json({
-      success: true,
-      data: { videoId, deleted: true },
-      timestamp: new Date().toISOString()
-    } as ApiResponse<any>);
-
-  } catch (err: any) {
-    logger.error(`[MESH-DATA-DELETE] Error: ${err.message}`, { error: err });
-    res.status(500).json({
-      success: false,
-      error: err.message || 'Failed to delete mesh data',
-      timestamp: new Date().toISOString()
-    } as ApiResponse<null>);
   }
 });
 

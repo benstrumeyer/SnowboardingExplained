@@ -12,6 +12,52 @@ const uploadDir = fs.existsSync('/shared/videos')
   : path.join(__dirname, '../../uploads');
 
 /**
+ * GET /api/mesh-data/list
+ * List all available videos
+ */
+router.get('/list', async (req: Request, res: Response) => {
+  try {
+    await connectToMongoDB();
+    const videos = await getAllVideos();
+
+    res.status(200).json({
+      success: true,
+      data: videos,
+      timestamp: new Date().toISOString(),
+    } as ApiResponse<any>);
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to retrieve video list',
+      timestamp: new Date().toISOString(),
+    } as ApiResponse<null>);
+  }
+});
+
+/**
+ * GET /api/mesh-data/
+ * List all available videos (root endpoint)
+ */
+router.get('/', async (req: Request, res: Response) => {
+  try {
+    await connectToMongoDB();
+    const videos = await getAllVideos();
+
+    res.status(200).json({
+      success: true,
+      data: videos,
+      timestamp: new Date().toISOString(),
+    } as ApiResponse<any>);
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to retrieve video list',
+      timestamp: new Date().toISOString(),
+    } as ApiResponse<null>);
+  }
+});
+
+/**
  * GET /api/mesh-data/:videoId
  * Retrieve mesh data for a video with all frames
  */
@@ -19,15 +65,12 @@ router.get('/:videoId', async (req: Request, res: Response) => {
   try {
     const { videoId } = req.params;
 
-    // console.log(`[MESH_DATA_ENDPOINT] 🚀 GET /api/mesh-data/${videoId}`);
-
     // Ensure MongoDB is connected
     await connectToMongoDB();
 
     // Get mesh sequence (transforms MongoDB data to frontend format)
+    // This now handles missing metadata gracefully
     const meshSequence = await getMeshSequence(videoId);
-
-    // console.log(`[MESH_DATA_ENDPOINT] ✓ Retrieved mesh sequence: ${meshSequence.totalFrames} frames`);
 
     res.status(200).json({
       success: true,
@@ -35,8 +78,6 @@ router.get('/:videoId', async (req: Request, res: Response) => {
       timestamp: new Date().toISOString(),
     } as ApiResponse<MeshSequence>);
   } catch (err: any) {
-    // console.error(`[MESH_DATA_ENDPOINT] ✗ Error: ${err.message}`);
-
     // Check if it's a "not found" error
     if (err.message.includes('not found') || err.message.includes('No frames')) {
       return res.status(404).json({
@@ -208,34 +249,6 @@ router.get('/:videoId/video/overlay', async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: 'Failed to stream overlay video',
-      timestamp: new Date().toISOString(),
-    } as ApiResponse<null>);
-  }
-});
-
-/**
- * GET /api/mesh-data/list
- * List all available videos
- */
-router.get('/', async (req: Request, res: Response) => {
-  try {
-    // console.log(`[MESH_DATA_ENDPOINT] 🚀 GET /api/mesh-data/list`);
-
-    const videos = await getAllVideos();
-
-    // console.log(`[MESH_DATA_ENDPOINT] ✓ Retrieved ${videos.length} videos`);
-
-    res.status(200).json({
-      success: true,
-      data: videos,
-      timestamp: new Date().toISOString(),
-    } as ApiResponse<any>);
-  } catch (err: any) {
-    // console.error(`[MESH_DATA_ENDPOINT] ✗ Error: ${err.message}`);
-
-    res.status(500).json({
-      success: false,
-      error: err.message || 'Failed to retrieve video list',
       timestamp: new Date().toISOString(),
     } as ApiResponse<null>);
   }
