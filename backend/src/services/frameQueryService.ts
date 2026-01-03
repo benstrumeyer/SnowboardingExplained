@@ -227,6 +227,43 @@ export async function getFrameRange(
   }
 }
 
+export async function storeFrames(videoId: string, frames: FrameData[]): Promise<void> {
+  if (!framesCollection) {
+    throw new Error('Frames collection not initialized');
+  }
+
+  if (frames.length === 0) {
+    console.log(`[FRAME_STORAGE] ⚠ No frames to store for videoId=${videoId}`);
+    return;
+  }
+
+  try {
+    console.log(`[FRAME_STORAGE] 🚀 Storing ${frames.length} frames for videoId=${videoId}`);
+
+    const now = new Date();
+    const documents = frames.map((frame) => ({
+      videoId,
+      frameNumber: frame.frameNumber,
+      timestamp: frame.timestamp,
+      persons: frame.persons,
+      createdAt: now,
+      updatedAt: now,
+    }));
+
+    const result = await framesCollection.insertMany(documents, { ordered: false });
+    console.log(`[FRAME_STORAGE] ✓ Inserted ${result.insertedCount} frames`);
+
+    if (result.insertedCount !== frames.length) {
+      console.warn(
+        `[FRAME_STORAGE] ⚠ Inserted ${result.insertedCount} of ${frames.length} frames`
+      );
+    }
+  } catch (err: any) {
+    console.error(`[FRAME_STORAGE] ✗ Failed to store frames: ${err.message}`);
+    throw err;
+  }
+}
+
 export async function closeMongoDB(): Promise<void> {
   if (mongoClient) {
     try {

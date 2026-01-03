@@ -1,7 +1,6 @@
-import { getAllFrames } from './frameStorageService';
 import { FrameData, PersonData } from './pickleParserService';
 import { MeshSequence, SyncedFrame, Keypoint, CameraParams } from '../types';
-import { getVideoMetadata } from './frameQueryService';
+import { getVideoMetadata, getAllFrames } from './frameQueryService';
 
 /**
  * Mesh Data Adapter Service
@@ -12,16 +11,25 @@ export async function getMeshSequence(videoId: string): Promise<MeshSequence> {
   console.log(`[MESH_ADAPTER] 🚀 Getting mesh sequence for videoId=${videoId}`);
 
   try {
-    // Get video metadata
+    // Get video metadata (optional - if not found, use defaults)
     console.log(`[MESH_ADAPTER] Fetching video metadata for videoId=${videoId}`);
-    const videoMetadata = await getVideoMetadata(videoId);
+    let videoMetadata = await getVideoMetadata(videoId);
 
     if (!videoMetadata) {
-      console.log(`[MESH_ADAPTER] ✗ Video metadata not found for videoId=${videoId}`);
-      throw new Error(`Video metadata not found for videoId=${videoId}`);
+      console.log(`[MESH_ADAPTER] ⚠ Video metadata not found, using defaults`);
+      videoMetadata = {
+        videoId,
+        filename: 'unknown.mp4',
+        fps: 30,
+        duration: 0,
+        resolution: [1920, 1080] as [number, number],
+        frameCount: 0,
+        createdAt: new Date(),
+        originalVideoPath: '',
+      };
+    } else {
+      console.log(`[MESH_ADAPTER] ✓ Got video metadata: fps=${videoMetadata.fps}, duration=${videoMetadata.duration}, frameCount=${videoMetadata.frameCount}`);
     }
-
-    console.log(`[MESH_ADAPTER] ✓ Got video metadata: fps=${videoMetadata.fps}, duration=${videoMetadata.duration}, frameCount=${videoMetadata.frameCount}`);
 
     // Get all frames from MongoDB
     console.log(`[MESH_ADAPTER] Fetching all frames for videoId=${videoId}`);
@@ -33,6 +41,10 @@ export async function getMeshSequence(videoId: string): Promise<MeshSequence> {
     }
 
     console.log(`[MESH_ADAPTER] ✓ Got ${frames.length} frames from MongoDB`);
+
+    // Update metadata with actual frame count
+    videoMetadata.frameCount = frames.length;
+    videoMetadata.duration = frames.length / (videoMetadata.fps || 30);
 
     // Transform frames to SyncedFrame format
     console.log(`[MESH_ADAPTER] Transforming ${frames.length} frames to SyncedFrame format`);
@@ -119,11 +131,12 @@ function transformPersonDataToKeypoints(personData: PersonData): Keypoint[] {
 
 /**
  * Transform camera parameters from storage format to frontend format
- * Data is already transformed at parse time, so just pass through
+ * SMPL mesh is already in normalized space, so scale should be 1.0
+ * Camera translation (tx, ty, tz) positions the mesh in 3D space
  */
 function transformCameraParams(camera: any): CameraParams {
   return {
-    scale: camera.focalLength || 1.0,
+    scale: 1.0,
     tx: camera.tx || 0,
     ty: camera.ty || 0,
     type: 'weak_perspective',
