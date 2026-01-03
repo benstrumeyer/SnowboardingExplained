@@ -6,9 +6,37 @@ A flexible grid-based viewer system where each cell independently displays eithe
 
 ## Architecture
 
+### High-Performance Deterministic Playback Model
+
+This architecture separates concerns into three layers:
+
+1. **PlaybackEngine** (Non-React) - Master clock, owns all timing
+2. **Zustand Store** (Thin Bridge) - UI state only, read-only from React
+3. **React Components** (UI Layer) - Render UI, never drive timing
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        App Container                         │
+│              PlaybackEngine (Master Clock)                   │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ playbackTime (authoritative)                            ││
+│  │ isPlaying, playbackSpeed                                ││
+│  │ Master RAF loop (one global loop)                       ││
+│  │ Drift correction, seek logic                            ││
+│  └─────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│              Zustand Store (UI Bridge)                       │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ playbackTime (read-only from React)                     ││
+│  │ isPlaying, playbackSpeed (UI state)                     ││
+│  │ gridRows, gridColumns, UI positions                     ││
+│  │ NO per-frame data, NO mesh data, NO vertex updates      ││
+│  └─────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    React UI Layer                            │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌──────────────────┐  ┌──────────────────────────────────┐ │
 │  │     Sidebar      │  │      Grid Layout Container       │ │
@@ -34,9 +62,191 @@ A flexible grid-based viewer system where each cell independently displays eithe
 │                        │  └──────────────┘ └──────────────┘│ │
 │                        └──────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│         Per-Scene RAF Samplers (Non-React)                  │
+│  ┌─────────────────────────────────────────────────────────┐│
+│  │ VideoCell RAF:                                          ││
+│  │   Read playbackTime from PlaybackEngine                 ││
+│  │   Compute: localTime = clamp(playbackTime - offset)    ││
+│  │   Set video.currentTime = localTime                    ││
+│  │                                                         ││
+│  │ MeshCell RAF:                                           ││
+│  │   Read playbackTime from PlaybackEngine                 ││
+│  │   Compute: localTime = clamp(playbackTime - offset)    ││
+│  │   Sample mesh frame data for localTime                 ││
+│  │   Upload to GPU via uniforms                           ││
+│  │   Render Three.js scene                                ││
+│  └─────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────┘
 ```
 
+### PlaybackEngine (Master Clock)
+
+Owns all timing logic, lives outside React:
+
+```typescript
+class PlaybackEngine {
+  private playbackTime: number;
+  private isPlaying: boolean;
+  private playbackSpeed: number;
+  private rafId: number | null;
+  private listeners: Set<PlaybackListener>;
+  private scenes: Map<string, SceneConfig>;
+
+  play(): void
+  pause(): void
+  seek(time: number): void
+  setSpeed(speed: number): void
+  getPlaybackTime(): number
+  getSceneLocalTime(sceneId: string): number
+  subscribe(listener: PlaybackListener): () => void
+}
+```
+
+**Responsibilities:**
+- Owns master RAF loop (one global loop for all scenes)
+- Maintains authoritative `playbackTime`
+- Handles play/pause/seek/speed
+- Notifies listeners of time changes
+- Computes per-scene local time using sliding window
+
+### Sliding Window Model
+
+Each scene has independent timing with synchronized playback:
+
+```typescript
+interface SceneConfig {
+  sceneId: string;
+  offset: number;           // When this scene starts relative to master time
+  windowStart: number;      // First frame index in this scene
+  windowDuration: number;   // Total duration of this scene
+}
+
+// Per-scene computation:
+localTime = clamp(
+  playbackTime - sceneOffset,
+  windowStart,
+  windowStart + windowDuration
+)
+```
+
+This enables:
+- Independent scene start times
+- Synchronized playback across all scenes
+- Fast scrubbing without recomputation
+- Deterministic frame selection
+
+### Zustand Store (Thin Bridge)
+
+Store only UI state, never per-frame data:
+
+```typescript
+interface GridStore {
+  // Playback state (read-only from React)
+  playbackTime: number;
+  isPlaying: boolean;
+  playbackSpeed: number;
+
+  // UI state
+  gridRows: number;
+  gridColumns: number;
+  cells: CellUIState[];
+  windowPositions: Map<string, { x: number; y: number }>;
+  collapsedStates: Map<string, boolean>;
+
+  // Actions (dispatch to PlaybackEngine)
+  play(): void;
+  pause(): void;
+  seek(time: number): void;
+  setSpeed(speed: number): void;
+}
+```
+
+**What NOT to store:**
+- Per-frame values
+- Mesh data
+- Vertex updates
+- Frame indices
+- Animation state
+
+### Per-Scene RAF Samplers
+
+Each scene runs its own RAF as a sampler loop (NOT a clock):
+
+**VideoCell Sampler:**
+```typescript
+function videoSampler(cellId: string, videoRef: HTMLVideoElement) {
+  const loop = () => {
+    const playbackTime = playbackEngine.getPlaybackTime();
+    const localTime = playbackEngine.getSceneLocalTime(cellId);
+    
+    videoRef.currentTime = localTime / 1000; // Convert ms to seconds
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+```
+
+**MeshCell Sampler:**
+```typescript
+function meshSampler(cellId: string, scene: THREE.Scene) {
+  const loop = () => {
+    const playbackTime = playbackEngine.getPlaybackTime();
+    const localTime = playbackEngine.getSceneLocalTime(cellId);
+    
+    const frameIndex = Math.floor(localTime / frameInterval);
+    const meshData = preloadedMeshData[frameIndex];
+    
+    // Update GPU via uniforms (not React props)
+    updateMeshUniforms(scene, meshData);
+    
+    renderer.render(scene, camera);
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+```
+
+**Key Rules:**
+- Never accumulate delta time
+- Never write to playbackTime
+- Only read from PlaybackEngine
+- Render immediately after sampling
+
 ## Components and Interfaces
+
+### PlaybackEngine
+
+Master clock that owns all timing logic.
+
+```typescript
+interface PlaybackState {
+  playbackTime: number;
+  isPlaying: boolean;
+  playbackSpeed: number;
+}
+
+interface SceneConfig {
+  sceneId: string;
+  offset: number;
+  windowStart: number;
+  windowDuration: number;
+}
+
+class PlaybackEngine {
+  play(): void;
+  pause(): void;
+  seek(time: number): void;
+  setSpeed(speed: number): void;
+  getPlaybackTime(): number;
+  getState(): PlaybackState;
+  getSceneLocalTime(sceneId: string): number;
+  registerScene(config: SceneConfig): void;
+  unregisterScene(sceneId: string): void;
+  subscribe(listener: PlaybackListener): () => void;
+}
+```
 
 ### GridLayout Component
 Manages the grid configuration and cell rendering.
@@ -56,63 +266,103 @@ interface CellState {
   contentType: 'empty' | 'video' | 'mesh';
   videoId?: string;
   modelId?: string;
-  playbackState: PlaybackState;
   isSynced: boolean;
   windowedControlsPosition: { x: number; y: number };
   isWindowedControlsCollapsed: boolean;
-}
-
-interface PlaybackState {
-  currentFrame: number;
-  isPlaying: boolean;
-  playbackSpeed: number;
-  totalFrames: number;
-  videoMode?: 'original' | 'overlay';
+  nametag?: string;
 }
 ```
 
 ### GridCell Component
-Individual cell that displays content and manages its own state.
+Individual cell that displays content. Does NOT manage timing—only renders UI and delegates to PlaybackEngine.
 
 ```typescript
 interface GridCellProps {
   cellId: string;
-  cellState: CellState;
-  sharedControls: SharedControlState;
-  onStateChange: (newState: CellState) => void;
-  onSharedControlsChange: (controls: SharedControlState) => void;
+}
+
+// Cell responsibilities:
+// - Render UI (windowed controls, scrubber, content area)
+// - Register with PlaybackEngine on mount
+// - Unregister on unmount
+// - Delegate timing to PlaybackEngine
+// - Never drive playback from React state
+```
+
+### VideoCell Sampler
+Non-React RAF loop that samples video playback.
+
+```typescript
+function useVideoSampler(
+  cellId: string,
+  videoRef: React.RefObject<HTMLVideoElement>,
+  enabled: boolean
+) {
+  useEffect(() => {
+    if (!enabled || !videoRef.current) return;
+
+    const unsubscribe = playbackEngine.subscribe(() => {
+      const localTime = playbackEngine.getSceneLocalTime(cellId);
+      videoRef.current!.currentTime = localTime / 1000;
+    });
+
+    return unsubscribe;
+  }, [cellId, enabled]);
+}
+```
+
+### MeshCell Sampler
+Non-React RAF loop that samples mesh data and updates GPU.
+
+```typescript
+function useMeshSampler(
+  cellId: string,
+  sceneRef: React.RefObject<THREE.Scene>,
+  meshDataRef: React.RefObject<MeshFrameData[]>,
+  enabled: boolean
+) {
+  useEffect(() => {
+    if (!enabled || !sceneRef.current || !meshDataRef.current) return;
+
+    const unsubscribe = playbackEngine.subscribe(() => {
+      const localTime = playbackEngine.getSceneLocalTime(cellId);
+      const frameIndex = Math.floor(localTime / frameInterval);
+      const meshData = meshDataRef.current![frameIndex];
+
+      updateMeshUniforms(sceneRef.current!, meshData);
+    });
+
+    return unsubscribe;
+  }, [cellId, enabled]);
 }
 ```
 
 ### WindowedControls Component
-Draggable control panel for each cell.
+Draggable control panel for each cell. Dispatches to PlaybackEngine, never manages timing.
 
 ```typescript
 interface WindowedControlsProps {
   cellId: string;
-  cellState: CellState;
-  position: { x: number; y: number };
-  isCollapsed: boolean;
-  onPositionChange: (pos: { x: number; y: number }) => void;
-  onCollapsedChange: (collapsed: boolean) => void;
   onLoadVideo: () => void;
   onLoadModel: () => void;
-  onSyncToggle: (synced: boolean) => void;
+  isVideoCell: boolean;
 }
 ```
 
 ### FrameScrubber Component
-Scrubber bar at the bottom of each cell for frame navigation.
+Scrubber bar at the bottom of each cell. Dispatches seek to PlaybackEngine.
 
 ```typescript
 interface FrameScrubberProps {
-  currentFrame: number;
+  cellId: string;
   totalFrames: number;
-  isPlaying: boolean;
-  onFrameChange: (frame: number) => void;
-  onDragStart: () => void;
-  onDragEnd: () => void;
+  onSeek: (frame: number) => void;
 }
+
+// Scrubbing strategy:
+// 1. On drag start: pause playback
+// 2. On drag: seek to frame (PlaybackEngine.seek)
+// 3. On drag end: resume playback
 ```
 
 ### MeshNametag Component
@@ -120,10 +370,12 @@ interface FrameScrubberProps {
 
 ```typescript
 interface MeshNametagProps {
-  text: string;
-  position: THREE.Vector3;
-  camera: THREE.Camera;
   scene: THREE.Scene;
+  camera: THREE.Camera;
+  text: string;
+  position?: [number, number, number];
+  fontSize?: number;
+  color?: string;
 }
 ```
 
@@ -132,14 +384,13 @@ Input field in windowed controls for managing mesh nametag text.
 
 ```typescript
 interface NametagControlsProps {
-  nametag: string;
   onNametagChange: (text: string) => void;
-  isVisible: boolean;
+  onColorChange?: (color: string) => void;
 }
 ```
 
 ### SharedControls Component
-Global controls in sidebar for synced cells.
+Global controls in sidebar for synced cells. Dispatches to PlaybackEngine.
 
 ```typescript
 interface SharedControlState {

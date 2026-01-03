@@ -1,0 +1,44 @@
+.frame-scrubber {
+  width: 100%;
+  height: 20px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.2);
+  border-top: 1px solid #333;
+  cursor: pointer;
+  user-select: none;
+}
+
+.scrubber-track {
+  width: 100%;
+  height: 4px;
+  background-color: #333;
+  border-radius: 2px;
+  position: relative;
+  overflow: hidden;
+}
+
+.scrubber-progress {
+  height: 100%;
+  background-color: #4ECDC4;
+  border-radius: 2px;
+  transition: width 0.05s linear;
+}
+
+.scrubber-thumb {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  background-color: #4ECDC4;
+  border-radius: 50%;
+  box-shadow: 0 0 4px rgba(78, 205, 196, 0.5);
+  transition: width 0.05s linear;
+}
+
+.frame-scrubber:hover .scrubber-thumb {
+  width: 10px;
+  height: 10px;
+}

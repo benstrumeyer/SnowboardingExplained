@@ -80,50 +80,65 @@ function App() {
       ) : (
         <>
           <div className="app-header">
-            <h1>Pose Overlay Viewer</h1>
-            <div className="header-controls">
-              <button
-                className="upload-btn rider-btn"
-                onClick={() => setUploadModalOpen('rider')}
-                title="Upload rider video"
-              >
-                🏂 Upload Rider
-              </button>
-              <button
-                className="upload-btn reference-btn"
-                onClick={() => setUploadModalOpen('reference')}
-                title="Upload reference/coach video"
-              >
-                👨‍🏫 Upload Reference
-              </button>
-              <ProcessButton
-                onSuccess={(videoId, frameCount) => {
-                  console.log(`Video processed: ${videoId} with ${frameCount} frames`);
-                  setRiderVideoId(videoId);
-                }}
-                onError={(error) => {
-                  console.error(`Processing error: ${error}`);
-                }}
-              />
-              <button
-                onClick={() => setShowFrameDataTest(true)}
-                style={{
-                  padding: '8px 16px',
-                  backgroundColor: '#666',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  marginLeft: '10px'
-                }}
-              >
-                🧪 Test Frame API
-              </button>
-            </div>
+            <h1 style={{ margin: '6px', fontSize: '24px' }}>SnowboardingExplained</h1>
           </div>
 
           <div className="app-content">
             <div className="sidebar">
+              <div className="sidebar-section">
+                <h3 className="sidebar-title">Upload Videos</h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <button
+                    className="upload-btn rider-btn"
+                    onClick={() => setUploadModalOpen('rider')}
+                    title="Upload rider video"
+                    style={{
+                      padding: '8px 12px',
+                      width: '100%',
+                      fontSize: '12px'
+                    }}
+                  >
+                    🏂 Upload Rider
+                  </button>
+                  <button
+                    className="upload-btn reference-btn"
+                    onClick={() => setUploadModalOpen('reference')}
+                    title="Upload reference/coach video"
+                    style={{
+                      padding: '8px 12px',
+                      width: '100%',
+                      fontSize: '12px'
+                    }}
+                  >
+                    👨‍🏫 Upload Reference
+                  </button>
+                  <ProcessButton
+                    onSuccess={(videoId, frameCount) => {
+                      console.log(`Video processed: ${videoId} with ${frameCount} frames`);
+                      setRiderVideoId(videoId);
+                    }}
+                    onError={(error) => {
+                      console.error(`Processing error: ${error}`);
+                    }}
+                  />
+                  <button
+                    onClick={() => setShowFrameDataTest(true)}
+                    style={{
+                      padding: '8px 12px',
+                      width: '100%',
+                      backgroundColor: '#666',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '12px'
+                    }}
+                  >
+                    🧪 Test Frame API
+                  </button>
+                </div>
+              </div>
+
               <div className="sidebar-section">
                 <h3 className="sidebar-title">Shared Camera Controls</h3>
 

@@ -87,20 +87,30 @@ export function PoseOverlayViewer({
     enabledKeypoints: new Set(),
   });
 
+  // Apply shared camera preset to both screens
+  useEffect(() => {
+    if (leftScreen.cameraService) {
+      leftScreen.cameraService.setPreset(_sharedCameraPreset);
+    }
+    if (rightScreen.cameraService) {
+      rightScreen.cameraService.setPreset(_sharedCameraPreset);
+    }
+  }, [_sharedCameraPreset, leftScreen.cameraService, rightScreen.cameraService]);
+
   // Load rider mesh into left screen
   // CRITICAL: Reload mesh when riderVideoId changes, even if mesh is already loaded
   // This fixes the stale mesh data issue where old mesh displays when switching videos
   useEffect(() => {
     if (!riderVideoId) return;
-    
+
     console.log(`%c[VIEWER] 🎬 Loading rider mesh for ${riderVideoId}`, 'color: #FF6B6B; font-weight: bold;');
-    
+
     // Clear previous mesh when videoId changes
     if (leftScreen.mesh && leftScreen.mesh.videoId !== riderVideoId) {
       console.log(`%c[VIEWER] 🗑️  Clearing old mesh (videoId: ${leftScreen.mesh.videoId})`, 'color: #FF6B6B;');
       setLeftScreen(prev => ({ ...prev, mesh: null }));
     }
-    
+
     fetchRiderMesh(riderVideoId)
       .then((mesh) => {
         console.log(`%c[VIEWER] ✅ Loaded rider mesh for ${riderVideoId}:`, 'color: #00FF00; font-weight: bold;');
@@ -131,15 +141,15 @@ export function PoseOverlayViewer({
   // This fixes the stale mesh data issue where old mesh displays when switching videos
   useEffect(() => {
     if (!referenceVideoId) return;
-    
+
     console.log(`%c[VIEWER] 🎬 Loading reference mesh for ${referenceVideoId}`, 'color: #4ECDC4; font-weight: bold;');
-    
+
     // Clear previous mesh when videoId changes
     if (rightScreen.mesh && rightScreen.mesh.videoId !== referenceVideoId) {
       console.log(`%c[VIEWER] 🗑️  Clearing old mesh (videoId: ${rightScreen.mesh.videoId})`, 'color: #4ECDC4;');
       setRightScreen(prev => ({ ...prev, mesh: null }));
     }
-    
+
     fetchReferenceMesh(referenceVideoId)
       .then((mesh) => {
         console.log(`%c[VIEWER] ✅ Loaded reference mesh for ${referenceVideoId}:`, 'color: #00FF00; font-weight: bold;');
@@ -180,7 +190,7 @@ export function PoseOverlayViewer({
     const maxLeftFrames = leftScreen.mesh?.frames?.length || 0;
     const maxRightFrames = rightScreen.mesh?.frames?.length || 0;
     const fps = leftScreen.mesh?.fps || rightScreen.mesh?.fps || 30;
-    
+
     // Time per frame in ms, adjusted for playback speed
     const frameDuration = (1000 / fps) / playbackSpeed;
 
@@ -210,7 +220,7 @@ export function PoseOverlayViewer({
       if (maxLeftFrames > 0 && leftAccumulator >= frameDuration) {
         const framesToAdvance = Math.floor(leftAccumulator / frameDuration);
         leftAccumulator -= framesToAdvance * frameDuration;
-        
+
         const nextFrame = (leftSceneFrame + framesToAdvance) % maxLeftFrames;
         onLeftSceneFrameChange(nextFrame);
       }
@@ -219,7 +229,7 @@ export function PoseOverlayViewer({
       if (maxRightFrames > 0 && rightAccumulator >= frameDuration) {
         const framesToAdvance = Math.floor(rightAccumulator / frameDuration);
         rightAccumulator -= framesToAdvance * frameDuration;
-        
+
         const nextFrame = (rightSceneFrame + framesToAdvance) % maxRightFrames;
         onRightSceneFrameChange(nextFrame);
       }
@@ -266,7 +276,7 @@ export function PoseOverlayViewer({
     const leftFrameCount = leftScreen.mesh?.frames?.length || 0;
     const rightFrameCount = rightScreen.mesh?.frames?.length || 0;
     const newTotalFrames = Math.max(leftFrameCount, rightFrameCount);
-    
+
     console.log('%c[VIEWER] 📊 Frame counts updated:', 'color: #FF6B6B; font-weight: bold;', {
       leftFrameCount,
       rightFrameCount,
@@ -276,7 +286,7 @@ export function PoseOverlayViewer({
       leftMeshFps: leftScreen.mesh?.fps,
       rightMeshFps: rightScreen.mesh?.fps
     });
-    
+
     onTotalFramesChange(newTotalFrames);
   }, [leftScreen.mesh, rightScreen.mesh, onTotalFramesChange]);
 
@@ -367,7 +377,7 @@ export function PoseOverlayViewer({
                       >
                         <div className="floating-section">
                           <label className="floating-label">Scene Controls</label>
-                          
+
                           {/* Visibility Toggle */}
                           <button
                             onClick={() => setLeftScreen(prev => ({ ...prev, isVisible: !prev.isVisible }))}
@@ -514,7 +524,7 @@ export function PoseOverlayViewer({
                         >
                           <div className="floating-section">
                             <label className="floating-label">Scene Controls</label>
-                            
+
                             {/* Opacity */}
                             <div style={{ marginBottom: '10px' }}>
                               <label style={{ display: 'block', marginBottom: '4px', fontSize: '10px', fontWeight: '600' }}>
@@ -575,7 +585,7 @@ export function PoseOverlayViewer({
                     >
                       <div className="floating-section">
                         <label className="floating-label">Scene Controls</label>
-                        
+
                         {/* Color */}
                         <div style={{ marginBottom: '10px' }}>
                           <label style={{ display: 'block', marginBottom: '4px', fontSize: '10px', fontWeight: '600' }}>Color</label>
@@ -675,7 +685,7 @@ export function PoseOverlayViewer({
                     >
                       <div className="floating-section">
                         <label className="floating-label">Left Mesh</label>
-                        
+
                         {/* Visibility Toggle */}
                         <button
                           onClick={() => setLeftScreen(prev => ({ ...prev, isVisible: !prev.isVisible }))}
@@ -723,7 +733,7 @@ export function PoseOverlayViewer({
 
                       <div className="floating-section">
                         <label className="floating-label">Right Mesh</label>
-                        
+
                         {/* Visibility Toggle */}
                         <button
                           onClick={() => setRightScreen(prev => ({ ...prev, isVisible: !prev.isVisible }))}

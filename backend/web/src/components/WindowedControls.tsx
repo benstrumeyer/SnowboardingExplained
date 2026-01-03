@@ -1,36 +1,30 @@
 import React, { useRef, useState } from 'react';
-import { CellState } from './GridLayout';
+import { useGridStore } from '../stores/gridStore';
 
 interface WindowedControlsProps {
   cellId: string;
-  cellState: CellState;
-  position: { x: number; y: number };
-  isCollapsed: boolean;
-  onPositionChange: (pos: { x: number; y: number }) => void;
-  onCollapsedChange: (collapsed: boolean) => void;
   onLoadVideo: () => void;
   onLoadModel: () => void;
-  onSyncToggle: (synced: boolean) => void;
-  onNametagChange: (nametag: string) => void;
   isVideoCell: boolean;
 }
 
 export function WindowedControls({
   cellId,
-  cellState,
-  position,
-  isCollapsed,
-  onPositionChange,
-  onCollapsedChange,
   onLoadVideo,
   onLoadModel,
-  onSyncToggle,
-  onNametagChange,
   isVideoCell,
 }: WindowedControlsProps) {
+  const cell = useGridStore((state) => state.cells.find((c) => c.id === cellId));
+  const setCellWindowPosition = useGridStore((state) => state.setCellWindowPosition);
+  const setCellWindowCollapsed = useGridStore((state) => state.setCellWindowCollapsed);
+  const setCellSynced = useGridStore((state) => state.setCellSynced);
+  const setCellNametag = useGridStore((state) => state.setCellNametag);
+
   const panelRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+
+  if (!cell) return null;
 
   const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest('button, input')) return;
@@ -48,10 +42,7 @@ export function WindowedControls({
   const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isDragging) return;
 
-    onPositionChange({
-      x: e.clientX - dragOffset.x,
-      y: e.clientY - dragOffset.y,
-    });
+    setCellWindowPosition(cellId, e.clientX - dragOffset.x, e.clientY - dragOffset.y);
   };
 
   const handleMouseUp = () => {
@@ -63,8 +54,8 @@ export function WindowedControls({
       ref={panelRef}
       style={{
         position: 'absolute',
-        top: `${position.y}px`,
-        left: `${position.x}px`,
+        top: `${cell.windowedControlsPosition.y}px`,
+        left: `${cell.windowedControlsPosition.x}px`,
         backgroundColor: '#222',
         border: '1px solid #444',
         borderRadius: '4px',
@@ -93,7 +84,7 @@ export function WindowedControls({
           Cell Controls
         </span>
         <button
-          onClick={() => onCollapsedChange(!isCollapsed)}
+          onClick={() => setCellWindowCollapsed(cellId, !cell.isWindowedControlsCollapsed)}
           style={{
             background: 'none',
             border: 'none',
@@ -103,11 +94,11 @@ export function WindowedControls({
             padding: '0 4px',
           }}
         >
-          {isCollapsed ? '▼' : '▲'}
+          {cell.isWindowedControlsCollapsed ? '▼' : '▲'}
         </button>
       </div>
 
-      {!isCollapsed && (
+      {!cell.isWindowedControlsCollapsed && (
         <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
           <button
             onClick={onLoadVideo}
@@ -153,8 +144,8 @@ export function WindowedControls({
           >
             <input
               type="checkbox"
-              checked={cellState.isSynced}
-              onChange={(e) => onSyncToggle(e.target.checked)}
+              checked={cell.isSynced}
+              onChange={(e) => setCellSynced(cellId, e.target.checked)}
               style={{ cursor: 'pointer' }}
             />
             Sync Scene
@@ -165,8 +156,8 @@ export function WindowedControls({
               <label style={{ color: '#999', fontSize: '11px' }}>Nametag</label>
               <input
                 type="text"
-                value={cellState.nametag || ''}
-                onChange={(e) => onNametagChange(e.target.value)}
+                value={cell.nametag || ''}
+                onChange={(e) => setCellNametag(cellId, e.target.value)}
                 placeholder="Enter nametag..."
                 style={{
                   padding: '6px 8px',

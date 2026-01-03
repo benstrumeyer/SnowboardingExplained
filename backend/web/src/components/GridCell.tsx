@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { CellState, SharedControlState } from './GridLayout';
+import { useGridStore } from '../stores/gridStore';
 import { WindowedControls } from './WindowedControls';
 import { FrameScrubber } from './FrameScrubber';
 import { VideoToggleDisplay } from './VideoToggleDisplay';
@@ -7,103 +7,58 @@ import { MeshViewer } from './MeshViewer';
 
 interface GridCellProps {
   cellId: string;
-  cellState: CellState;
-  sharedControls: SharedControlState;
-  onStateChange: (newState: CellState) => void;
-  onSharedControlsChange: (controls: SharedControlState) => void;
 }
 
-export function GridCell({
-  cellId,
-  cellState,
-  sharedControls,
-  onStateChange,
-  onSharedControlsChange,
-}: GridCellProps) {
-  const currentFrame = cellState.isSynced ? sharedControls.currentFrame : cellState.playbackState.currentFrame;
-  const isPlaying = cellState.isSynced ? sharedControls.isPlaying : cellState.playbackState.isPlaying;
-  const playbackSpeed = cellState.isSynced ? sharedControls.playbackSpeed : cellState.playbackState.playbackSpeed;
+export function GridCell({ cellId }: GridCellProps) {
+  const cell = useGridStore((state) => state.cells.find((c) => c.id === cellId));
+  const sharedControls = useGridStore((state) => state.sharedControls);
+  const setCellFrame = useGridStore((state) => state.setCellFrame);
+  const setCellPlaying = useGridStore((state) => state.setCellPlaying);
+  const setCellSpeed = useGridStore((state) => state.setCellSpeed);
+  const setCellSynced = useGridStore((state) => state.setCellSynced);
+  const setCellNametag = useGridStore((state) => state.setCellNametag);
+  const setCellWindowPosition = useGridStore((state) => state.setCellWindowPosition);
+  const setCellWindowCollapsed = useGridStore((state) => state.setCellWindowCollapsed);
+  const updateCell = useGridStore((state) => state.updateCell);
+
+  if (!cell) return null;
+
+  const currentFrame = cell.isSynced ? sharedControls.currentFrame : cell.playbackState.currentFrame;
+  const isPlaying = cell.isSynced ? sharedControls.isPlaying : cell.playbackState.isPlaying;
+  const playbackSpeed = cell.isSynced ? sharedControls.playbackSpeed : cell.playbackState.playbackSpeed;
 
   useEffect(() => {
-    if (cellState.isSynced) {
-      onStateChange({
-        ...cellState,
+    if (cell.isSynced) {
+      updateCell(cellId, {
+        ...cell,
         playbackState: {
-          ...cellState.playbackState,
+          ...cell.playbackState,
           currentFrame: sharedControls.currentFrame,
           isPlaying: sharedControls.isPlaying,
           playbackSpeed: sharedControls.playbackSpeed,
         },
       });
     }
-  }, [sharedControls.currentFrame, sharedControls.isPlaying, sharedControls.playbackSpeed, cellState.isSynced]);
+  }, [sharedControls.currentFrame, sharedControls.isPlaying, sharedControls.playbackSpeed, cell.isSynced]);
 
   const handleFrameChange = (frame: number) => {
-    const newState = {
-      ...cellState,
-      playbackState: {
-        ...cellState.playbackState,
-        currentFrame: frame,
-      },
-    };
-    onStateChange(newState);
-
-    if (cellState.isSynced) {
-      onSharedControlsChange({
-        ...sharedControls,
-        currentFrame: frame,
-      });
-    }
+    setCellFrame(cellId, frame);
   };
 
   const handlePlayPause = () => {
-    const newState = {
-      ...cellState,
-      playbackState: {
-        ...cellState.playbackState,
-        isPlaying: !isPlaying,
-      },
-    };
-    onStateChange(newState);
-
-    if (cellState.isSynced) {
-      onSharedControlsChange({
-        ...sharedControls,
-        isPlaying: !isPlaying,
-      });
-    }
+    setCellPlaying(cellId, !isPlaying);
   };
 
   const handleSpeedChange = (speed: number) => {
-    const newState = {
-      ...cellState,
-      playbackState: {
-        ...cellState.playbackState,
-        playbackSpeed: speed,
-      },
-    };
-    onStateChange(newState);
-
-    if (cellState.isSynced) {
-      onSharedControlsChange({
-        ...sharedControls,
-        playbackSpeed: speed,
-      });
-    }
+    setCellSpeed(cellId, speed);
   };
 
   const handleSyncToggle = (synced: boolean) => {
-    onStateChange({
-      ...cellState,
-      isSynced: synced,
-    });
+    setCellSynced(cellId, synced);
   };
 
   const handleNametagChange = (nametag: string) => {
-    onStateChange({
-      ...cellState,
-      nametag,
-    });
+    setCellNametag(cellId, nametag);
   };
 
   return (
@@ -120,7 +75,7 @@ export function GridCell({
         flexDirection: 'column',
       }}
     >
-      {cellState.contentType === 'empty' ? (
+      {cell.contentType === 'empty' ? (
         <div
           style={{
             flex: 1,
@@ -133,53 +88,26 @@ export function GridCell({
         >
           Empty Cell
         </div>
-      ) : cellState.contentType === 'video' ? (
+      ) : cell.contentType === 'video' ? (
         <>
           <WindowedControls
             cellId={cellId}
-            cellState={cellState}
-            position={cellState.windowedControlsPosition}
-            isCollapsed={cellState.isWindowedControlsCollapsed}
-            onPositionChange={(pos) =>
-              onStateChange({
-                ...cellState,
-                windowedControlsPosition: pos,
-              })
-            }
-            onCollapsedChange={(collapsed) =>
-              onStateChange({
-                ...cellState,
-                isWindowedControlsCollapsed: collapsed,
-              })
-            }
             onLoadVideo={() => { }}
             onLoadModel={() => { }}
-            onSyncToggle={handleSyncToggle}
-            onNametagChange={handleNametagChange}
             isVideoCell={true}
           />
           <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
             <VideoToggleDisplay
-              videoId={cellState.videoId || ''}
-              totalFrames={cellState.playbackState.totalFrames}
+              videoId={cell.videoId || ''}
+              totalFrames={cell.playbackState.totalFrames}
               currentFrame={currentFrame}
               isPlaying={isPlaying}
               fps={30}
-              videoMode={cellState.playbackState.videoMode || 'original'}
-              onVideoModeChange={(mode) =>
-                onStateChange({
-                  ...cellState,
-                  playbackState: {
-                    ...cellState.playbackState,
-                    videoMode: mode,
-                  },
-                })
-              }
             />
           </div>
           <FrameScrubber
             currentFrame={currentFrame}
-            totalFrames={cellState.playbackState.totalFrames}
+            totalFrames={cell.playbackState.totalFrames}
             isPlaying={isPlaying}
             onFrameChange={handleFrameChange}
             onDragStart={() => { }}
@@ -190,25 +118,8 @@ export function GridCell({
         <>
           <WindowedControls
             cellId={cellId}
-            cellState={cellState}
-            position={cellState.windowedControlsPosition}
-            isCollapsed={cellState.isWindowedControlsCollapsed}
-            onPositionChange={(pos) =>
-              onStateChange({
-                ...cellState,
-                windowedControlsPosition: pos,
-              })
-            }
-            onCollapsedChange={(collapsed) =>
-              onStateChange({
-                ...cellState,
-                isWindowedControlsCollapsed: collapsed,
-              })
-            }
             onLoadVideo={() => { }}
             onLoadModel={() => { }}
-            onSyncToggle={handleSyncToggle}
-            onNametagChange={handleNametagChange}
             isVideoCell={false}
           />
           <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
@@ -223,12 +134,12 @@ export function GridCell({
               riderOpacity={1}
               referenceColor="#4ECDC4"
               referenceOpacity={1}
-              nametag={cellState.nametag}
+              nametag={cell.nametag}
             />
           </div>
           <FrameScrubber
             currentFrame={currentFrame}
-            totalFrames={cellState.playbackState.totalFrames}
+            totalFrames={cell.playbackState.totalFrames}
             isPlaying={isPlaying}
             onFrameChange={handleFrameChange}
             onDragStart={() => { }}

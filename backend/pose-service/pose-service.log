@@ -1,0 +1,151 @@
+[2025-12-31 22:35:59,007] [DEBUG] matplotlib data path: /home/ben/repos/SnowboardingExplained/backend/pose-service/venv/lib/python3.10/site-packages/matplotlib/mpl-data
+[2025-12-31 22:35:59,014] [DEBUG] CONFIGDIR=/home/ben/.config/matplotlib
+[2025-12-31 22:35:59,016] [DEBUG] interactive is False
+[2025-12-31 22:35:59,016] [DEBUG] platform is linux
+[2025-12-31 22:35:59,229] [DEBUG] CACHEDIR=/home/ben/.cache/matplotlib
+[2025-12-31 22:35:59,232] [DEBUG] Using fontManager instance from /home/ben/.cache/matplotlib/fontlist-v390.json
+[2025-12-31 22:36:02,840] [INFO] No OpenGL_accelerate module loaded: No module named 'OpenGL_accelerate'
+[2025-12-31 22:36:03,219] [DEBUG] falling back to hashlib hashing: `pip install xxhash`for 50x faster cache checks
+[2025-12-31 22:36:03,901] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.GL_OBJECT_ATTACHED_OBJECTS_ARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.GL_OBJECT_DELETE_STATUS_ARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.GL_OBJECT_INFO_LOG_LENGTH_ARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.GL_OBJECT_SHADER_SOURCE_LENGTH_ARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.GL_OBJECT_SUBTYPE_ARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.GL_OBJECT_VALIDATE_STATUS_ARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.GL_PROGRAM_OBJECT_ARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.GL_SHADER_OBJECT_ARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.GLhalfARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.glAttachObjectARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.glDeleteObjectARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.glDetachObjectARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.glGetAttachedObjectsARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.glGetHandleARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.glGetInfoLogARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.glGetObjectParameterfvARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.glGetObjectParameterivARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.shader_objects.glInitShaderObjectsARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.fragment_shader.GLhalfARB
+[2025-12-31 22:36:03,902] [DEBUG] Found no alternate for: OpenGL.GL.ARB.fragment_shader.glInitFragmentShaderARB
+[2025-12-31 22:36:03,903] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_shader.GL_OBJECT_ACTIVE_ATTRIBUTES_ARB
+[2025-12-31 22:36:03,903] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_shader.GL_OBJECT_ACTIVE_ATTRIBUTE_MAX_LENGTH_ARB
+[2025-12-31 22:36:03,903] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_shader.GLhalfARB
+[2025-12-31 22:36:03,903] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_shader.base_glGetActiveAttribARB
+[2025-12-31 22:36:03,903] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_shader.glGetObjectParameterivARB
+[2025-12-31 22:36:03,903] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_shader.glInitVertexShaderARB
+[2025-12-31 22:36:03,903] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_CURRENT_MATRIX_ARB
+[2025-12-31 22:36:03,903] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_CURRENT_MATRIX_STACK_DEPTH_ARB
+[2025-12-31 22:36:03,903] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX0_ARB
+[2025-12-31 22:36:03,903] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX10_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX11_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX12_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX13_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX14_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX15_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX16_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX17_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX18_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX19_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX1_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX20_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX21_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX22_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX23_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX24_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX25_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX26_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX27_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX28_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX29_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX2_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX30_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX31_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX3_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX4_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX5_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX6_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX7_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX8_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MATRIX9_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_ADDRESS_REGISTERS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_ATTRIBS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_ENV_PARAMETERS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_INSTRUCTIONS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_LOCAL_PARAMETERS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_MATRICES_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_MATRIX_STACK_DEPTH_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_NATIVE_ADDRESS_REGISTERS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_NATIVE_ATTRIBS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_NATIVE_INSTRUCTIONS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_NATIVE_PARAMETERS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_NATIVE_TEMPORARIES_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_PARAMETERS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_MAX_PROGRAM_TEMPORARIES_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_ADDRESS_REGISTERS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_ATTRIBS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_BINDING_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_ERROR_POSITION_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_ERROR_STRING_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_FORMAT_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_FORMAT_ASCII_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_INSTRUCTIONS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_LENGTH_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_NATIVE_ADDRESS_REGISTERS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_NATIVE_ATTRIBS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_NATIVE_INSTRUCTIONS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_NATIVE_PARAMETERS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_NATIVE_TEMPORARIES_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_PARAMETERS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_STRING_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_TEMPORARIES_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_PROGRAM_UNDER_NATIVE_LIMITS_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_TRANSPOSE_CURRENT_MATRIX_ARB
+[2025-12-31 22:36:03,904] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GL_VERTEX_PROGRAM_ARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.GLhalfARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glBindProgramARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glDeleteProgramsARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glGenProgramsARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glGetProgramEnvParameterdvARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glGetProgramEnvParameterfvARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glGetProgramLocalParameterdvARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glGetProgramLocalParameterfvARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glGetProgramStringARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glGetProgramivARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glInitVertexProgramARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glProgramEnvParameter4dARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glProgramEnvParameter4dvARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glProgramEnvParameter4fARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glProgramEnvParameter4fvARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glProgramLocalParameter4dARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glProgramLocalParameter4dvARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glProgramLocalParameter4fARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glProgramLocalParameter4fvARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.vertex_program.glProgramStringARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.geometry_shader4.GL_FRAMEBUFFER_INCOMPLETE_LAYER_COUNT_ARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.geometry_shader4.GL_MAX_GEOMETRY_VARYING_COMPONENTS_ARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.geometry_shader4.GL_MAX_VERTEX_VARYING_COMPONENTS_ARB
+[2025-12-31 22:36:03,905] [DEBUG] Found no alternate for: OpenGL.GL.ARB.geometry_shader4.GLhalfARB
+[2025-12-31 22:36:03,906] [DEBUG] Found no alternate for: OpenGL.GL.ARB.geometry_shader4.glFramebufferTextureFaceARB
+[2025-12-31 22:36:03,906] [DEBUG] Found no alternate for: OpenGL.GL.ARB.geometry_shader4.glInitGeometryShader4ARB
+/home/ben/repos/SnowboardingExplained/backend/pose-service/venv/lib/python3.10/site-packages/timm/models/layers/__init__.py:48: FutureWarning: Importing from timm.models.layers is deprecated, please import via timm.layers
+  warnings.warn(f"Importing from {__name__} is deprecated, please import via timm.layers", FutureWarning)
+[2025-12-31 22:36:05,280] [DEBUG] open file: /home/ben/.cache/4DHumans/logs/train/multiruns/hmr2/0/checkpoints/epoch=35-step=1000000.ckpt
+/home/ben/repos/SnowboardingExplained/backend/pose-service/app.py:14: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  return _original_torch_load(*args, **kwargs)
+[2025-12-31 22:36:10,014] [INFO] Lightning automatically upgraded your loaded checkpoint from v1.8.1 to v2.6.0. To apply the upgrade to your files permanently, run `python -m pytorch_lightning.utilities.upgrade_checkpoint ../../../../.cache/4DHumans/logs/train/multiruns/hmr2/0/checkpoints/epoch=35-step=1000000.ckpt`
+[2025-12-31 22:36:18,268] [INFO] [ViTDet] Loading ViTDet detector (first run downloads ~2.7GB)...
+[2025-12-31 22:36:18,269] [INFO] [ViTDet] Step 1: Importing detectron2...
+[2025-12-31 22:36:18,380] [INFO] [ViTDet] ✓ detectron2 imported successfully
+[2025-12-31 22:36:18,380] [INFO] [ViTDet] Step 2: Importing HMR2 utilities...
+[2025-12-31 22:36:19,064] [INFO] [ViTDet] ✓ HMR2 utilities imported
+[2025-12-31 22:36:19,064] [INFO] [ViTDet] Step 3: Loading config file...
+[2025-12-31 22:36:19,074] [INFO] [ViTDet] Config path: /home/ben/repos/SnowboardingExplained/backend/pose-service/4D-Humans/hmr2/configs/cascade_mask_rcnn_vitdet_h_75ep.py
+[2025-12-31 22:36:19,080] [INFO] [ViTDet] Parsing LazyConfig...
+[2025-12-31 22:36:23,057] [INFO] [ViTDet] ✓ Config loaded
+[2025-12-31 22:36:23,057] [INFO] [ViTDet] Step 4: Configuring checkpoint and thresholds...
+[2025-12-31 22:36:23,058] [INFO] [ViTDet] ✓ Configuration complete
+[2025-12-31 22:36:23,058] [INFO] [ViTDet] Step 5: Creating DefaultPredictor_Lazy (this may take a minute)...
+[2025-12-31 22:36:23,058] [INFO] [ViTDet] Downloading model weights (~2.7GB on first run)...
+[2025-12-31 22:36:32,045] [INFO] [DetectionCheckpointer] Loading from https://dl.fbaipublicfiles.com/detectron2/ViTDet/COCO/cascade_mask_rcnn_vitdet_h/f328730692/model_final_f05665.pkl ...
+[2025-12-31 22:36:32,053] [INFO] URL https://dl.fbaipublicfiles.com/detectron2/ViTDet/COCO/cascade_mask_rcnn_vitdet_h/f328730692/model_final_f05665.pkl cached in /home/ben/.torch/iopath_cache/detectron2/ViTDet/COCO/cascade_mask_rcnn_vitdet_h/f328730692/model_final_f05665.pkl
+[2025-12-31 22:36:32,053] [INFO] [Checkpointer] Loading from /home/ben/.torch/iopath_cache/detectron2/ViTDet/COCO/cascade_mask_rcnn_vitdet_h/f328730692/model_final_f05665.pkl ...
+[2025-12-31 22:36:40,427] [INFO] Reading a file from 'Detectron2 ViTDet Model Zoo'

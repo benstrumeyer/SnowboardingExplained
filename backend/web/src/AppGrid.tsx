@@ -1,54 +1,26 @@
-import { useState } from 'react';
-import { GridLayout, CellState, SharedControlState } from './components/GridLayout';
+import { useGridStore } from './stores/gridStore';
+import { GridLayout } from './components/GridLayout';
 import { GridConfigControls } from './components/GridConfigControls';
 import { VideoUploadModal } from './components/VideoUploadModal';
 import { ModelsCardList } from './components/ModelsCardList';
+import { useState } from 'react';
 import './styles/App.css';
 
 function AppGrid() {
-  const [gridRows, setGridRows] = useState(1);
-  const [gridColumns, setGridColumns] = useState(2);
-  const [cells, setCells] = useState<CellState[]>(
-    Array.from({ length: 16 }, (_, i) => ({
-      id: `cell-${i}`,
-      contentType: 'empty' as const,
-      playbackState: {
-        currentFrame: 0,
-        isPlaying: false,
-        playbackSpeed: 1,
-        totalFrames: 0,
-        videoMode: 'original' as const,
-      },
-      isSynced: false,
-      windowedControlsPosition: { x: 10, y: 10 },
-      isWindowedControlsCollapsed: false,
-      nametag: '',
-    }))
-  );
-
-  const [sharedControls, setSharedControls] = useState<SharedControlState>({
-    currentFrame: 0,
-    playbackSpeed: 1,
-    cameraPreset: 'back',
-    isPlaying: false,
-  });
+  const gridRows = useGridStore((state) => state.gridRows);
+  const gridColumns = useGridStore((state) => state.gridColumns);
+  const sharedControls = useGridStore((state) => state.sharedControls);
+  const setGridDimensions = useGridStore((state) => state.setGridDimensions);
+  const updateSharedControls = useGridStore((state) => state.updateSharedControls);
 
   const [uploadModalOpen, setUploadModalOpen] = useState<'rider' | 'reference' | null>(null);
-  const [showFrameDataTest, setShowFrameDataTest] = useState(false);
-
-  const handleCellUpdate = (cellId: string, newState: CellState) => {
-    setCells((prevCells) =>
-      prevCells.map((cell) => (cell.id === cellId ? newState : cell))
-    );
-  };
 
   const handleGridResize = (rows: number, columns: number) => {
-    setGridRows(rows);
-    setGridColumns(columns);
+    setGridDimensions(rows, columns);
   };
 
-  const handleSharedControlsChange = (newControls: SharedControlState) => {
-    setSharedControls(newControls);
+  const handleSharedControlsChange = (updates: any) => {
+    updateSharedControls(updates);
   };
 
   return (
@@ -114,7 +86,7 @@ function AppGrid() {
                     <button
                       key={preset}
                       onClick={() =>
-                        setSharedControls({ ...sharedControls, cameraPreset: preset })
+                        handleSharedControlsChange({ cameraPreset: preset })
                       }
                       style={{
                         flex: '1 1 calc(50% - 2px)',
@@ -152,8 +124,7 @@ function AppGrid() {
                   type="checkbox"
                   checked={sharedControls.isPlaying}
                   onChange={(e) =>
-                    setSharedControls({
-                      ...sharedControls,
+                    handleSharedControlsChange({
                       isPlaying: e.target.checked,
                     })
                   }
@@ -171,8 +142,7 @@ function AppGrid() {
                   step="0.1"
                   value={sharedControls.playbackSpeed}
                   onChange={(e) =>
-                    setSharedControls({
-                      ...sharedControls,
+                    handleSharedControlsChange({
                       playbackSpeed: parseFloat(e.target.value),
                     })
                   }
@@ -192,14 +162,7 @@ function AppGrid() {
         </div>
 
         <div className="viewer-container">
-          <GridLayout
-            rows={gridRows}
-            columns={gridColumns}
-            cells={cells}
-            onCellUpdate={handleCellUpdate}
-            sharedControls={sharedControls}
-            onSharedControlsChange={handleSharedControlsChange}
-          />
+          <GridLayout />
         </div>
       </div>
 

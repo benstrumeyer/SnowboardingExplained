@@ -2,6 +2,7 @@ import { MeshFrame, SyncedFrame, CameraParams } from '../types';
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { CameraService } from '../services/cameraService';
+import { MeshNametag } from './MeshNametag';
 
 // Type guard to check if frame is SyncedFrame
 function isSyncedFrame(frame: MeshFrame | SyncedFrame): frame is SyncedFrame {
@@ -31,6 +32,7 @@ interface MeshViewerProps {
   enabledKeypoints?: Set<number>;
   showAngles?: boolean;
   onCameraServiceReady?: (service: CameraService) => void;
+  nametag?: string;
 }
 
 export function MeshViewer({
@@ -46,8 +48,9 @@ export function MeshViewer({
   referenceOpacity = 1,
   showTrackingLines = false,
   enabledKeypoints = new Set(),
-  showAngles = false, // TODO: Implement joint angle visualization
+  showAngles = false,
   onCameraServiceReady,
+  nametag,
 }: MeshViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -80,12 +83,13 @@ export function MeshViewer({
         0.1,
         1000
       );
-      camera.position.set(3, 3, 3);
-      camera.lookAt(0, 0, 0);
+      camera.position.set(0, 2, -5);
+      camera.lookAt(0, 0.5, 0);
       cameraRef.current = camera;
 
       // Initialize camera service
       cameraServiceRef.current = new CameraService(camera);
+      cameraServiceRef.current.setPreset('back');
       onCameraServiceReady?.(cameraServiceRef.current);
 
       // Renderer setup
@@ -194,7 +198,7 @@ export function MeshViewer({
     console.log('%c[MESH-UPDATE] ═══════════════════════════════════════', 'color: #FF00FF; font-weight: bold; font-size: 14px;');
     console.log('%c[MESH-UPDATE] 🎬 MESH UPDATE TRIGGERED', 'color: #FF00FF; font-weight: bold; font-size: 14px;');
     console.log('%c[MESH-UPDATE] ═══════════════════════════════════════', 'color: #FF00FF; font-weight: bold; font-size: 14px;');
-    
+
     console.log('%c[MESH-UPDATE] Input state:', 'color: #FF00FF;', {
       riderMeshExists: !!riderMesh,
       referenceMeshExists: !!referenceMesh,
@@ -225,23 +229,15 @@ export function MeshViewer({
         hasMeshData: 'meshData' in riderMesh,
         meshDataKeys: ('meshData' in riderMesh) ? Object.keys((riderMesh as SyncedFrame).meshData) : 'N/A'
       });
-      
+
       const mesh = createMeshFromFrame(riderMesh, riderColor);
       if (mesh) {
         console.log('%c[MESH-UPDATE] ✅ RIDER MESH CREATED', 'color: #00FF00; font-weight: bold; font-size: 13px;');
         mesh.name = 'mesh-rider';
-        
-        // Apply weak perspective camera positioning
-        // pred_cam = [scale, tx_norm, ty_norm] where tx, ty are in normalized image coordinates
-        const cameraParams = getCameraParams(riderMesh);
-        
-        if (cameraParams) {
-          console.log('%c[MESH-UPDATE] 📷 Applying weak perspective camera:', 'color: #00FF00;', cameraParams);
-          mesh.position.set(cameraParams.tx, cameraParams.ty, 0);
-        } else {
-          mesh.position.set(0, 0, 0);
-        }
-        
+
+        // Keep mesh centered at origin but raise slightly above floor
+        mesh.position.set(0, 0.5, 0);
+
         mesh.rotation.set(
           ((riderRotation.x * Math.PI) / 180) + Math.PI,
           (riderRotation.y * Math.PI) / 180,
@@ -274,17 +270,10 @@ export function MeshViewer({
       if (mesh) {
         console.log('%c[MESH-UPDATE] ✅ REFERENCE MESH CREATED', 'color: #00FFFF; font-weight: bold; font-size: 13px;');
         mesh.name = 'mesh-reference';
-        
-        // Apply weak perspective camera positioning
-        const cameraParams = getCameraParams(referenceMesh);
-        
-        if (cameraParams) {
-          console.log('%c[MESH-UPDATE] 📷 Applying weak perspective camera:', 'color: #00FFFF;', cameraParams);
-          mesh.position.set(cameraParams.tx + 2, cameraParams.ty, 0);
-        } else {
-          mesh.position.set(2, 0, 0);
-        }
-        
+
+        // Keep mesh centered at origin but raise slightly above floor
+        mesh.position.set(0, 0.5, 0);
+
         mesh.rotation.set(
           ((referenceRotation.x * Math.PI) / 180) + Math.PI,
           (referenceRotation.y * Math.PI) / 180,
@@ -318,7 +307,21 @@ export function MeshViewer({
     void showAngles;
   }, [riderMesh, referenceMesh, showRider, showReference, riderRotation, referenceRotation, riderColor, riderOpacity, referenceColor, referenceOpacity, showTrackingLines, enabledKeypoints, showAngles]);
 
-  return <div ref={containerRef} className="w-full h-full" />;
+  return (
+    <>
+      <div ref={containerRef} className="w-full h-full" />
+      {sceneRef.current && cameraRef.current && nametag && (
+        <MeshNametag
+          scene={sceneRef.current}
+          camera={cameraRef.current}
+          text={nametag}
+          position={[0, 2.5, 0]}
+          fontSize={64}
+          color="#4ECDC4"
+        />
+      )}
+    </>
+  );
 }
 
 function createMeshFromFrame(frame: MeshFrame | SyncedFrame, colorHex: string): THREE.Mesh | null {
@@ -331,7 +334,7 @@ function createMeshFromFrame(frame: MeshFrame | SyncedFrame, colorHex: string): 
   // Extract vertices and faces from either frame type
   let vertices: number[][];
   let faces: number[][];
-  
+
   if ('meshData' in frame) {
     // SyncedFrame type - mesh has already been processed through 2-pass transformation
     console.log('%c[MESH-CREATE] ✅ Detected SyncedFrame format', 'color: #00FF00;');
@@ -360,7 +363,7 @@ function createMeshFromFrame(frame: MeshFrame | SyncedFrame, colorHex: string): 
       hasFaces: !!meshFrame.faces
     });
   }
-  
+
   console.log('%c[MESH-CREATE] 📊 Extracted data:', 'color: #00FFFF;', {
     verticesLength: vertices?.length || 0,
     facesLength: faces?.length || 0,
@@ -371,7 +374,7 @@ function createMeshFromFrame(frame: MeshFrame | SyncedFrame, colorHex: string): 
   if (!vertices || vertices.length === 0) {
     console.warn('%c[MESH-CREATE] ⚠️  No vertices found, creating placeholder sphere', 'color: #FFAA00; font-weight: bold; font-size: 14px;');
     console.warn('%c[MESH-CREATE] Frame structure:', 'color: #FFAA00;', frame);
-    
+
     const colorNum = parseInt(colorHex.replace('#', ''), 16);
     const geometry = new THREE.SphereGeometry(0.5, 32, 32);
     const material = new THREE.MeshPhongMaterial({
@@ -438,7 +441,7 @@ function createMeshFromFrame(frame: MeshFrame | SyncedFrame, colorHex: string): 
     faceCount: faces?.length || 0,
     meshName: mesh.name
   });
-  
+
   return mesh;
 }
 

@@ -1,0 +1,112 @@
+.grid-cell {
+  display: flex;
+  flex-direction: column;
+  background-color: #222;
+  border: 1px solid #333;
+  border-radius: 6px;
+  overflow: hidden;
+  position: relative;
+  transition: border-color 0.2s;
+}
+
+.grid-cell:hover {
+  border-color: #444;
+}
+
+.cell-content {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #1a1a1a;
+  overflow: hidden;
+  position: relative;
+}
+
+.cell-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #666;
+  text-align: center;
+  padding: 20px;
+}
+
+.cell-empty-icon {
+  font-size: 32px;
+  opacity: 0.5;
+}
+
+.cell-empty-text {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.cell-empty-hint {
+  font-size: 10px;
+  color: #555;
+}
+
+.cell-video,
+.cell-mesh {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cell-video-placeholder,
+.cell-mesh-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: #999;
+  font-size: 12px;
+  text-align: center;
+  padding: 16px;
+}
+
+.cell-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background-color: rgba(0, 0, 0, 0.3);
+  border-top: 1px solid #333;
+}
+
+.cell-play-btn,
+.cell-overlay-btn {
+  padding: 4px 8px;
+  background-color: #333;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  transition: all 0.2s;
+}
+
+.cell-play-btn:hover,
+.cell-overlay-btn:hover {
+  background-color: #444;
+  border-color: #555;
+}
+
+.cell-play-btn.playing {
+  background-color: #4ECDC4;
+  border-color: #45B7B0;
+  color: #000;
+}
+
+.cell-frame-info {
+  flex: 1;
+  text-align: center;
+  font-size: 10px;
+  color: #999;
+}
