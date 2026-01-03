@@ -5,6 +5,8 @@ import { glob } from 'glob';
 import { parsePickleToFrames } from '../services/pickleParserService';
 import { extractVideoMetadata } from '../services/videoMetadataService';
 import { saveVideoMetadata, connectToMongoDB, storeFrames } from '../services/frameQueryService';
+import { extractBothVideoFrames } from '../services/videoFrameExtractor';
+import { storeVideoFrames, connectToMongoDB as connectVideoFramesMongo } from '../services/videoFrameStorage';
 
 const router = Router();
 const TEMP_DIR = '/tmp/video_processing';
@@ -56,6 +58,17 @@ router.post('/process-directory', async (req: Request, res: Response) => {
 
     const videoPath = videoFiles[0];
     console.log(`[PROCESS-DIRECTORY] ✓ Found video file: ${videoPath}`);
+
+    // 3b. Find overlay video file (track.py output)
+    console.log(`[PROCESS-DIRECTORY] 🔍 Searching for overlay video in ${TEMP_DIR}`);
+    const overlayVideoFiles = glob.sync(`${TEMP_DIR}/**/*.mp4`).filter((f) => f.includes('output') || f.includes('overlay'));
+    const overlayVideoPath = overlayVideoFiles.length > 0 ? overlayVideoFiles[0] : null;
+
+    if (overlayVideoPath) {
+      console.log(`[PROCESS-DIRECTORY] ✓ Found overlay video: ${overlayVideoPath}`);
+    } else {
+      console.log(`[PROCESS-DIRECTORY] ⚠ No overlay video found, will only process original`);
+    }
 
     // 4. Extract video metadata
     console.log(`[PROCESS-DIRECTORY] 📊 Extracting video metadata...`);
@@ -133,7 +146,7 @@ router.post('/process-directory', async (req: Request, res: Response) => {
         frameCount: parseResult.frameCount || 0,
         createdAt: new Date(),
         originalVideoPath: videoPath,
-        overlayVideoPath: undefined,
+        overlayVideoPath: overlayVideoPath || undefined,
       };
       await saveVideoMetadata(videoMetadata);
       console.log(`[PROCESS-DIRECTORY] ✓ Saved video metadata`);
@@ -141,7 +154,34 @@ router.post('/process-directory', async (req: Request, res: Response) => {
       console.log(`[PROCESS-DIRECTORY] ⚠ Failed to save video metadata: ${err.message}`);
     }
 
-    // 9. Return success
+    // 9. Extract and store video frames
+    console.log(`[PROCESS-DIRECTORY] 🎬 Extracting video frames...`);
+    try {
+      await connectVideoFramesMongo();
+
+      const fps = metadata.fps || 30;
+
+      if (overlayVideoPath && fs.existsSync(overlayVideoPath)) {
+        console.log(`[PROCESS-DIRECTORY] Extracting frames from both original and overlay videos`);
+        const { original, overlay } = await extractBothVideoFrames(videoPath, overlayVideoPath, fps);
+
+        await storeVideoFrames(videoId, original);
+        await storeVideoFrames(videoId, overlay);
+
+        console.log(`[PROCESS-DIRECTORY] ✓ Stored ${original.length} original + ${overlay.length} overlay frames`);
+      } else {
+        console.log(`[PROCESS-DIRECTORY] Extracting frames from original video only`);
+        const { original } = await extractBothVideoFrames(videoPath, videoPath, fps);
+
+        await storeVideoFrames(videoId, original);
+
+        console.log(`[PROCESS-DIRECTORY] ✓ Stored ${original.length} original frames`);
+      }
+    } catch (err: any) {
+      console.log(`[PROCESS-DIRECTORY] ⚠ Failed to extract/store video frames: ${err.message}`);
+    }
+
+    // 10. Return success
     console.log(`[PROCESS-DIRECTORY] ✓ Processing complete`);
     res.json({
       success: true,
