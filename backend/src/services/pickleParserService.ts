@@ -8,19 +8,25 @@ export interface FrameData {
 }
 
 export interface PersonData {
-  personId: number;
+  trackId: number;
   confidence: number;
-  tracked: boolean;
-  meshVertices?: number[][];
-  meshVertexCount?: number;
-  meshFaces?: number[][];
-  meshFaceCount?: number;
-  camera?: {
+  trackingConfidence: number;
+  smpl: {
+    betas: number[];
+    bodyPose: number[][];
+    globalOrient: number[][];
+  };
+  keypoints3d: number[][];
+  keypoints2d: number[][];
+  camera: {
     tx: number;
     ty: number;
     tz: number;
     focalLength: number;
   };
+  bbox: [number, number, number, number];
+  meshVertices: number[][];
+  meshFaces: number[][];
 }
 
 export interface ParsedPickleResult {
@@ -46,10 +52,12 @@ export async function parsePickleToFrames(
     let timeoutHandle: NodeJS.Timeout | null = null;
 
     try {
-      const pythonScriptPath = path.join(__dirname, 'pickle_parser.py');
+      const pythonScriptPath = path.join(__dirname, '../../../src/services/pickle_parser.py');
+      const pythonPath = path.join(__dirname, '../../../pose-service/venv/bin/python');
       console.log(`[PICKLE_PARSER] Python script: ${pythonScriptPath}`);
+      console.log(`[PICKLE_PARSER] Python executable: ${pythonPath}`);
 
-      const subprocess = spawn('python3', [pythonScriptPath, pklPath], {
+      const subprocess = spawn(pythonPath, [pythonScriptPath, pklPath], {
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: timeout,
       });
