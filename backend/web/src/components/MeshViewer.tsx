@@ -1,6 +1,7 @@
-import React, { useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useMeshSampler, MeshFrameData } from '../hooks/useMeshSampler';
+import { useVideoMeshSync } from '../hooks/useVideoMeshSync';
 import { MeshNametag } from './MeshNametag';
 
 interface MeshViewerProps {
@@ -8,6 +9,7 @@ interface MeshViewerProps {
   fps?: number;
   nametag?: string;
   modelId?: string;
+  videoRef?: React.RefObject<HTMLVideoElement>;
   onMetadataLoaded?: (fps: number, totalFrames: number) => void;
 }
 
@@ -18,6 +20,7 @@ export function MeshViewer({
   fps = 30,
   nametag,
   modelId = '',
+  videoRef,
   onMetadataLoaded,
 }: MeshViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -141,38 +144,14 @@ export function MeshViewer({
     };
   }, []);
 
-  useEffect(() => {
-    if (!modelId) return;
-
-    const loadMeshData = async () => {
-      try {
-        const response = await fetch(`${API_URL}/api/mesh-data/${modelId}`);
-        const data = await response.json();
-
-        if (data.frames && Array.isArray(data.frames)) {
-          const frames: MeshFrameData[] = data.frames.map((frame: any) => ({
-            frameNumber: frame.frameNumber,
-            vertices: new Float32Array(frame.vertices.flat ? frame.vertices.flat() : frame.vertices),
-            faces: new Uint32Array(frame.faces.flat ? frame.faces.flat() : frame.faces),
-            camera: frame.camera,
-          }));
-
-          meshDataRef.current = frames;
-
-          if (data.fps && data.frameCount) {
-            onMetadataLoaded?.(data.fps, data.frameCount);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to load mesh data:', error);
-      }
-    };
-
-    loadMeshData();
-  }, [modelId, onMetadataLoaded]);
-
-  useMeshSampler(cellId, meshDataRef, fps, true, (frame) => {
+  const updateMeshGeometry = (frame: MeshFrameData) => {
     if (!sceneRef.current) return;
+
+    console.log('[MeshViewer] Updating mesh geometry:', {
+      frameNumber: frame.frameNumber,
+      vertexCount: frame.vertices.length / 3,
+      faceCount: frame.faces.length / 3,
+    });
 
     if (meshRef.current) {
       sceneRef.current.remove(meshRef.current);
@@ -200,6 +179,72 @@ export function MeshViewer({
     mesh.position.set(0, 0.5, 0);
     sceneRef.current.add(mesh);
     meshRef.current = mesh;
+
+    console.log('[MeshViewer] Mesh added to scene');
+  };
+
+  useEffect(() => {
+    if (!modelId) return;
+
+    const loadMeshData = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/mesh-data/${modelId}`);
+        const data = await response.json();
+
+        console.log('[MeshViewer] Loaded mesh data:', { modelId, data });
+
+        if (data.data && data.data.frames && Array.isArray(data.data.frames)) {
+          const frames: MeshFrameData[] = data.data.frames.map((frame: any) => {
+            const meshData = frame.meshData || {};
+            const vertices = meshData.vertices || [];
+            const faces = meshData.faces || [];
+
+            return {
+              frameNumber: frame.frameIndex || 0,
+              vertices: new Float32Array(
+                Array.isArray(vertices[0])
+                  ? vertices.flat()
+                  : vertices
+              ),
+              faces: new Uint32Array(
+                Array.isArray(faces[0])
+                  ? faces.flat()
+                  : faces
+              ),
+              camera: meshData.cameraParams || {
+                tx: 0,
+                ty: 0,
+                tz: 0,
+                focal_length: 1.0,
+              },
+            };
+          });
+
+          console.log('[MeshViewer] Transformed frames:', {
+            count: frames.length,
+            firstFrame: frames[0],
+          });
+
+          meshDataRef.current = frames;
+
+          if (data.data.fps && data.data.totalFrames) {
+            onMetadataLoaded?.(data.data.fps, data.data.totalFrames);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load mesh data:', error);
+      }
+    };
+
+    loadMeshData();
+  }, [modelId, onMetadataLoaded]);
+
+  useMeshSampler(cellId, meshDataRef, fps, !videoRef, (frame) => {
+    updateMeshGeometry(frame);
+  });
+
+  useVideoMeshSync(videoRef, meshDataRef, fps, !!videoRef, (frame) => {
+    updateMeshGeometry(frame);
   });
 
   return (

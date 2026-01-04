@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useGridStore } from '../stores/gridStore';
 import { getGlobalPlaybackEngine, SceneConfig } from '../engine/PlaybackEngine';
 import { WindowedControls } from './WindowedControls';
