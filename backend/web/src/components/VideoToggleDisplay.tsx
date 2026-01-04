@@ -1,126 +1,127 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useVideoSampler } from '../hooks/useVideoSampler';
 import '../styles/VideoDisplay.css';
-
-interface VideoFrame {
-  frameNumber: number;
-  imageUrl: string;
-}
 
 interface VideoToggleDisplayProps {
   videoId: string;
-  totalFrames: number;
-  currentFrame: number;
-  isPlaying: boolean;
+  cellId: string;
   fps?: number;
+  onMetadataLoaded?: (fps: number, frameCount: number) => void;
 }
 
 const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3001';
 
 export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
   videoId,
-  totalFrames,
-  currentFrame,
-  isPlaying,
+  cellId,
   fps = 30,
+  onMetadataLoaded,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [showOverlay, setShowOverlay] = useState(false);
-  const [frames, setFrames] = useState<{ original: VideoFrame[]; overlay: VideoFrame[] }>({
-    original: [],
-    overlay: [],
-  });
   const [loading, setLoading] = useState(true);
+  const [actualFps, setActualFps] = useState(fps);
 
-  useEffect(() => {
-    const loadFrames = async () => {
-      try {
-        console.log(`[VIDEO_TOGGLE] Loading frames for videoId=${videoId}`);
-        setLoading(true);
+  const frameCache = useRef<Map<string, HTMLImageElement>>(new Map());
 
-        const originalFrames: VideoFrame[] = [];
-        const overlayFrames: VideoFrame[] = [];
-
-        for (let i = 0; i < totalFrames; i++) {
-          originalFrames.push({
-            frameNumber: i,
-            imageUrl: `${API_URL}/api/mesh-data/${videoId}/frame/${i}/original`,
-          });
-
-          overlayFrames.push({
-            frameNumber: i,
-            imageUrl: `${API_URL}/api/mesh-data/${videoId}/frame/${i}/overlay`,
-          });
-        }
-
-        setFrames({ original: originalFrames, overlay: overlayFrames });
-        console.log(`[VIDEO_TOGGLE] Loaded ${totalFrames} frame references`);
-        setLoading(false);
-      } catch (error) {
-        console.error(`[VIDEO_TOGGLE] Error loading frames:`, error);
-        setLoading(false);
-      }
-    };
-
-    loadFrames();
-  }, [videoId, totalFrames]);
-
-  useEffect(() => {
-    if (!canvasRef.current || frames.original.length === 0) return;
-
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const frameArray = showOverlay ? frames.overlay : frames.original;
-    const frameIndex = Math.min(currentFrame, frameArray.length - 1);
-    const frame = frameArray[frameIndex];
-
-    if (!frame) {
-      console.warn(`[VIDEO_TOGGLE] No frame at index ${frameIndex}`);
+  // Render a frame on the canvas
+  const renderFrame = useCallback((frameIndex: number) => {
+    if (!canvasRef.current) {
+      console.log('%c[VideoToggleDisplay] ⚠️  No canvas ref', 'color: #FF6B6B;');
       return;
     }
 
-    console.log(`[VIDEO_TOGGLE] Loading frame ${frameIndex}: ${frame.imageUrl}`);
+    if (frameIndex % 10 === 0 || frameIndex < 5) {
+      console.log('%c[VideoToggleDisplay] 🖼️  renderFrame:', 'color: #4ECDC4;', frameIndex);
+    }
 
+    const videoType = showOverlay ? 'overlay' : 'original';
+    const cacheKey = `${videoId}-${frameIndex}-${videoType}`;
+
+    // Use cached frame
+    if (frameCache.current.has(cacheKey)) {
+      const img = frameCache.current.get(cacheKey)!;
+      const ctx = canvasRef.current.getContext('2d');
+      if (ctx) ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
+      return;
+    }
+
+    // Load new frame
     const img = new Image();
-    img.crossOrigin = 'anonymous';
     img.onload = () => {
-      console.log(`[VIDEO_TOGGLE] ✓ Frame loaded: ${img.width}x${img.height}`);
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
+      frameCache.current.set(cacheKey, img);
+      const ctx = canvasRef.current?.getContext('2d');
+      if (ctx) ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
     };
-    img.onerror = (err) => {
-      console.error(`[VIDEO_TOGGLE] ✗ Failed to load frame: ${frame.imageUrl}`, err);
-      ctx.fillStyle = '#FF0000';
-      ctx.fillRect(0, 0, canvas.width || 360, canvas.height || 640);
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = '16px Arial';
-      ctx.fillText('Failed to load frame', 10, 30);
-    };
-    img.src = frame.imageUrl;
-  }, [currentFrame, showOverlay, frames]);
+    img.onerror = () => console.error('Failed to load frame', frameIndex, videoType);
+    img.src = `${API_URL}/api/mesh-data/${videoId}/frame/${frameIndex}/${videoType}`;
+  }, [videoId, showOverlay]);
 
-  if (loading) {
-    return (
-      <div className="video-display-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center', color: '#999' }}>
-          <div style={{ marginBottom: '10px' }}>Loading frames...</div>
-          <div style={{ fontSize: '12px' }}>({frames.original.length}/{totalFrames})</div>
-        </div>
-      </div>
-    );
-  }
+  // Subscribe to PlaybackEngine
+  useVideoSampler(cellId, canvasRef, true, renderFrame, actualFps);
+
+  // Fetch mesh metadata to get FPS
+  useEffect(() => {
+    const fetchMeshData = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/mesh-data/${videoId}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+
+        const fetchedFps = data.data?.fps || fps;
+        const frameCount = data.data?.frameCount || 0;
+        
+        setActualFps(fetchedFps);
+        if (onMetadataLoaded) {
+          onMetadataLoaded(fetchedFps, frameCount);
+        }
+        setLoading(false);
+      } catch (err) {
+        console.error('Failed to fetch mesh data', err);
+        setLoading(false);
+      }
+    };
+    fetchMeshData();
+  }, [videoId]);
+
+  // Clear cache when overlay toggles
+  useEffect(() => {
+    frameCache.current.clear();
+  }, [showOverlay]);
 
   return (
-    <div className="video-display-container" style={{ position: 'relative', width: '100%', height: '100%' }}>
+    <div
+      className="video-display-container"
+      style={{ position: 'relative', width: '100%', height: '100%' }}
+    >
+      {loading && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#000',
+            color: '#999',
+            zIndex: 5,
+          }}
+        >
+          Loading video...
+        </div>
+      )}
+
+      {/* ⚠️ Set explicit width & height attributes for proper canvas drawing */}
       <canvas
         ref={canvasRef}
+        width={640}
+        height={360}
         style={{
           width: '100%',
           height: '100%',
           objectFit: 'contain',
           backgroundColor: '#000',
+          display: 'block',
         }}
       />
 
@@ -152,10 +153,6 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
       >
         {showOverlay ? '🎬 Overlay' : '📹 Original'}
       </button>
-
-      <div className="video-frame-info">
-        Frame: {currentFrame} / {totalFrames}
-      </div>
     </div>
   );
 };

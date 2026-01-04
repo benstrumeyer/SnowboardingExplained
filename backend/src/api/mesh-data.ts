@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { getMeshSequence } from '../services/meshDataAdapter';
 import { getVideoMetadata, getAllVideos, connectToMongoDB } from '../services/frameQueryService';
-import { getVideoFrame, connectToMongoDB as connectVideoFramesMongo } from '../services/videoFrameStorage';
+import { getFrameBuffer, connectToMongoDB as connectFrameStreamMongo } from '../services/frameStreamService';
 import { ApiResponse, MeshSequence } from '../types';
 import fs from 'fs';
 import path from 'path';
@@ -98,22 +98,18 @@ router.get('/:videoId', async (req: Request, res: Response) => {
 
 /**
  * GET /api/mesh-data/:videoId/video/original
- * Stream original uploaded video
+ * Stream original video reconstructed from MongoDB frames
  */
 router.get('/:videoId/video/original', async (req: Request, res: Response) => {
   try {
     const { videoId } = req.params;
 
-    // console.log(`[MESH_DATA_ENDPOINT] 🚀 GET /api/mesh-data/${videoId}/video/original`);
-
-    // Ensure MongoDB is connected
     await connectToMongoDB();
+    await connectFrameStreamMongo();
 
-    // Get video metadata to find the file
     const metadata = await getVideoMetadata(videoId);
 
     if (!metadata) {
-      // console.log(`[MESH_DATA_ENDPOINT] ✗ Video metadata not found for videoId=${videoId}`);
       return res.status(404).json({
         success: false,
         error: `Video not found: ${videoId}`,
@@ -121,60 +117,113 @@ router.get('/:videoId/video/original', async (req: Request, res: Response) => {
       } as ApiResponse<null>);
     }
 
-    // Find the original video file
-    const extensions = ['.mp4', '.mov', '.webm', '.avi', '.mkv'];
-    let videoPath: string | null = null;
+    const frameCount = metadata.frameCount;
+    const fps = metadata.fps;
 
-    for (const ext of extensions) {
-      const testPath = path.join(uploadDir, videoId + ext);
-      if (fs.existsSync(testPath)) {
-        videoPath = testPath;
-        break;
+    res.setHeader('Content-Type', 'video/mp4');
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+
+    let frameIndex = 0;
+
+    const sendNextFrame = async () => {
+      if (frameIndex >= frameCount) {
+        res.end();
+        return;
       }
-    }
 
-    if (!videoPath) {
-      // console.log(`[MESH_DATA_ENDPOINT] ✗ Original video file not found for videoId=${videoId}`);
+      try {
+        const frameBuffer = await getFrameBuffer(videoId, frameIndex, false);
+
+        if (!frameBuffer) {
+          res.end();
+          return;
+        }
+
+        if (frameIndex === 0) {
+          res.write(frameBuffer);
+        } else {
+          res.write(frameBuffer);
+        }
+
+        frameIndex++;
+        setImmediate(sendNextFrame);
+      } catch (err) {
+        res.end();
+      }
+    };
+
+    sendNextFrame();
+  } catch (err: any) {
+    res.status(500).json({
+      success: false,
+      error: 'Failed to stream video',
+      timestamp: new Date().toISOString(),
+    } as ApiResponse<null>);
+  }
+});
+
+/**
+ * GET /api/mesh-data/:videoId/video/overlay
+ * Stream overlay video reconstructed from MongoDB frames
+ */
+router.get('/:videoId/video/overlay', async (req: Request, res: Response) => {
+  try {
+    const { videoId } = req.params;
+
+    await connectToMongoDB();
+    await connectFrameStreamMongo();
+
+    const metadata = await getVideoMetadata(videoId);
+
+    if (!metadata) {
       return res.status(404).json({
         success: false,
-        error: `Video file not found: ${videoId}`,
+        error: `Video not found: ${videoId}`,
         timestamp: new Date().toISOString(),
       } as ApiResponse<null>);
     }
 
-    // Stream the video
-    const stats = fs.statSync(videoPath);
-    const fileSize = stats.size;
+    const frameCount = metadata.frameCount;
 
     res.setHeader('Content-Type', 'video/mp4');
-    res.setHeader('Content-Length', fileSize);
     res.setHeader('Accept-Ranges', 'bytes');
     res.setHeader('Cache-Control', 'public, max-age=3600');
 
-    // Handle range requests for seeking
-    const range = req.headers.range;
-    if (range) {
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    let frameIndex = 0;
 
-      res.status(206);
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
-      res.setHeader('Content-Length', end - start + 1);
+    const sendNextFrame = async () => {
+      if (frameIndex >= frameCount) {
+        res.end();
+        return;
+      }
 
-      const stream = fs.createReadStream(videoPath, { start, end });
-      stream.pipe(res);
-    } else {
-      const stream = fs.createReadStream(videoPath);
-      stream.pipe(res);
-    }
+      try {
+        const frameBuffer = await getFrameBuffer(videoId, frameIndex, true);
 
-    // console.log(`[MESH_DATA_ENDPOINT] ✓ Streaming original video: ${videoId} (${fileSize} bytes)`);
+        if (!frameBuffer) {
+          res.end();
+          return;
+        }
+
+        if (frameIndex === 0) {
+          res.write(frameBuffer);
+        } else {
+          res.write(frameBuffer);
+        }
+
+        frameIndex++;
+        setImmediate(sendNextFrame);
+      } catch (err) {
+        res.end();
+      }
+    };
+
+    sendNextFrame();
   } catch (err: any) {
-    // console.error(`[MESH_DATA_ENDPOINT] ✗ Error streaming original video: ${err.message}`);
     res.status(500).json({
       success: false,
-      error: 'Failed to stream video',
+      error: 'Failed to stream overlay video',
       timestamp: new Date().toISOString(),
     } as ApiResponse<null>);
   }
@@ -233,7 +282,8 @@ router.delete('/:videoId', async (req: Request, res: Response) => {
 
 /**
  * GET /api/mesh-data/:videoId/frame/:frameNumber/:videoType
- * Retrieve a specific video frame (original or overlay)
+ * Retrieve a specific video frame (original or overlay) from MongoDB
+ * Optimized for RAF-synced playback with low latency
  */
 router.get('/:videoId/frame/:frameNumber/:videoType', async (req: Request, res: Response) => {
   try {
@@ -241,14 +291,11 @@ router.get('/:videoId/frame/:frameNumber/:videoType', async (req: Request, res: 
     const frameNum = parseInt(frameNumber, 10);
     const isMeshOverlay = videoType === 'overlay';
 
-    console.log(`[MESH_DATA] 🎬 GET /api/mesh-data/${videoId}/frame/${frameNum}/${videoType}`);
+    await connectFrameStreamMongo();
 
-    await connectVideoFramesMongo();
-
-    const imageBuffer = await getVideoFrame(videoId, frameNum, isMeshOverlay);
+    const imageBuffer = await getFrameBuffer(videoId, frameNum, isMeshOverlay);
 
     if (!imageBuffer) {
-      console.log(`[MESH_DATA] ✗ Frame not found: videoId=${videoId}, frameNumber=${frameNum}, videoType=${videoType}`);
       return res.status(404).json({
         success: false,
         error: `Frame not found: videoId=${videoId}, frameNumber=${frameNum}, videoType=${videoType}`,
@@ -256,16 +303,12 @@ router.get('/:videoId/frame/:frameNumber/:videoType', async (req: Request, res: 
       } as ApiResponse<null>);
     }
 
-    console.log(`[MESH_DATA] ✓ Returning frame: ${imageBuffer.length} bytes`);
     res.setHeader('Content-Type', 'image/png');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('Cache-Control', 'public, max-age=31536000');
     res.setHeader('Content-Length', imageBuffer.length);
+    res.setHeader('ETag', `"${videoId}-${frameNum}-${isMeshOverlay}"`);
 
-    if (Buffer.isBuffer(imageBuffer)) {
-      res.send(imageBuffer);
-    } else {
-      res.send(Buffer.from(imageBuffer));
-    }
+    res.send(imageBuffer);
   } catch (err: any) {
     console.error(`[MESH_DATA] ✗ Error retrieving frame: ${err.message}`);
     res.status(500).json({

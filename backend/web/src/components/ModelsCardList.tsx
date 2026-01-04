@@ -25,18 +25,43 @@ export const ModelsCardList: React.FC<ModelsCardListProps> = ({ onModelSelect, m
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    console.log('%c[ModelsCardList] 🚀 Initializing models list', 'color: #4ECDC4; font-weight: bold;', {
+      maxCards,
+      apiUrl: API_URL,
+    });
+
     loadModels();
     const interval = setInterval(loadModels, 5000);
-    return () => clearInterval(interval);
+    return () => {
+      console.log('%c[ModelsCardList] 🗑️  Cleaning up interval', 'color: #FF6B6B;');
+      clearInterval(interval);
+    };
   }, []);
 
   const loadModels = async () => {
     try {
-      const response = await axios.get(`${API_URL}/api/mesh-data/list`, {
+      const url = `${API_URL}/api/mesh-data/list`;
+      console.log('%c[ModelsCardList] 📡 Fetching models from:', 'color: #4ECDC4;', url);
+
+      const response = await axios.get(url, {
         timeout: 5000,
       });
-      
+
+      console.log('%c[ModelsCardList] ✅ Response received:', 'color: #00FF00; font-weight: bold;', {
+        status: response.status,
+        success: response.data.success,
+        dataCount: Array.isArray(response.data.data) ? response.data.data.length : 0,
+        fullResponse: response.data,
+      });
+
       if (response.data.success && Array.isArray(response.data.data)) {
+        console.log('%c[ModelsCardList] 📊 Processing models:', 'color: #00FF00;', response.data.data.map((m: any) => ({
+          videoId: m.videoId,
+          fps: m.fps,
+          frameCount: m.frameCount,
+          createdAt: m.createdAt,
+        })));
+
         const uniqueModels = new Map<string, Model>();
         response.data.data.forEach((model: Model) => {
           const existing = uniqueModels.get(model.videoId);
@@ -44,14 +69,30 @@ export const ModelsCardList: React.FC<ModelsCardListProps> = ({ onModelSelect, m
             uniqueModels.set(model.videoId, model);
           }
         });
-        setModels(Array.from(uniqueModels.values())
+
+        const sortedModels = Array.from(uniqueModels.values())
           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-          .slice(0, maxCards)
-        );
+          .slice(0, maxCards);
+
+        console.log('%c[ModelsCardList] ✅ Models loaded and sorted:', 'color: #00FF00;', sortedModels.map(m => ({
+          videoId: m.videoId,
+          fps: m.fps,
+          frameCount: m.frameCount,
+        })));
+
+        setModels(sortedModels);
         setError(null);
+      } else {
+        console.warn('%c[ModelsCardList] ⚠️  Invalid response format:', 'color: #FF6B6B;', {
+          success: response.data.success,
+          isArray: Array.isArray(response.data.data),
+        });
       }
     } catch (err) {
-      console.error('[MODELS] Error loading models:', err);
+      console.error('%c[ModelsCardList] ❌ Error loading models:', 'color: #FF0000; font-weight: bold;', {
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
       setError('Backend unavailable');
     } finally {
       setLoading(false);
@@ -61,12 +102,20 @@ export const ModelsCardList: React.FC<ModelsCardListProps> = ({ onModelSelect, m
   const handleRemoveModel = async (videoId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      await axios.delete(`${API_URL}/api/mesh-data/${videoId}`, {
+      const url = `${API_URL}/api/mesh-data/${videoId}`;
+      console.log('%c[ModelsCardList] 🗑️  Removing model:', 'color: #FF6B6B;', { videoId, url });
+
+      await axios.delete(url, {
         timeout: 5000,
       });
+
+      console.log('%c[ModelsCardList] ✅ Model removed:', 'color: #00FF00;', videoId);
       setModels(models.filter(m => m.videoId !== videoId));
     } catch (err) {
-      console.error('[MODELS] Error removing model:', err);
+      console.error('%c[ModelsCardList] ❌ Error removing model:', 'color: #FF0000; font-weight: bold;', {
+        videoId,
+        error: err instanceof Error ? err.message : String(err),
+      });
       alert('Failed to remove model');
     }
   };

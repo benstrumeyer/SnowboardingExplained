@@ -11,16 +11,15 @@ function AppGrid() {
   const gridColumns = useGridStore((state) => state.gridColumns);
   const sharedControls = useGridStore((state) => state.sharedControls);
   const setGridDimensions = useGridStore((state) => state.setGridDimensions);
-  const updateSharedControls = useGridStore((state) => state.updateSharedControls);
+  const setSharedCameraPreset = useGridStore((state) => state.setSharedCameraPreset);
+  const play = useGridStore((state) => state.play);
+  const pause = useGridStore((state) => state.pause);
+  const setSpeed = useGridStore((state) => state.setSpeed);
 
   const [uploadModalOpen, setUploadModalOpen] = useState<'rider' | 'reference' | null>(null);
 
   const handleGridResize = (rows: number, columns: number) => {
     setGridDimensions(rows, columns);
-  };
-
-  const handleSharedControlsChange = (updates: any) => {
-    updateSharedControls(updates);
   };
 
   return (
@@ -86,7 +85,7 @@ function AppGrid() {
                     <button
                       key={preset}
                       onClick={() =>
-                        handleSharedControlsChange({ cameraPreset: preset })
+                        setSharedCameraPreset(preset)
                       }
                       style={{
                         flex: '1 1 calc(50% - 2px)',
@@ -122,11 +121,8 @@ function AppGrid() {
               >
                 <input
                   type="checkbox"
-                  checked={sharedControls.isPlaying}
                   onChange={(e) =>
-                    handleSharedControlsChange({
-                      isPlaying: e.target.checked,
-                    })
+                    e.target.checked ? play() : pause()
                   }
                   style={{ cursor: 'pointer' }}
                 />
@@ -140,17 +136,11 @@ function AppGrid() {
                   min="0.5"
                   max="2"
                   step="0.1"
-                  value={sharedControls.playbackSpeed}
                   onChange={(e) =>
-                    handleSharedControlsChange({
-                      playbackSpeed: parseFloat(e.target.value),
-                    })
+                    setSpeed(parseFloat(e.target.value))
                   }
                   style={{ width: '100%', marginTop: '4px' }}
                 />
-                <div style={{ color: '#666', fontSize: '10px', marginTop: '2px' }}>
-                  {sharedControls.playbackSpeed.toFixed(1)}x
-                </div>
               </div>
             </div>
           </div>
