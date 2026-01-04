@@ -1,217 +1,60 @@
-import { MongoClient, Db, Collection, GridFSBucket } from 'mongodb';
-import dotenv from 'dotenv';
 import path from 'path';
-import logger from '../logger';
-import { castToVideoSequenceArray } from '../utils/mongoTypeGuards';
+import fs from 'fs/promises';
+import { existsSync } from 'fs';
 
-dotenv.config({ path: path.join(__dirname, '../../.env.local') });
-dotenv.config();
+const VIDEOS_DIR = path.join(process.cwd(), 'data', 'videos');
 
-interface VideoFrame {
-  frameIndex: number;
-  timestamp: number;
-  originalVideoFrame?: string; // base64 JPEG
-  meshOverlayFrame?: string; // base64 JPEG with 2D mesh overlay
-  meshData: {
-    keypoints: any[];
-    skeleton: any;
-  };
-}
-
-interface VideoSequence {
-  _id?: string;
-  videoId: string;
-  fps: number;
-  totalFrames: number;
-  videoDuration: number;
-  frames: VideoFrame[];
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-class VideoStorageService {
-  private client: MongoClient | null = null;
-  private db: Db | null = null;
-  private collection: Collection<VideoSequence> | null = null;
-  private gridFSBucket: GridFSBucket | null = null;
-  private mongoUrl: string;
-
-  constructor() {
-    this.mongoUrl = process.env.MONGODB_URI || 'mongodb://admin:password@localhost:27017/snowboarding?authSource=admin';
+export class VideoStorageService {
+  static async ensureVideoDir(videoId: string): Promise<string> {
+    const videoDir = path.join(VIDEOS_DIR, videoId);
+    await fs.mkdir(videoDir, { recursive: true });
+    return videoDir;
   }
 
-  async connect(): Promise<void> {
-    try {
-      if (this.client) {
-        return;
-      }
+  static getVideoPath(videoId: string, type: 'original' | 'overlay'): string {
+    return path.join(VIDEOS_DIR, videoId, `${type}.mp4`);
+  }
 
-      this.client = new MongoClient(this.mongoUrl);
-      await this.client.connect();
-      this.db = this.client.db('snowboarding');
-      this.collection = this.db.collection<VideoSequence>('video_sequences');
-      this.gridFSBucket = new GridFSBucket(this.db, { bucketName: 'video_frames' });
+  static getMetadataPath(videoId: string): string {
+    return path.join(VIDEOS_DIR, videoId, 'metadata.json');
+  }
 
-      // Create indexes
-      try {
-        await this.collection.createIndex({ videoId: 1 }, { unique: true });
-      } catch (err: any) {
-        if (err.codeName !== 'IndexKeySpecsConflict') {
-          throw err;
-        }
-      }
+  static async saveVideo(videoId: string, type: 'original' | 'overlay', buffer: Buffer): Promise<string> {
+    const videoDir = await this.ensureVideoDir(videoId);
+    const videoPath = path.join(videoDir, `${type}.mp4`);
+    await fs.writeFile(videoPath, buffer);
+    return videoPath;
+  }
 
-      logger.info('Connected to MongoDB for video storage');
-    } catch (err) {
-      logger.error('Failed to connect to MongoDB', { error: err });
-      throw err;
+  static async saveMetadata(videoId: string, metadata: any): Promise<void> {
+    const videoDir = await this.ensureVideoDir(videoId);
+    const metadataPath = path.join(videoDir, 'metadata.json');
+    await fs.writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+  }
+
+  static async getMetadata(videoId: string): Promise<any> {
+    const metadataPath = this.getMetadataPath(videoId);
+    if (!existsSync(metadataPath)) return null;
+    const data = await fs.readFile(metadataPath, 'utf-8');
+    return JSON.parse(data);
+  }
+
+  static async videoExists(videoId: string, type: 'original' | 'overlay'): Promise<boolean> {
+    const videoPath = this.getVideoPath(videoId, type);
+    return existsSync(videoPath);
+  }
+
+  static async deleteVideo(videoId: string): Promise<void> {
+    const videoDir = path.join(VIDEOS_DIR, videoId);
+    if (existsSync(videoDir)) {
+      await fs.rm(videoDir, { recursive: true, force: true });
     }
   }
 
-  /**
-   * Save complete video sequence with all frames
-   */
-  async saveVideoSequence(sequence: Omit<VideoSequence, '_id' | 'createdAt' | 'updatedAt'>): Promise<string> {
-    if (!this.collection) {
-      throw new Error('MongoDB not connected');
-    }
-
-    try {
-      const existing = await this.collection.findOne({ videoId: sequence.videoId });
-      if (existing) {
-        logger.info(`Video sequence already exists for ${sequence.videoId}, skipping`);
-        return sequence.videoId;
-      }
-
-      const now = new Date();
-      const data: VideoSequence = {
-        ...sequence,
-        createdAt: now,
-        updatedAt: now
-      };
-
-      await this.collection.updateOne(
-        { videoId: sequence.videoId },
-        { $set: data },
-        { upsert: true }
-      );
-
-      logger.info(`Saved video sequence for ${sequence.videoId}`, {
-        videoId: sequence.videoId,
-        totalFrames: sequence.totalFrames,
-        fps: sequence.fps,
-        dataSize: JSON.stringify(data).length
-      });
-
-      return sequence.videoId;
-    } catch (err) {
-      logger.error(`Failed to save video sequence for ${sequence.videoId}`, { error: err });
-      throw err;
-    }
-  }
-
-  /**
-   * Get complete video sequence with all frames
-   */
-  async getVideoSequence(videoId: string): Promise<VideoSequence | null> {
-    if (!this.collection) {
-      throw new Error('MongoDB not connected');
-    }
-
-    try {
-      const sequence = await this.collection.findOne({ videoId });
-
-      if (sequence) {
-        logger.info(`Retrieved video sequence for ${videoId}`, {
-          videoId,
-          totalFrames: sequence.totalFrames,
-          fps: sequence.fps
-        });
-      }
-
-      return sequence || null;
-    } catch (err) {
-      logger.error(`Failed to retrieve video sequence for ${videoId}`, { error: err });
-      throw err;
-    }
-  }
-
-  /**
-   * Get specific frame from video sequence
-   */
-  async getVideoFrame(videoId: string, frameIndex: number): Promise<VideoFrame | null> {
-    if (!this.collection) {
-      throw new Error('MongoDB not connected');
-    }
-
-    try {
-      const sequence = await this.collection.findOne(
-        { videoId },
-        { projection: { 'frames.$': 1 } }
-      );
-
-      if (sequence && sequence.frames && sequence.frames[0]) {
-        return sequence.frames[0];
-      }
-
-      return null;
-    } catch (err) {
-      logger.error(`Failed to retrieve frame ${frameIndex} from ${videoId}`, { error: err });
-      throw err;
-    }
-  }
-
-  /**
-   * Get all video sequences (for listing)
-   */
-  async getAllVideoSequences(): Promise<VideoSequence[]> {
-    if (!this.collection) {
-      throw new Error('MongoDB not connected');
-    }
-
-    try {
-      const sequences = await this.collection
-        .find({})
-        .project({ frames: 0 }) // Exclude frames for listing
-        .sort({ createdAt: -1 })
-        .toArray() as VideoSequence[];
-
-      logger.info(`Retrieved ${sequences.length} video sequences`);
-      return sequences;
-    } catch (err) {
-      logger.error('Failed to retrieve video sequences', { error: err });
-      throw err;
-    }
-  }
-
-  /**
-   * Delete video sequence
-   */
-  async deleteVideoSequence(videoId: string): Promise<boolean> {
-    if (!this.collection) {
-      throw new Error('MongoDB not connected');
-    }
-
-    try {
-      const result = await this.collection.deleteOne({ videoId });
-      logger.info(`Deleted video sequence for ${videoId}`);
-      return result.deletedCount > 0;
-    } catch (err) {
-      logger.error(`Failed to delete video sequence for ${videoId}`, { error: err });
-      throw err;
-    }
-  }
-
-  async disconnect(): Promise<void> {
-    if (this.client) {
-      await this.client.close();
-      this.client = null;
-      this.db = null;
-      this.collection = null;
-      this.gridFSBucket = null;
-      logger.info('Disconnected from MongoDB');
-    }
+  static async getVideoSize(videoId: string, type: 'original' | 'overlay'): Promise<number> {
+    const videoPath = this.getVideoPath(videoId, type);
+    if (!existsSync(videoPath)) return 0;
+    const stats = await fs.stat(videoPath);
+    return stats.size;
   }
 }
-
-export const videoStorageService = new VideoStorageService();

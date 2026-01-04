@@ -89,7 +89,7 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
 
       <video
         ref={originalVideoRef}
-        src={`${API_URL}/api/mesh-data/${videoId}/video/original`}
+        src={`${API_URL}/api/video/${videoId}/original`}
         style={{
           width: '100%',
           height: '100%',
@@ -103,7 +103,7 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
 
       <video
         ref={overlayVideoRef}
-        src={`${API_URL}/api/mesh-data/${videoId}/video/overlay`}
+        src={`${API_URL}/api/video/${videoId}/overlay`}
         style={{
           width: '100%',
           height: '100%',
