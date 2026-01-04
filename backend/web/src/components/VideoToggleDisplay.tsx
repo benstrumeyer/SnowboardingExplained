@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { useVideoSampler } from '../hooks/useVideoSampler';
+import React, { useEffect, useRef, useState } from 'react';
+import { getGlobalPlaybackEngine } from '../engine/PlaybackEngine';
 import '../styles/VideoDisplay.css';
 
 interface VideoToggleDisplayProps {
@@ -17,50 +17,14 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
   fps = 30,
   onMetadataLoaded,
 }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const originalVideoRef = useRef<HTMLVideoElement>(null);
+  const overlayVideoRef = useRef<HTMLVideoElement>(null);
   const [showOverlay, setShowOverlay] = useState(false);
   const [loading, setLoading] = useState(true);
   const [actualFps, setActualFps] = useState(fps);
 
-  const frameCache = useRef<Map<string, HTMLImageElement>>(new Map());
+  const engine = getGlobalPlaybackEngine();
 
-  // Render a frame on the canvas
-  const renderFrame = useCallback((frameIndex: number) => {
-    if (!canvasRef.current) {
-      console.log('%c[VideoToggleDisplay] ⚠️  No canvas ref', 'color: #FF6B6B;');
-      return;
-    }
-
-    if (frameIndex % 10 === 0 || frameIndex < 5) {
-      console.log('%c[VideoToggleDisplay] 🖼️  renderFrame:', 'color: #4ECDC4;', frameIndex);
-    }
-
-    const videoType = showOverlay ? 'overlay' : 'original';
-    const cacheKey = `${videoId}-${frameIndex}-${videoType}`;
-
-    // Use cached frame
-    if (frameCache.current.has(cacheKey)) {
-      const img = frameCache.current.get(cacheKey)!;
-      const ctx = canvasRef.current.getContext('2d');
-      if (ctx) ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
-      return;
-    }
-
-    // Load new frame
-    const img = new Image();
-    img.onload = () => {
-      frameCache.current.set(cacheKey, img);
-      const ctx = canvasRef.current?.getContext('2d');
-      if (ctx) ctx.drawImage(img, 0, 0, canvasRef.current.width, canvasRef.current.height);
-    };
-    img.onerror = () => console.error('Failed to load frame', frameIndex, videoType);
-    img.src = `${API_URL}/api/mesh-data/${videoId}/frame/${frameIndex}/${videoType}`;
-  }, [videoId, showOverlay]);
-
-  // Subscribe to PlaybackEngine
-  useVideoSampler(cellId, canvasRef, true, renderFrame, actualFps);
-
-  // Fetch mesh metadata to get FPS
   useEffect(() => {
     const fetchMeshData = async () => {
       try {
@@ -70,7 +34,7 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
 
         const fetchedFps = data.data?.fps || fps;
         const frameCount = data.data?.frameCount || 0;
-        
+
         setActualFps(fetchedFps);
         if (onMetadataLoaded) {
           onMetadataLoaded(fetchedFps, frameCount);
@@ -84,10 +48,22 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
     fetchMeshData();
   }, [videoId]);
 
-  // Clear cache when overlay toggles
   useEffect(() => {
-    frameCache.current.clear();
-  }, [showOverlay]);
+    const unsubscribe = engine.subscribe((state) => {
+      const localTime = engine.getSceneLocalTime(cellId);
+      const videoTime = localTime / 1000;
+
+      if (originalVideoRef.current && Math.abs(originalVideoRef.current.currentTime - videoTime) > 0.05) {
+        originalVideoRef.current.currentTime = videoTime;
+      }
+
+      if (overlayVideoRef.current && Math.abs(overlayVideoRef.current.currentTime - videoTime) > 0.05) {
+        overlayVideoRef.current.currentTime = videoTime;
+      }
+    });
+
+    return unsubscribe;
+  }, [cellId]);
 
   return (
     <div
@@ -111,18 +87,32 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
         </div>
       )}
 
-      {/* ⚠️ Set explicit width & height attributes for proper canvas drawing */}
-      <canvas
-        ref={canvasRef}
-        width={640}
-        height={360}
+      <video
+        ref={originalVideoRef}
+        src={`${API_URL}/api/mesh-data/${videoId}/video/original`}
         style={{
           width: '100%',
           height: '100%',
           objectFit: 'contain',
           backgroundColor: '#000',
-          display: 'block',
+          display: showOverlay ? 'none' : 'block',
         }}
+        loop
+        muted
+      />
+
+      <video
+        ref={overlayVideoRef}
+        src={`${API_URL}/api/mesh-data/${videoId}/video/overlay`}
+        style={{
+          width: '100%',
+          height: '100%',
+          objectFit: 'contain',
+          backgroundColor: '#000',
+          display: showOverlay ? 'block' : 'none',
+        }}
+        loop
+        muted
       />
 
       <button
