@@ -154,6 +154,41 @@ router.post('/process-directory', async (req: Request, res: Response) => {
       console.log(`[PROCESS-DIRECTORY] ⚠ Failed to save video metadata: ${err.message}`);
     }
 
+    // 8b. Move video files to persistent storage
+    console.log(`[PROCESS-DIRECTORY] 📁 Moving video files to persistent storage...`);
+    const videosDir = path.join(process.cwd(), 'data', 'videos', videoId);
+    try {
+      fs.mkdirSync(videosDir, { recursive: true });
+      console.log(`[PROCESS-DIRECTORY] ✓ Created video directory: ${videosDir}`);
+
+      const originalDestPath = path.join(videosDir, 'original.mp4');
+      fs.copyFileSync(videoPath, originalDestPath);
+      console.log(`[PROCESS-DIRECTORY] ✓ Copied original video to: ${originalDestPath}`);
+
+      if (overlayVideoPath && fs.existsSync(overlayVideoPath)) {
+        const overlayDestPath = path.join(videosDir, 'overlay.mp4');
+        fs.copyFileSync(overlayVideoPath, overlayDestPath);
+        console.log(`[PROCESS-DIRECTORY] ✓ Copied overlay video to: ${overlayDestPath}`);
+      }
+
+      console.log(`[PROCESS-DIRECTORY] ✓ Video files moved to persistent storage`);
+    } catch (err: any) {
+      console.error(`[PROCESS-DIRECTORY] ✗ Failed to move video files: ${err.message}`);
+      return res.status(500).json({
+        success: false,
+        error: `Failed to move video files: ${err.message}`,
+      });
+    }
+
+    // 8c. Clean up temporary directory
+    console.log(`[PROCESS-DIRECTORY] 🧹 Cleaning up temporary files...`);
+    try {
+      fs.rmSync(TEMP_DIR, { recursive: true, force: true });
+      console.log(`[PROCESS-DIRECTORY] ✓ Cleaned up temporary directory: ${TEMP_DIR}`);
+    } catch (err: any) {
+      console.warn(`[PROCESS-DIRECTORY] ⚠ Failed to clean up temporary directory: ${err.message}`);
+    }
+
     // 9. Extract and store video frames
     console.log(`[PROCESS-DIRECTORY] 🎬 Extracting video frames...`);
     try {
