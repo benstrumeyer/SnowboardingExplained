@@ -5,9 +5,10 @@ import path from 'path';
 
 const router = Router();
 
-router.get('/api/video/:videoId/:type', async (req: Request, res: Response) => {
+router.get('/:videoId/:type', async (req: Request, res: Response) => {
   try {
     const { videoId, type } = req.params;
+    console.log(`[VIDEO-STREAM] GET /:videoId/:type - videoId=${videoId}, type=${type}`);
 
     if (type !== 'original' && type !== 'overlay') {
       return res.status(400).json({ error: 'Invalid video type' });
@@ -16,7 +17,10 @@ router.get('/api/video/:videoId/:type', async (req: Request, res: Response) => {
     const videoPath = VideoStorageService.getVideoPath(videoId, type);
     const exists = await VideoStorageService.videoExists(videoId, type);
 
+    console.log(`[VIDEO-STREAM] videoPath=${videoPath}, exists=${exists}`);
+
     if (!exists) {
+      console.log(`[VIDEO-STREAM] ✗ Video not found`);
       return res.status(404).json({ error: 'Video not found' });
     }
 

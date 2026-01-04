@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { getGlobalPlaybackEngine } from '../engine/PlaybackEngine';
 import '../styles/VideoDisplay.css';
 
 interface VideoToggleDisplayProps {
@@ -23,8 +22,6 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
   const [loading, setLoading] = useState(true);
   const [actualFps, setActualFps] = useState(fps);
 
-  const engine = getGlobalPlaybackEngine();
-
   useEffect(() => {
     const fetchMeshData = async () => {
       try {
@@ -47,23 +44,6 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
     };
     fetchMeshData();
   }, [videoId]);
-
-  useEffect(() => {
-    const unsubscribe = engine.subscribe((state) => {
-      const localTime = engine.getSceneLocalTime(cellId);
-      const videoTime = localTime / 1000;
-
-      if (originalVideoRef.current && Math.abs(originalVideoRef.current.currentTime - videoTime) > 0.05) {
-        originalVideoRef.current.currentTime = videoTime;
-      }
-
-      if (overlayVideoRef.current && Math.abs(overlayVideoRef.current.currentTime - videoTime) > 0.05) {
-        overlayVideoRef.current.currentTime = videoTime;
-      }
-    });
-
-    return unsubscribe;
-  }, [cellId]);
 
   return (
     <div
@@ -95,10 +75,13 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
           height: '100%',
           objectFit: 'contain',
           backgroundColor: '#000',
-          display: showOverlay ? 'none' : 'block',
+          position: 'absolute',
+          opacity: showOverlay ? 0 : 1,
+          pointerEvents: showOverlay ? 'none' : 'auto',
         }}
         loop
         muted
+        controls
       />
 
       <video
@@ -109,10 +92,13 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
           height: '100%',
           objectFit: 'contain',
           backgroundColor: '#000',
-          display: showOverlay ? 'block' : 'none',
+          position: 'absolute',
+          opacity: showOverlay ? 1 : 0,
+          pointerEvents: showOverlay ? 'auto' : 'none',
         }}
         loop
         muted
+        controls
       />
 
       <button

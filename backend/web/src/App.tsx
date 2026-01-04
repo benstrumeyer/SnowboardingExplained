@@ -25,6 +25,40 @@ function App() {
       <div className="app-content">
         <div className="sidebar">
           <div className="sidebar-section">
+            <h3 className="sidebar-title">Process Videos</h3>
+            <button
+              style={{
+                padding: '8px 12px',
+                width: '100%',
+                fontSize: '12px',
+                backgroundColor: '#95E1D3',
+                color: '#000',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontWeight: '600',
+              }}
+              onClick={async () => {
+                try {
+                  const response = await fetch('http://localhost:3001/api/video/process-directory', {
+                    method: 'POST',
+                  });
+                  const result = await response.json();
+                  if (result.success) {
+                    alert(`✓ Processed ${result.processedCount} video(s)`);
+                  } else {
+                    alert(`✗ ${result.error || 'Processing failed'}`);
+                  }
+                } catch (err) {
+                  alert(`✗ Error: ${err}`);
+                }
+              }}
+            >
+              ⚙️ Process Videos
+            </button>
+          </div>
+
+          <div className="sidebar-section">
             <h3 className="sidebar-title">Grid Configuration</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>

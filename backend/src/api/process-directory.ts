@@ -9,133 +9,69 @@ import { extractBothVideoFrames } from '../services/videoFrameExtractor';
 import { storeVideoFrames, connectToMongoDB as connectVideoFramesMongo } from '../services/videoFrameStorage';
 
 const router = Router();
-const TEMP_DIR = '/tmp/video_processing';
+const UNPROCESSED_DIR = path.join(process.cwd(), 'data', 'unprocessedvideos');
+const VIDEOS_DIR = path.join(process.cwd(), 'data', 'videos');
 
 function generateVideoId(): string {
   return `v_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-router.post('/process-directory', async (req: Request, res: Response) => {
-  console.log(`[PROCESS-DIRECTORY] 🚀 POST /api/video/process-directory`);
-
+async function processUnprocessedVideo(unprocessedPath: string): Promise<{ success: boolean; videoId?: string; error?: string }> {
   try {
-    // 1. Validate directory exists
-    if (!fs.existsSync(TEMP_DIR)) {
-      console.log(`[PROCESS-DIRECTORY] ✗ Directory not found: ${TEMP_DIR}`);
-      return res.status(400).json({
-        success: false,
-        error: `Directory not found: ${TEMP_DIR}`,
-      });
-    }
-    console.log(`[PROCESS-DIRECTORY] ✓ Directory exists: ${TEMP_DIR}`);
+    console.log(`[PROCESS-DIRECTORY] Processing unprocessed video: ${unprocessedPath}`);
 
-    // 2. Find .pkl file
-    console.log(`[PROCESS-DIRECTORY] 🔍 Searching for .pkl file in ${TEMP_DIR}`);
-    const pklFiles = glob.sync(`${TEMP_DIR}/**/*.pkl`);
-
+    const pklFiles = glob.sync(`${unprocessedPath}/**/*.pkl`);
     if (pklFiles.length === 0) {
-      console.log(`[PROCESS-DIRECTORY] ✗ No pickle file found`);
-      return res.status(400).json({
-        success: false,
-        error: 'No pickle file found in directory',
-      });
+      return { success: false, error: 'No pickle file found' };
     }
 
     const pklPath = pklFiles[0];
     console.log(`[PROCESS-DIRECTORY] ✓ Found pickle file: ${pklPath}`);
 
-    // 3. Find original video file
-    console.log(`[PROCESS-DIRECTORY] 🔍 Searching for video file in ${TEMP_DIR}`);
-    const videoFiles = glob.sync(`${TEMP_DIR}/**/*.mp4`).filter((f) => !f.includes('PHALP') && !f.includes('output'));
-
+    const videoFiles = glob.sync(`${unprocessedPath}/**/*.mp4`).filter((f) => !f.includes('PHALP') && !f.includes('output') && !f.includes('overlay'));
     if (videoFiles.length === 0) {
-      console.log(`[PROCESS-DIRECTORY] ✗ No video file found`);
-      return res.status(400).json({
-        success: false,
-        error: 'No video file found in directory',
-      });
+      return { success: false, error: 'No original video found' };
     }
 
     const videoPath = videoFiles[0];
     console.log(`[PROCESS-DIRECTORY] ✓ Found video file: ${videoPath}`);
 
-    // 3b. Find overlay video file (track.py output)
-    console.log(`[PROCESS-DIRECTORY] 🔍 Searching for overlay video in ${TEMP_DIR}`);
-    const overlayVideoFiles = glob.sync(`${TEMP_DIR}/**/*.mp4`).filter((f) => f.includes('PHALP'));
+    const overlayVideoFiles = glob.sync(`${unprocessedPath}/**/*.mp4`).filter((f) => f.includes('overlay') || f.includes('PHALP'));
     const overlayVideoPath = overlayVideoFiles.length > 0 ? overlayVideoFiles[0] : null;
 
+    console.log(`[PROCESS-DIRECTORY] All .mp4 files found:`, glob.sync(`${unprocessedPath}/**/*.mp4`));
+    console.log(`[PROCESS-DIRECTORY] Overlay video files:`, overlayVideoFiles);
     if (overlayVideoPath) {
       console.log(`[PROCESS-DIRECTORY] ✓ Found overlay video: ${overlayVideoPath}`);
     } else {
-      console.log(`[PROCESS-DIRECTORY] ⚠ No overlay video found, will only process original`);
+      console.log(`[PROCESS-DIRECTORY] ⚠ No overlay video found`);
     }
 
-    // 4. Extract video metadata
-    console.log(`[PROCESS-DIRECTORY] 📊 Extracting video metadata...`);
     let metadata;
     try {
       metadata = await extractVideoMetadata(videoPath);
       console.log(`[PROCESS-DIRECTORY] ✓ Extracted metadata:`, metadata);
     } catch (err: any) {
-      console.log(`[PROCESS-DIRECTORY] ✗ Failed to extract metadata: ${err.message}`);
-      return res.status(500).json({
-        success: false,
-        error: `Failed to extract video metadata: ${err.message}`,
-      });
+      return { success: false, error: `Failed to extract metadata: ${err.message}` };
     }
 
-    // 5. Parse .pkl output
-    console.log(`[PROCESS-DIRECTORY] 🔄 Parsing pickle file...`);
     const parseResult = await parsePickleToFrames(pklPath);
-
-    if (!parseResult.success) {
-      console.log(`[PROCESS-DIRECTORY] ✗ Failed to parse pickle: ${parseResult.error}`);
-      return res.status(500).json({
-        success: false,
-        error: `Failed to parse pickle file: ${parseResult.error}`,
-      });
-    }
-
-    if (!parseResult.frames || parseResult.frames.length === 0) {
-      console.log(`[PROCESS-DIRECTORY] ✗ No frames extracted from pickle`);
-      return res.status(500).json({
-        success: false,
-        error: 'No frames extracted from pickle file',
-      });
+    if (!parseResult.success || !parseResult.frames || parseResult.frames.length === 0) {
+      return { success: false, error: 'Failed to parse pickle file' };
     }
 
     console.log(`[PROCESS-DIRECTORY] ✓ Parsed ${parseResult.frameCount} frames`);
 
-    // 6. Connect to MongoDB
-    console.log(`[PROCESS-DIRECTORY] 🗄️ Connecting to MongoDB...`);
-    try {
-      await connectToMongoDB();
-      console.log(`[PROCESS-DIRECTORY] ✓ Connected to MongoDB`);
-    } catch (err: any) {
-      console.log(`[PROCESS-DIRECTORY] ✗ Failed to connect to MongoDB: ${err.message}`);
-      return res.status(500).json({
-        success: false,
-        error: `Failed to connect to MongoDB: ${err.message}`,
-      });
-    }
-
-    // 7. Store in MongoDB
-    console.log(`[PROCESS-DIRECTORY] 💾 Storing frames in MongoDB...`);
+    await connectToMongoDB();
     const videoId = generateVideoId();
 
     try {
       await storeFrames(videoId, parseResult.frames);
       console.log(`[PROCESS-DIRECTORY] ✓ Stored ${parseResult.frameCount} frames`);
     } catch (err: any) {
-      console.log(`[PROCESS-DIRECTORY] ✗ Failed to store frames: ${err.message}`);
-      return res.status(500).json({
-        success: false,
-        error: `Failed to store frames in MongoDB: ${err.message}`,
-      });
+      return { success: false, error: `Failed to store frames: ${err.message}` };
     }
 
-    // 8. Save video metadata
-    console.log(`[PROCESS-DIRECTORY] 📝 Saving video metadata...`);
     try {
       const videoMetadata = {
         videoId,
@@ -145,99 +81,122 @@ router.post('/process-directory', async (req: Request, res: Response) => {
         resolution: metadata.resolution || [1920, 1080] as [number, number],
         frameCount: parseResult.frameCount || 0,
         createdAt: new Date(),
-        originalVideoPath: videoPath,
-        overlayVideoPath: overlayVideoPath || undefined,
+        originalVideoPath: path.join(VIDEOS_DIR, videoId, 'original.mp4'),
+        overlayVideoPath: overlayVideoPath ? path.join(VIDEOS_DIR, videoId, 'overlay.mp4') : null,
       };
       await saveVideoMetadata(videoMetadata);
-      console.log(`[PROCESS-DIRECTORY] ✓ Saved video metadata`);
+      console.log(`[PROCESS-DIRECTORY] ✓ Saved video metadata with paths`);
     } catch (err: any) {
-      console.log(`[PROCESS-DIRECTORY] ⚠ Failed to save video metadata: ${err.message}`);
+      console.warn(`[PROCESS-DIRECTORY] ⚠ Failed to save metadata: ${err.message}`);
     }
 
-    // 8b. Move video files to persistent storage
-    console.log(`[PROCESS-DIRECTORY] 📁 Moving video files to persistent storage...`);
-    const videosDir = path.join(process.cwd(), 'data', 'videos', videoId);
-    try {
-      fs.mkdirSync(videosDir, { recursive: true });
-      console.log(`[PROCESS-DIRECTORY] ✓ Created video directory: ${videosDir}`);
-
-      const originalDestPath = path.join(videosDir, 'original.mp4');
-      fs.copyFileSync(videoPath, originalDestPath);
-      console.log(`[PROCESS-DIRECTORY] ✓ Copied original video to: ${originalDestPath}`);
-
-      if (overlayVideoPath && fs.existsSync(overlayVideoPath)) {
-        const overlayDestPath = path.join(videosDir, 'overlay.mp4');
-        fs.copyFileSync(overlayVideoPath, overlayDestPath);
-        console.log(`[PROCESS-DIRECTORY] ✓ Copied overlay video to: ${overlayDestPath}`);
-      }
-
-      console.log(`[PROCESS-DIRECTORY] ✓ Video files moved to persistent storage`);
-    } catch (err: any) {
-      console.error(`[PROCESS-DIRECTORY] ✗ Failed to move video files: ${err.message}`);
-      return res.status(500).json({
-        success: false,
-        error: `Failed to move video files: ${err.message}`,
-      });
-    }
-
-    // 8c. Clean up temporary directory
-    console.log(`[PROCESS-DIRECTORY] 🧹 Cleaning up temporary files...`);
-    try {
-      fs.rmSync(TEMP_DIR, { recursive: true, force: true });
-      console.log(`[PROCESS-DIRECTORY] ✓ Cleaned up temporary directory: ${TEMP_DIR}`);
-    } catch (err: any) {
-      console.warn(`[PROCESS-DIRECTORY] ⚠ Failed to clean up temporary directory: ${err.message}`);
-    }
-
-    // 9. Extract and store video frames
-    console.log(`[PROCESS-DIRECTORY] 🎬 Extracting video frames...`);
     try {
       await connectVideoFramesMongo();
-
       const fps = metadata.fps || 30;
 
       if (overlayVideoPath && fs.existsSync(overlayVideoPath)) {
-        console.log(`[PROCESS-DIRECTORY] Extracting frames from both original and overlay videos`);
-        console.log(`[PROCESS-DIRECTORY] Original video: ${videoPath}`);
-        console.log(`[PROCESS-DIRECTORY] Overlay video: ${overlayVideoPath}`);
-
         const { original, overlay } = await extractBothVideoFrames(videoPath, overlayVideoPath, fps);
-
-        console.log(`[PROCESS-DIRECTORY] Storing ${original.length} original frames...`);
         await storeVideoFrames(videoId, original);
-
-        console.log(`[PROCESS-DIRECTORY] Storing ${overlay.length} overlay frames...`);
         await storeVideoFrames(videoId, overlay);
-
         console.log(`[PROCESS-DIRECTORY] ✓ Stored ${original.length} original + ${overlay.length} overlay frames`);
       } else {
-        console.log(`[PROCESS-DIRECTORY] Extracting frames from original video only`);
-        console.log(`[PROCESS-DIRECTORY] Original video: ${videoPath}`);
-
         const { original } = await extractBothVideoFrames(videoPath, videoPath, fps);
-
-        console.log(`[PROCESS-DIRECTORY] Storing ${original.length} original frames...`);
         await storeVideoFrames(videoId, original);
-
         console.log(`[PROCESS-DIRECTORY] ✓ Stored ${original.length} original frames`);
       }
     } catch (err: any) {
-      console.error(`[PROCESS-DIRECTORY] ✗ CRITICAL: Failed to extract/store video frames: ${err.message}`);
-      console.error(`[PROCESS-DIRECTORY] Stack trace:`, err.stack);
-      return res.status(500).json({
+      console.error(`[PROCESS-DIRECTORY] ✗ Failed to extract/store frames: ${err.message}`);
+      return { success: false, error: `Failed to extract frames: ${err.message}` };
+    }
+
+    const videoDir = path.join(VIDEOS_DIR, videoId);
+    try {
+      fs.mkdirSync(videoDir, { recursive: true });
+      fs.copyFileSync(videoPath, path.join(videoDir, 'original.mp4'));
+      console.log(`[PROCESS-DIRECTORY] overlayVideoPath=${overlayVideoPath}, exists=${overlayVideoPath ? fs.existsSync(overlayVideoPath) : 'N/A'}`);
+      if (overlayVideoPath && fs.existsSync(overlayVideoPath)) {
+        const overlayOutputPath = path.join(videoDir, 'overlay.mp4');
+        const { execSync } = await import('child_process');
+        console.log(`[PROCESS-DIRECTORY] Converting overlay to H.264...`);
+        execSync(`ffmpeg -i "${overlayVideoPath}" -c:v libx264 -preset fast -crf 23 -c:a aac "${overlayOutputPath}" -y`, { stdio: 'pipe' });
+        console.log(`[PROCESS-DIRECTORY] ✓ Copied and converted overlay.mp4 to H.264`);
+      } else {
+        console.log(`[PROCESS-DIRECTORY] ⚠ Overlay video not found or path is null`);
+      }
+      console.log(`[PROCESS-DIRECTORY] ✓ Moved videos to ${videoDir}`);
+    } catch (err: any) {
+      console.error(`[PROCESS-DIRECTORY] ✗ Failed to move videos: ${err.message}`);
+      return { success: false, error: `Failed to move videos: ${err.message}` };
+    }
+
+    try {
+      fs.rmSync(unprocessedPath, { recursive: true, force: true });
+      console.log(`[PROCESS-DIRECTORY] ✓ Cleaned up ${unprocessedPath}`);
+    } catch (err: any) {
+      console.warn(`[PROCESS-DIRECTORY] ⚠ Failed to clean up: ${err.message}`);
+    }
+
+    return { success: true, videoId };
+  } catch (err: any) {
+    console.error(`[PROCESS-DIRECTORY] ✗ Error processing video: ${err.message}`);
+    return { success: false, error: err.message };
+  }
+}
+
+router.post('/process-directory', async (req: Request, res: Response) => {
+  console.log(`[PROCESS-DIRECTORY] 🚀 POST /api/video/process-directory`);
+
+  try {
+    if (!fs.existsSync(UNPROCESSED_DIR)) {
+      console.log(`[PROCESS-DIRECTORY] ℹ️  No unprocessed videos directory found`);
+      return res.status(400).json({
         success: false,
-        error: `Failed to extract video frames: ${err.message}`,
+        error: 'No unprocessed videos found',
       });
     }
 
-    // 10. Return success
-    console.log(`[PROCESS-DIRECTORY] ✓ Processing complete`);
+    const unprocessedVideos = fs.readdirSync(UNPROCESSED_DIR).filter((f) => f.startsWith('temp_'));
+
+    if (unprocessedVideos.length === 0) {
+      console.log(`[PROCESS-DIRECTORY] ℹ️  No unprocessed videos found`);
+      return res.status(400).json({
+        success: false,
+        error: 'No unprocessed videos found',
+      });
+    }
+
+    console.log(`[PROCESS-DIRECTORY] 📦 Found ${unprocessedVideos.length} unprocessed video(s)`);
+
+    const results = [];
+
+    for (const videoDir of unprocessedVideos) {
+      const unprocessedPath = path.join(UNPROCESSED_DIR, videoDir);
+      console.log(`[PROCESS-DIRECTORY] Processing: ${videoDir}`);
+
+      const result = await processUnprocessedVideo(unprocessedPath);
+      results.push({
+        tempId: videoDir,
+        ...result,
+      });
+
+      if (!result.success) {
+        console.error(`[PROCESS-DIRECTORY] ✗ Failed to process ${videoDir}: ${result.error}`);
+      } else {
+        console.log(`[PROCESS-DIRECTORY] ✓ Successfully processed ${videoDir} → ${result.videoId}`);
+      }
+    }
+
+    const successCount = results.filter((r) => r.success).length;
+    const failCount = results.filter((r) => !r.success).length;
+
+    console.log(`[PROCESS-DIRECTORY] ✓ Processing complete: ${successCount} succeeded, ${failCount} failed`);
+
     res.json({
-      success: true,
-      videoId,
-      frameCount: parseResult.frameCount,
-      metadata,
-      message: 'Video processed successfully',
+      success: successCount > 0,
+      processedCount: successCount,
+      failedCount: failCount,
+      results,
+      message: `Processed ${successCount} video(s)${failCount > 0 ? `, ${failCount} failed` : ''}`,
     });
   } catch (err: any) {
     console.error(`[PROCESS-DIRECTORY] ✗ Unexpected error: ${err.message}`);

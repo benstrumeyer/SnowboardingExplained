@@ -38,6 +38,7 @@ import videosRouter from './api/videos';
 import finalizeUploadRouter from './api/finalize-upload';
 import meshDataRouter from './api/mesh-data';
 import processDirectoryRouter from './api/process-directory';
+import videoStreamRouter from './api/video-stream';
 
 // Load environment variables from .env.local
 const envPath = path.join(__dirname, '../../.env.local');
@@ -369,6 +370,7 @@ app.use('/api/videos', videosRouter);
 app.use('/api/mesh-data', meshDataRouter);
 app.use('/api/finalize-upload', finalizeUploadRouter);
 app.use('/api/video', processDirectoryRouter);
+app.use('/api/video', videoStreamRouter);
 
 // Chunked Video Upload Endpoints
 // Use shared volume if running in Docker, otherwise use system temp

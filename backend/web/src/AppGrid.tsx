@@ -63,6 +63,35 @@ function AppGrid() {
               >
                 👨‍🏫 Upload Reference
               </button>
+              <button
+                style={{
+                  padding: '8px 12px',
+                  width: '100%',
+                  fontSize: '12px',
+                  backgroundColor: '#95E1D3',
+                  color: '#000',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                }}
+                onClick={async () => {
+                  try {
+                    const response = await fetch('http://localhost:3001/api/video/process-directory', {
+                      method: 'POST',
+                    });
+                    const result = await response.json();
+                    if (result.success) {
+                      alert(`✓ Processed ${result.processedCount} video(s)`);
+                    } else {
+                      alert(`✗ ${result.error || 'Processing failed'}`);
+                    }
+                  } catch (err) {
+                    alert(`✗ Error: ${err}`);
+                  }
+                }}
+              >
+                ⚙️ Process Videos
+              </button>
             </div>
           </div>
 
