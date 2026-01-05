@@ -1,36 +1,32 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { getGlobalPlaybackEngine } from '../engine/PlaybackEngine';
 import { MeshFrameData } from './useMeshSampler';
 
 export function useVideoMeshSync(
   videoRef: React.RefObject<HTMLVideoElement> | undefined,
   meshDataRef: React.RefObject<MeshFrameData[]>,
-  fps: number,
   enabled: boolean,
   onFrameUpdate?: (frame: MeshFrameData) => void
 ) {
+  const lastFrameIndexRef = useRef(-1);
+
   useEffect(() => {
-    if (!enabled || !videoRef?.current || !meshDataRef.current || !onFrameUpdate) return;
+    if (!enabled || !meshDataRef.current || !onFrameUpdate) return;
 
-    let rafId: number;
+    const engine = getGlobalPlaybackEngine();
 
-    const updateMesh = () => {
-      const video = videoRef.current;
-      if (!video) return;
+    const unsubscribe = engine.addEventListener((event) => {
+      if (event.type === 'frameUpdate' || event.type === 'timeSet') {
+        const frameIndex = engine.getFrameIndex(engine.playbackTime);
+        const meshData = meshDataRef.current?.[frameIndex];
 
-      const videoTime = video.currentTime;
-      const frameIndex = Math.floor(videoTime * fps);
-      const clampedIndex = Math.max(0, Math.min(frameIndex, meshDataRef.current!.length - 1));
-
-      const meshData = meshDataRef.current?.[clampedIndex];
-      if (meshData) {
-        onFrameUpdate(meshData);
+        if (frameIndex !== lastFrameIndexRef.current && meshData) {
+          lastFrameIndexRef.current = frameIndex;
+          onFrameUpdate(meshData);
+        }
       }
+    });
 
-      rafId = requestAnimationFrame(updateMesh);
-    };
-
-    rafId = requestAnimationFrame(updateMesh);
-
-    return () => cancelAnimationFrame(rafId);
-  }, [videoRef, meshDataRef, fps, enabled, onFrameUpdate]);
+    return unsubscribe;
+  }, [videoRef, meshDataRef, enabled, onFrameUpdate]);
 }

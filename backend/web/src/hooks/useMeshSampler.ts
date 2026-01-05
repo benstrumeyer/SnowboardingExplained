@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { getGlobalPlaybackEngine } from '../engine/PlaybackEngine';
 
 export interface MeshFrameData {
@@ -20,26 +20,26 @@ export function useMeshSampler(
   enabled: boolean,
   onFrameUpdate?: (frame: MeshFrameData) => void
 ) {
+  const lastFrameIndexRef = useRef(-1);
+
   useEffect(() => {
     if (!enabled || !meshDataRef.current || !onFrameUpdate) return;
 
     const engine = getGlobalPlaybackEngine();
-    const frameInterval = 1000 / fps;
-    const totalFrames = meshDataRef.current.length;
-    const windowDuration = (totalFrames / fps) * 1000;
 
-    const unsubscribe = engine.subscribe((state) => {
-      const localTime = engine.getSceneLocalTime(cellId);
+    const unsubscribe = engine.addEventListener((event) => {
+      if (event.type === 'frameUpdate' || event.type === 'timeSet') {
+        const frameIndex = engine.getFrameIndex(engine.playbackTime);
+        const meshData = meshDataRef.current?.[frameIndex];
 
-      const loopedTime = localTime % windowDuration;
-      const frameIndex = Math.floor(loopedTime / frameInterval);
-      const meshData = meshDataRef.current?.[frameIndex];
-
-      if (meshData) {
-        onFrameUpdate(meshData);
+        // Only update if frame index changed
+        if (frameIndex !== lastFrameIndexRef.current && meshData) {
+          lastFrameIndexRef.current = frameIndex;
+          onFrameUpdate(meshData);
+        }
       }
     });
 
     return unsubscribe;
-  }, [cellId, fps, enabled, onFrameUpdate]);
+  }, [cellId, fps, enabled, onFrameUpdate, meshDataRef]);
 }
