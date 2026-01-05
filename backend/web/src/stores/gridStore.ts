@@ -35,6 +35,7 @@ interface GridStore {
   setCellWindowPosition: (cellId: string, x: number, y: number) => void;
   setCellWindowCollapsed: (cellId: string, collapsed: boolean) => void;
   setSharedCameraPreset: (preset: SharedControlState['cameraPreset']) => void;
+  removeCell: (cellId: string) => void;
 
   play: () => void;
   pause: () => void;
@@ -70,12 +71,14 @@ export const useGridStore = create<GridStore>()(
   subscribeWithSelector((set, get) => {
     const engine = getGlobalPlaybackEngine();
 
-    engine.subscribe((state) => {
-      set({
-        playbackTime: state.playbackTime,
-        isPlaying: state.isPlaying,
-        playbackSpeed: state.playbackSpeed,
-      });
+    engine.addEventListener((event) => {
+      if (event.type === 'frameUpdate') {
+        set({
+          playbackTime: engine.playbackTime,
+          isPlaying: engine.isPlaying,
+          playbackSpeed: engine.playbackSpeed,
+        });
+      }
     });
 
     return {
@@ -136,6 +139,12 @@ export const useGridStore = create<GridStore>()(
       setSharedCameraPreset: (preset) => {
         set((state) => ({
           sharedControls: { ...state.sharedControls, cameraPreset: preset },
+        }));
+      },
+
+      removeCell: (cellId) => {
+        set((state) => ({
+          cells: state.cells.filter((cell) => cell.id !== cellId),
         }));
       },
 

@@ -26,18 +26,19 @@ export function useVideoSampler(
     const engine = getGlobalPlaybackEngine();
     let lastFrameIndex = -1;
 
-    const listener = (state: { playbackTime: number }) => {
-      if (!ref.current) return;
+    const listener = (event: any) => {
+      if (!ref.current || event.type !== 'frameUpdate') return;
 
       const scene = engine.getSceneConfig(cellId);
+      const playbackTime = engine.playbackTime;
 
       // Default: use global playback time
-      let sceneTimeMs = state.playbackTime;
+      let sceneTimeMs = playbackTime;
 
       // Scene-aware looping
       if (scene && scene.windowDuration > 0) {
         const rawLocalTime =
-          state.playbackTime - scene.offset - scene.windowStart;
+          playbackTime - scene.offset - scene.windowStart;
 
         const duration = scene.windowDuration;
 
@@ -70,7 +71,7 @@ export function useVideoSampler(
       }
     };
 
-    const unsubscribe = engine.subscribe(listener);
+    const unsubscribe = engine.addEventListener(listener);
 
     return () => {
       unsubscribe();

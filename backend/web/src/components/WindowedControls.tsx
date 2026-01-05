@@ -91,19 +91,44 @@ export function WindowedControls({
           <span style={{ color: '#fff', fontSize: '12px', fontWeight: '600' }}>
             Cell Controls
           </span>
-          <button
-            onClick={() => setCellWindowCollapsed(cellId, !cell.isWindowedControlsCollapsed)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#999',
-              cursor: 'pointer',
-              fontSize: '14px',
-              padding: '0 4px',
-            }}
-          >
-            {cell.isWindowedControlsCollapsed ? '▼' : '▲'}
-          </button>
+          <div style={{ display: 'flex', gap: '4px' }}>
+            <button
+              onClick={() => setCellWindowCollapsed(cellId, !cell.isWindowedControlsCollapsed)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#999',
+                cursor: 'pointer',
+                fontSize: '14px',
+                padding: '0 4px',
+                transition: 'color 0.2s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#fff')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#999')}
+            >
+              {cell.isWindowedControlsCollapsed ? '▼' : '▲'}
+            </button>
+            <button
+              onClick={() => {
+                const removeCell = useGridStore.getState().removeCell;
+                removeCell(cellId);
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#999',
+                cursor: 'pointer',
+                fontSize: '14px',
+                padding: '0 4px',
+                transition: 'color 0.2s',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = '#FF6B6B')}
+              onMouseLeave={(e) => (e.currentTarget.style.color = '#999')}
+              title="Close scene"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {!cell.isWindowedControlsCollapsed && (

@@ -2,7 +2,9 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useMeshSampler, MeshFrameData } from '../hooks/useMeshSampler';
 import { useVideoMeshSync } from '../hooks/useVideoMeshSync';
+import { useVideoPlaybackSync } from '../hooks/useVideoPlaybackSync';
 import { MeshNametag } from './MeshNametag';
+import { MeshScrubber } from './MeshScrubber';
 import { globalCameraManager } from '../services/globalCameraManager';
 
 interface MeshViewerProps {
@@ -149,52 +151,56 @@ export function MeshViewer({
   }, []);
 
   const updateMeshGeometry = (frame: MeshFrameData) => {
-    if (!sceneRef.current) return;
+    if (!sceneRef.current || !frame) return;
 
-    console.log('[MeshViewer] Updating mesh geometry:', {
-      frameNumber: frame.frameNumber,
-      vertexCount: frame.vertices.length / 3,
-      faceCount: frame.faces.length / 3,
-    });
+    // First frame: create geometry and mesh once
+    if (!meshRef.current) {
+      const geometry = new THREE.BufferGeometry();
 
-    if (meshRef.current) {
-      sceneRef.current.remove(meshRef.current);
-      meshRef.current.geometry.dispose();
-      if (meshRef.current.material instanceof THREE.Material) {
-        meshRef.current.material.dispose();
+      // Set position attribute with first frame's vertices
+      const posAttr = new THREE.BufferAttribute(frame.vertices, 3);
+      geometry.setAttribute('position', posAttr);
+
+      // Set index once (faces are static across all frames)
+      if (frame.faces && frame.faces.length > 0) {
+        geometry.setIndex(new THREE.BufferAttribute(frame.faces, 1));
       }
+
+      geometry.computeVertexNormals();
+
+      const material = new THREE.MeshPhongMaterial({
+        color: 0xff6b6b,
+        side: THREE.DoubleSide,
+      });
+
+      const mesh = new THREE.Mesh(geometry, material);
+
+      mesh.rotation.x = Math.PI / 2;
+      mesh.rotation.y = Math.PI / 2;
+      mesh.rotation.z = Math.PI / 2;
+
+      const bbox = new THREE.Box3().setFromObject(mesh);
+      const minY = bbox.min.y;
+      mesh.position.y = -minY;
+
+      sceneRef.current.add(mesh);
+      meshRef.current = mesh;
+      return;
     }
 
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.BufferAttribute(frame.vertices, 3));
+    // Subsequent frames: only update position attribute (no dispose, no new mesh)
+    const geometry = meshRef.current.geometry as THREE.BufferGeometry;
+    const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute | null;
 
-    if (frame.faces && frame.faces.length > 0) {
-      geometry.setIndex(new THREE.BufferAttribute(frame.faces, 1));
+    if (posAttr && posAttr.count === frame.vertices.length / 3) {
+      // Fast path: just copy vertex data
+      posAttr.copyArray(frame.vertices);
+      posAttr.needsUpdate = true;
+    } else {
+      // Fallback: recreate position attribute if count mismatch
+      const newPosAttr = new THREE.BufferAttribute(frame.vertices, 3);
+      geometry.setAttribute('position', newPosAttr);
     }
-
-    geometry.computeVertexNormals();
-
-    const material = new THREE.MeshPhongMaterial({
-      color: 0xff6b6b,
-      side: THREE.DoubleSide,
-    });
-
-    const mesh = new THREE.Mesh(geometry, material);
-
-    mesh.rotation.x = Math.PI / 2;
-    mesh.rotation.y = Math.PI / 2;
-    mesh.rotation.z = Math.PI / 2;
-
-    const bbox = new THREE.Box3().setFromObject(mesh);
-    const height = bbox.max.y - bbox.min.y;
-    const minY = bbox.min.y;
-
-    mesh.position.y = -minY;
-
-    sceneRef.current.add(mesh);
-    meshRef.current = mesh;
-
-    console.log('[MeshViewer] Mesh added to scene with orientation fix');
   };
 
   useEffect(() => {
@@ -204,8 +210,6 @@ export function MeshViewer({
       try {
         const response = await fetch(`${API_URL}/api/mesh-data/${modelId}`);
         const data = await response.json();
-
-        console.log('[MeshViewer] Loaded mesh data:', { modelId, data });
 
         if (data.data && data.data.frames && Array.isArray(data.data.frames)) {
           const frames: MeshFrameData[] = data.data.frames.map((frame: any) => {
@@ -234,11 +238,6 @@ export function MeshViewer({
             };
           });
 
-          console.log('[MeshViewer] Transformed frames:', {
-            count: frames.length,
-            firstFrame: frames[0],
-          });
-
           meshDataRef.current = frames;
 
           if (data.data.fps && data.data.totalFrames) {
@@ -257,9 +256,12 @@ export function MeshViewer({
     updateMeshGeometry(frame);
   });
 
-  useVideoMeshSync(videoRef, meshDataRef, fps, !!videoRef, (frame) => {
+  useVideoMeshSync(videoRef, meshDataRef, !!videoRef, (frame) => {
     updateMeshGeometry(frame);
   });
+
+
+  useVideoPlaybackSync(videoRef, !!videoRef);
 
   return (
     <>

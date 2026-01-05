@@ -3,6 +3,7 @@ import { getGlobalPlaybackEngine } from './engine/PlaybackEngine';
 import { useGridStore } from './stores/gridStore';
 import { GridLayout } from './components/GridLayout';
 import { SharedControls } from './components/SharedControls';
+import { NativeScrubber } from './components/NativeScrubber';
 import { PlaybackTester } from './components/PlaybackTester';
 import { PerformanceMonitor } from './components/PerformanceMonitor';
 import { globalCameraManager, CameraPreset } from './services/globalCameraManager';
@@ -28,10 +29,6 @@ function App() {
 
   return (
     <div className="app-container">
-      <div className="app-header">
-        <h1 style={{ margin: '6px', fontSize: '24px' }}>SnowboardingExplained</h1>
-      </div>
-
       <div className="app-content">
         <div className="sidebar">
           <div className="sidebar-section">
@@ -165,6 +162,11 @@ function App() {
                 Reset Camera
               </button>
             </div>
+          </div>
+
+          <div className="sidebar-section">
+            <h3 className="sidebar-title">Scrubber</h3>
+            <NativeScrubber />
           </div>
 
           <div className="sidebar-section">

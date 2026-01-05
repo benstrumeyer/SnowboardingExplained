@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { getGlobalPlaybackEngine } from '../engine/PlaybackEngine';
 import '../styles/VideoDisplay.css';
 
 interface VideoToggleDisplayProps {
@@ -44,6 +45,18 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
     };
     fetchMeshData();
   }, [videoId]);
+
+  useEffect(() => {
+    const engine = getGlobalPlaybackEngine();
+    const video = showOverlay ? overlayVideoRef.current : originalVideoRef.current;
+
+    if (video) {
+      engine.registerVideoElement(cellId, video);
+      return () => {
+        engine.unregisterVideoElement(cellId);
+      };
+    }
+  }, [cellId, showOverlay]);
 
   return (
     <div

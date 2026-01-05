@@ -10,21 +10,23 @@ export function PlaybackTester() {
   const engine = getGlobalPlaybackEngine();
 
   useEffect(() => {
-    const unsubscribe = engine.subscribe((state) => {
-      setPlaybackTime(state.playbackTime);
-      setIsPlaying(state.isPlaying);
-      setSpeed(state.playbackSpeed);
+    const unsubscribe = engine.addEventListener((event) => {
+      if (event.type === 'frameUpdate') {
+        setPlaybackTime(engine.playbackTime);
+        setIsPlaying(engine.isPlaying);
+        setSpeed(engine.playbackSpeed);
 
-      const localTimes: Record<string, number> = {};
-      for (let i = 0; i < 4; i++) {
-        const cellId = `cell-${i}`;
-        localTimes[cellId] = engine.getSceneLocalTime(cellId);
+        const localTimes: Record<string, number> = {};
+        for (let i = 0; i < 4; i++) {
+          const cellId = `cell-${i}`;
+          localTimes[cellId] = engine.getSceneLocalTime(cellId);
+        }
+        setSceneLocalTimes(localTimes);
       }
-      setSceneLocalTimes(localTimes);
     });
 
     return unsubscribe;
-  }, []);
+  }, [engine]);
 
   return (
     <div
