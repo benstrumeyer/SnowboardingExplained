@@ -36,6 +36,32 @@ Web Upload → Backend (Node.js) → Pose Service (Python)
 | Frontend | Three.js | Browser | 3D visualization |
 | Database | MongoDB | 27017 | Store results |
 
+## Frontend Playback Architecture
+
+**PlaybackEngine** is the single source of truth for all timing and playback state:
+
+```
+PlaybackEngine (RAF Loop @ 60fps)
+    ↓
+    ├→ emits frameUpdate events
+    ├→ maintains playbackTime (ms)
+    ├→ computes frameIndex deterministically
+    └→ owns play/pause/seek/speed/reverse/loop controls
+         ↓
+         ├→ NativeScrubber (listens to frameUpdate)
+         │   └→ updates thumb position based on playbackTime/duration
+         │
+         ├→ useMeshSampler (listens to frameUpdate)
+         │   └→ reads mesh frame from preloaded data
+         │   └→ updates Three.js geometry via BufferAttribute
+         │
+         └→ useVideoPlaybackSync (listens to frameUpdate)
+             └→ syncs video.currentTime to engine.playbackTime
+             └→ video is renderer, not clock
+
+Key: Geometry reuse pattern prevents mesh freeze at loop boundaries
+```
+
 ## Data Flow
 
 1. **Upload** - User uploads video via web modal
@@ -53,9 +79,11 @@ Web Upload → Backend (Node.js) → Pose Service (Python)
    - Mesh data (vertices, faces, camera params)
    - Video metadata (fps, duration, resolution)
 6. **Visualization** - Side-by-side view:
-   - Left: Toggle between original and overlay videos
-   - Right: Three.js renders 3D mesh in real-time
-   - Both synced frame-by-frame
+   - PlaybackEngine initializes with fps/totalFrames from metadata
+   - Left: Toggle between original and overlay videos (synced to engine)
+   - Right: Three.js renders 3D mesh (synced to engine)
+   - Scrubber shows progress based on engine.playbackTime
+   - All components follow engine time, never their own clocks
 
 ## Key Decisions
 
@@ -63,9 +91,12 @@ Web Upload → Backend (Node.js) → Pose Service (Python)
 - **Native FPS** - Playback at original video FPS
 - **Frozen Stack** - All ML dependencies cloned locally, installed in order
 - **PHALP Critical** - Provides temporal consistency across video
-- **Side-by-Side View** - Left: video toggle (original/overlay), Right: Three.js mesh
+- **PlaybackEngine as Source of Truth** - Single RAF loop drives all rendering
+- **Geometry Reuse** - Pre-create Three.js geometry once, update vertices per frame
+- **Event-Based Sync** - All components listen to engine events, never own clocks
+- **Responsive Scrubber** - Native DOM scrubber updates at 60fps without React
 - **Three.js Essential** - 3D mesh visualization is the core value proposition
-- **Frame Sync** - Both video and 3D mesh stay perfectly in sync
+- **Perfect Frame Sync** - Mesh, video, and scrubber all follow engine time
 
 ## Deployment
 

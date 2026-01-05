@@ -104,28 +104,71 @@ Video Upload → Extract Frames → 4D-Humans Pose → PHALP Tracking → Mesh R
 
 ## Frontend Rendering
 
+### PlaybackEngine Pattern (Source of Truth)
+
+```typescript
+// PlaybackEngine owns all timing
+const engine = getGlobalPlaybackEngine();
+
+// Initialize with video metadata
+engine.reinitialize(fps, totalFrames);
+
+// All components listen to engine events
+engine.addEventListener((event) => {
+  if (event.type === 'frameUpdate') {
+    // Update at 60fps based on engine.playbackTime
+    const frameIndex = engine.getFrameIndex(engine.playbackTime);
+    // Render mesh, sync video, update scrubber
+  }
+});
+
+// Controls dispatch to engine
+engine.play();
+engine.pause();
+engine.seek(time);
+engine.setSpeed(speed);
+```
+
+### Mesh Rendering (Geometry Reuse)
+
+```typescript
+// First frame: create geometry once
+if (!meshRef.current) {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+  geometry.setIndex(new THREE.BufferAttribute(faces, 1));
+  meshRef.current = new THREE.Mesh(geometry, material);
+}
+
+// Every frame: only update position attribute
+const posAttr = geometry.getAttribute('position');
+posAttr.copyArray(frame.vertices);
+posAttr.needsUpdate = true;
+```
+
 ### Side-by-Side View Layout
 ```
 ┌─────────────────────────────────────────────────────┐
 │ Left Panel (Video)      │ Right Panel (3D Mesh)     │
 │ ┌───────────────────┐   │ ┌───────────────────────┐ │
 │ │ [Original/Overlay]│   │ │ Three.js Canvas       │ │
-│ │ Toggle Button     │   │ │ (Synced Mesh)         │ │
+│ │ Toggle Button     │   │ │ (Synced to Engine)    │ │
 │ │                   │   │ │                       │ │
 │ │ Video Player      │   │ │ 3D Mesh Visualization│ │
-│ │ (Frame-by-frame)  │   │ │ (Real-time)           │ │
+│ │ (Synced to Engine)│   │ │ (Synced to Engine)    │ │
 │ └───────────────────┘   │ └───────────────────────┘ │
-│ Shared Timeline / Scrubber (both videos + mesh)     │
+│ NativeScrubber (Synced to Engine)                   │
 │ [◄ Prev] [Play/Pause] [Next ►] [Frame: 0/300]      │
 └─────────────────────────────────────────────────────┘
 ```
 
-### Synchronization
-- Load frames array with mesh data
-- Create Three.js BufferGeometry from vertices/faces
-- Apply camera parameters for correct viewpoint
-- Animate both video and mesh at same frame rate
-- Scrubber updates both video and mesh simultaneously
+### Synchronization Strategy
+- **PlaybackEngine** runs RAF loop at 60fps, advances playbackTime
+- **NativeScrubber** listens to frameUpdate, updates thumb position
+- **useMeshSampler** listens to frameUpdate, reads mesh frame, updates geometry
+- **useVideoPlaybackSync** listens to frameUpdate, syncs video.currentTime
+- **Loop boundaries** detected via frameIndex wrap-around, ensures smooth animation
+- **No React state** for 60fps updates - use native DOM for scrubber
 
 ## Error Handling
 

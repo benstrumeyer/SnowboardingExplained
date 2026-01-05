@@ -34,6 +34,10 @@ Process snowboarding videos to extract accurate 3D pose data with temporal consi
 
 - ✅ Backend running locally
 - ✅ Pose service framework ready
+- ✅ PlaybackEngine source-of-truth architecture implemented
+- ✅ NativeScrubber with 60fps tracking
+- ✅ Geometry reuse pattern for smooth mesh animation
+- ✅ Loop boundary detection for seamless playback
 - ⏳ Dependencies being configured (frozen stack)
 - ⏳ Integration testing
 
@@ -42,9 +46,9 @@ Process snowboarding videos to extract accurate 3D pose data with temporal consi
 1. Install frozen ML dependencies in correct order
 2. Extract mesh data from PHALP pickle output
 3. Save original and overlay videos to MongoDB
-4. Build side-by-side view component (video toggle + Three.js mesh)
-5. Implement frame-by-frame navigation with sync
-6. Test end-to-end pipeline
+4. Test end-to-end pipeline with real video data
+5. Optimize performance for larger videos
+6. Add advanced playback features (frame-by-frame, reverse, speed control)
 
 ## Important Notes
 
@@ -52,9 +56,12 @@ Process snowboarding videos to extract accurate 3D pose data with temporal consi
 - **Full Video Processing** - Videos processed as a unit (not frame-by-frame)
 - **Frozen Dependencies** - All ML packages cloned locally, must install in order
 - **Local Development** - Running in WSL2 with Kiro IDE
+- **PlaybackEngine as Source of Truth** - Single RAF loop drives all rendering
+- **Geometry Reuse** - Pre-create Three.js geometry once, update vertices per frame
+- **Event-Based Sync** - All components listen to engine events, never own clocks
+- **Native Scrubber** - 60fps DOM-based scrubber without React overhead
 - **Three.js Essential** - 3D mesh visualization is the core value proposition
-- **Side-by-Side View** - Left: video toggle (original/overlay), Right: Three.js mesh
-- **Frame Sync Critical** - Both video and 3D mesh must stay perfectly in sync
+- **Perfect Frame Sync** - Mesh, video, and scrubber all follow engine time
 
 ## Quick Links
 

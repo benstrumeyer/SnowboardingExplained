@@ -53,20 +53,41 @@ python app.py
 ## Code Organization
 
 ```
-backend/
-├── src/
-│   ├── server.ts              # Express server
-│   ├── types.ts               # TypeScript types
-│   └── services/
-│       └── videoAnalysisPipelineImpl.ts
-├── api/
-│   └── upload-video.ts        # Upload handler
-└── pose-service/
-    ├── app.py                 # Flask server
-    ├── track_wrapper.py       # PHALP wrapper
-    ├── hybrid_pose_detector.py # 4D-Humans
-    └── requirements.txt
+backend/web/src/
+├── engine/
+│   └── PlaybackEngine.ts      # Single source of truth for timing
+├── components/
+│   ├── NativeScrubber.tsx     # 60fps scrubber (native DOM)
+│   ├── MeshViewer.tsx         # Three.js mesh rendering
+│   ├── GridCell.tsx           # Cell container
+│   └── SharedControls.tsx     # Play/pause/speed controls
+├── hooks/
+│   ├── useMeshSampler.ts      # Mesh frame updates from engine
+│   ├── useVideoMeshSync.ts    # Mesh sync for video cells
+│   └── useVideoPlaybackSync.ts # Video sync to engine
+└── services/
+    └── globalCameraManager.ts # Camera presets
 ```
+
+## PlaybackEngine Architecture
+
+**PlaybackEngine** is the single source of truth:
+- Runs RAF loop at 60fps
+- Maintains `playbackTime` (milliseconds)
+- Computes `frameIndex` deterministically
+- Emits `frameUpdate` events every frame
+- Owns all playback controls (play, pause, seek, speed, reverse, loop)
+
+**All components listen to engine events:**
+- NativeScrubber: updates thumb position
+- useMeshSampler: reads mesh frame, updates geometry
+- useVideoPlaybackSync: syncs video.currentTime
+
+**Key pattern: Geometry reuse**
+- Create Three.js geometry once on first frame
+- Every frame: only update position attribute via `copyArray()`
+- Set `posAttr.needsUpdate = true`
+- Loop boundaries are instant (no dispose/recreate)
 
 ## Common Tasks
 
