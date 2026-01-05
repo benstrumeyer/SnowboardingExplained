@@ -1,5 +1,6 @@
 import React from 'react';
 import { CameraService } from '../services/cameraService';
+import { globalCameraManager, CameraPreset } from '../services/globalCameraManager';
 
 interface CameraControlsProps {
   cameraService?: CameraService | null;
@@ -7,20 +8,16 @@ interface CameraControlsProps {
 }
 
 export function CameraControls({ cameraService, onPresetChange }: CameraControlsProps) {
-  const presets = ['top', 'front', 'back', 'left', 'right'];
+  const presets: CameraPreset[] = ['top', 'front', 'back', 'left', 'right'];
 
-  const handlePreset = (preset: string) => {
-    if (cameraService) {
-      cameraService.setPreset(preset as any);
-      onPresetChange?.(preset);
-    }
+  const handlePreset = (preset: CameraPreset) => {
+    globalCameraManager.setPreset(preset);
+    onPresetChange?.(preset);
   };
 
   const handleReset = () => {
-    if (cameraService) {
-      cameraService.reset();
-      onPresetChange?.('front');
-    }
+    globalCameraManager.reset();
+    onPresetChange?.('front');
   };
 
   return (

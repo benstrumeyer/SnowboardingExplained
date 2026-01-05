@@ -25,10 +25,14 @@ export function useMeshSampler(
 
     const engine = getGlobalPlaybackEngine();
     const frameInterval = 1000 / fps;
+    const totalFrames = meshDataRef.current.length;
+    const windowDuration = (totalFrames / fps) * 1000;
 
     const unsubscribe = engine.subscribe((state) => {
       const localTime = engine.getSceneLocalTime(cellId);
-      const frameIndex = Math.floor(localTime / frameInterval);
+
+      const loopedTime = localTime % windowDuration;
+      const frameIndex = Math.floor(loopedTime / frameInterval);
       const meshData = meshDataRef.current?.[frameIndex];
 
       if (meshData) {

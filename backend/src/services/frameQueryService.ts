@@ -264,6 +264,29 @@ export async function storeFrames(videoId: string, frames: FrameData[]): Promise
   }
 }
 
+export async function deleteVideo(videoId: string): Promise<{ framesDeleted: number; videosDeleted: number }> {
+  if (!framesCollection || !videosCollection) {
+    throw new Error('Collections not initialized');
+  }
+
+  try {
+    console.log(`[VIDEO_DELETE] 🗑️  Deleting video and all associated data for videoId=${videoId}`);
+
+    const framesResult = await framesCollection.deleteMany({ videoId });
+    const videosResult = await videosCollection.deleteMany({ videoId });
+
+    console.log(`[VIDEO_DELETE] ✓ Deleted ${framesResult.deletedCount} frames and ${videosResult.deletedCount} video records`);
+
+    return {
+      framesDeleted: framesResult.deletedCount,
+      videosDeleted: videosResult.deletedCount,
+    };
+  } catch (err: any) {
+    console.error(`[VIDEO_DELETE] ✗ Failed to delete video: ${err.message}`);
+    throw err;
+  }
+}
+
 export async function closeMongoDB(): Promise<void> {
   if (mongoClient) {
     try {

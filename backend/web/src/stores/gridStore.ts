@@ -42,9 +42,21 @@ interface GridStore {
   setSpeed: (speed: number) => void;
 }
 
-const createInitialCells = (count: number): CellUIState[] =>
-  Array.from({ length: count }, (_, i) => ({
-    id: `cell-${i}`,
+const hashCellId = (index: number, timestamp: number): string => {
+  const str = `cell-${index}-${timestamp}`;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return `cell-${Math.abs(hash).toString(16).substring(0, 8)}`;
+};
+
+const createInitialCells = (count: number, startIndex: number = 0): CellUIState[] => {
+  const timestamp = Date.now();
+  return Array.from({ length: count }, (_, i) => ({
+    id: hashCellId(startIndex + i, timestamp),
     contentType: 'empty' as const,
     isSynced: false,
     windowedControlsPosition: { x: 10, y: 10 },
@@ -52,6 +64,7 @@ const createInitialCells = (count: number): CellUIState[] =>
     nametag: '',
     videoMode: 'original' as const,
   }));
+};
 
 export const useGridStore = create<GridStore>()(
   subscribeWithSelector((set, get) => {
@@ -71,8 +84,8 @@ export const useGridStore = create<GridStore>()(
       playbackSpeed: 1,
 
       gridRows: 1,
-      gridColumns: 2,
-      cells: createInitialCells(16),
+      gridColumns: 1,
+      cells: createInitialCells(1),
       sharedControls: {
         cameraPreset: 'back',
       },
@@ -82,7 +95,7 @@ export const useGridStore = create<GridStore>()(
         const currentCells = get().cells;
         const newCells =
           totalCells > currentCells.length
-            ? [...currentCells, ...createInitialCells(totalCells - currentCells.length)]
+            ? [...currentCells, ...createInitialCells(totalCells - currentCells.length, currentCells.length)]
             : currentCells.slice(0, totalCells);
 
         set({ gridRows: rows, gridColumns: columns, cells: newCells });

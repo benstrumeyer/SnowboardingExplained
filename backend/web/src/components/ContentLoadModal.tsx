@@ -25,6 +25,7 @@ export function ContentLoadModal({ cellId, isOpen, onClose }: ContentLoadModalPr
   const [videos, setVideos] = useState<VideoData[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedVideo, setSelectedVideo] = useState<VideoData | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const updateCell = useGridStore((state) => state.updateCell);
 
   useEffect(() => {
@@ -116,6 +117,40 @@ export function ContentLoadModal({ cellId, isOpen, onClose }: ContentLoadModalPr
       modelId: video.videoId,
     });
     onClose();
+  };
+
+  const handleDeleteVideo = async (video: VideoData) => {
+    if (!window.confirm(`Delete "${video.filename}" and all associated data (original video, overlay video, and mesh data)? This cannot be undone.`)) {
+      return;
+    }
+
+    setDeleting(true);
+    try {
+      console.log('%c[ContentLoadModal] 🗑️  Deleting video:', 'color: #FF6B6B; font-weight: bold;', {
+        videoId: video.videoId,
+        filename: video.filename,
+      });
+
+      const url = `${API_URL}/api/videos/${video.videoId}`;
+      const response = await fetch(url, { method: 'DELETE' });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.json();
+      console.log('%c[ContentLoadModal] ✅ Video deleted:', 'color: #00FF00; font-weight: bold;', result);
+
+      setVideos(videos.filter((v) => v.videoId !== video.videoId));
+      setSelectedVideo(null);
+    } catch (error) {
+      console.error('%c[ContentLoadModal] ❌ Failed to delete video:', 'color: #FF0000; font-weight: bold;', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      alert('Failed to delete video. Check console for details.');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -310,6 +345,35 @@ export function ContentLoadModal({ cellId, isOpen, onClose }: ContentLoadModalPr
                       }}
                     >
                       🎭 Load 3D Mesh
+                    </button>
+
+                    <button
+                      onClick={() => handleDeleteVideo(selectedVideo)}
+                      disabled={deleting}
+                      style={{
+                        padding: '12px 16px',
+                        backgroundColor: '#FF4444',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: deleting ? 'not-allowed' : 'pointer',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        transition: 'all 0.2s',
+                        opacity: deleting ? 0.6 : 1,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!deleting) {
+                          e.currentTarget.style.backgroundColor = '#CC0000';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!deleting) {
+                          e.currentTarget.style.backgroundColor = '#FF4444';
+                        }
+                      }}
+                    >
+                      {deleting ? '⏳ Deleting...' : '🗑️ Delete All'}
                     </button>
                   </div>
                 </>

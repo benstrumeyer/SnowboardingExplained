@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { useMeshSampler, MeshFrameData } from '../hooks/useMeshSampler';
 import { useVideoMeshSync } from '../hooks/useVideoMeshSync';
 import { MeshNametag } from './MeshNametag';
+import { globalCameraManager } from '../services/globalCameraManager';
 
 interface MeshViewerProps {
   cellId: string;
@@ -46,9 +47,11 @@ export function MeshViewer({
       0.1,
       1000
     );
-    camera.position.set(0, 2, -5);
-    camera.lookAt(0, 0.5, 0);
+    camera.position.set(0, 1.5, 3);
+    camera.lookAt(0, 1, 0);
     cameraRef.current = camera;
+
+    globalCameraManager.registerCamera(cellId, camera, new THREE.Vector3(0, 1, 0));
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setSize(containerRef.current.clientWidth, containerRef.current.clientHeight);
@@ -132,6 +135,7 @@ export function MeshViewer({
     animate();
 
     return () => {
+      globalCameraManager.unregisterCamera(cellId);
       window.removeEventListener('resize', handleResize);
       renderer.domElement.removeEventListener('mousedown', onMouseDown);
       window.removeEventListener('mousemove', onMouseMove);
@@ -176,11 +180,21 @@ export function MeshViewer({
     });
 
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.position.set(0, 0.5, 0);
+
+    mesh.rotation.x = Math.PI / 2;
+    mesh.rotation.y = Math.PI / 2;
+    mesh.rotation.z = Math.PI / 2;
+
+    const bbox = new THREE.Box3().setFromObject(mesh);
+    const height = bbox.max.y - bbox.min.y;
+    const minY = bbox.min.y;
+
+    mesh.position.y = -minY;
+
     sceneRef.current.add(mesh);
     meshRef.current = mesh;
 
-    console.log('[MeshViewer] Mesh added to scene');
+    console.log('[MeshViewer] Mesh added to scene with orientation fix');
   };
 
   useEffect(() => {

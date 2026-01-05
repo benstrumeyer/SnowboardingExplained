@@ -28,6 +28,7 @@ import { PhaseSelectionScreen } from './src/screens/PhaseSelectionScreen';
 import { TrickAnalysisScreen } from './src/screens/TrickAnalysisScreen';
 import { VideoAnalysisScreen } from './src/screens/VideoAnalysisScreen';
 import { PerfectPhasesManagementPage } from './src/screens/PerfectPhasesManagementPage';
+import { CameraControls } from './src/components/CameraControls';
 import { getApiUrl, checkHealth } from './src/services/api';
 import { useAppSelector } from './src/store/hooks';
 
@@ -41,6 +42,7 @@ export default function App() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [currentScreen, setCurrentScreen] = useState<Screen>('video-coach');
   const [healthStatus, setHealthStatus] = useState<{ ok: boolean; message: string } | null>(null);
+  const [cameraPreset, setCameraPreset] = useState('front');
   const slideAnim = useRef(new Animated.Value(-DRAWER_WIDTH)).current;
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -218,6 +220,18 @@ export default function App() {
         </View>
 
         <ScrollView style={tw`flex-1`}>
+          {/* Camera Controls */}
+          <CameraControls
+            currentPreset={cameraPreset}
+            onPresetChange={(preset) => {
+              setCameraPreset(preset);
+              console.log('📷 Camera preset changed to:', preset);
+            }}
+          />
+
+          {/* Separator */}
+          <View style={tw`h-px bg-[#333333] my-4`} />
+
           {/* Video Coach - Main Feature */}
           <TouchableOpacity
             style={tw`flex-row items-center py-3 px-4 rounded-lg mb-2 ${

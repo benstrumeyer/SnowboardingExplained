@@ -1,28 +1,30 @@
-export interface PlaybackState {
-  playbackTime: number;
-  isPlaying: boolean;
-  playbackSpeed: number;
-}
+export type PlaybackEvent =
+  | { type: 'play' }
+  | { type: 'pause' }
+  | { type: 'timeSet'; time: number }
+  | { type: 'speedChanged'; speed: number }
+  | { type: 'windowChange'; sceneId: string };
 
 export interface SceneConfig {
   sceneId: string;
   offset: number;
   windowStart: number;
   windowDuration: number;
+  videoElement?: HTMLVideoElement;
 }
 
-export type PlaybackListener = (state: PlaybackState) => void;
-
-const DRIFT_THRESHOLD = 50;
+export type PlaybackEventListener = (event: PlaybackEvent) => void;
 
 export class PlaybackEngine {
-  private playbackTime: number = 0;
-  private isPlaying: boolean = false;
-  private playbackSpeed: number = 1;
+  playbackTime: number = 0;
+  isPlaying: boolean = false;
+  playbackSpeed: number = 1;
+
   private rafId: number | null = null;
   private lastFrameTime: number = 0;
-  private listeners: Set<PlaybackListener> = new Set();
+  private eventListeners: Set<PlaybackEventListener> = new Set();
   private scenes: Map<string, SceneConfig> = new Map();
+  private videoElements: Map<string, HTMLVideoElement> = new Map();
 
   constructor() {
     this.startRafLoop();
@@ -41,7 +43,12 @@ export class PlaybackEngine {
         this.playbackTime += deltaTime * this.playbackSpeed;
       }
 
-      this.notifyListeners();
+      for (const scene of this.scenes.values()) {
+        if (scene.videoElement && !scene.videoElement.paused) {
+          this.playbackTime = scene.videoElement.currentTime * 1000;
+        }
+      }
+
       this.rafId = requestAnimationFrame(loop);
     };
 
@@ -49,84 +56,86 @@ export class PlaybackEngine {
     console.log('%c[PlaybackEngine] 🎬 RAF loop started', 'color: #4ECDC4; font-weight: bold;');
   }
 
-  private notifyListeners(): void {
-    const state: PlaybackState = {
-      playbackTime: this.playbackTime,
-      isPlaying: this.isPlaying,
-      playbackSpeed: this.playbackSpeed,
-    };
-
-    if (this.isPlaying && this.playbackTime % 1000 < 50) {
-      console.log('%c[PlaybackEngine] ⏱️  Playback advancing:', 'color: #4ECDC4;', {
-        playbackTime: this.playbackTime,
-        isPlaying: this.isPlaying,
-      });
-    }
-
-    this.listeners.forEach((listener) => listener(state));
+  private emitEvent(event: PlaybackEvent): void {
+    this.eventListeners.forEach((listener) => listener(event));
   }
 
   play(): void {
+    if (this.isPlaying) return;
+
     console.log('%c[PlaybackEngine] ▶️  Play', 'color: #00FF00; font-weight: bold;', {
       playbackTime: this.playbackTime,
       sceneCount: this.scenes.size,
     });
+
     this.isPlaying = true;
     this.lastFrameTime = 0;
-    this.notifyListeners();
+
+    for (const video of this.videoElements.values()) {
+      video.play().catch(() => { });
+    }
+
+    this.emitEvent({ type: 'play' });
   }
 
   pause(): void {
+    if (!this.isPlaying) return;
+
     console.log('%c[PlaybackEngine] ⏸️  Pause', 'color: #FF6B6B; font-weight: bold;', {
       playbackTime: this.playbackTime,
     });
+
     this.isPlaying = false;
-    this.notifyListeners();
+
+    for (const video of this.videoElements.values()) {
+      video.pause();
+    }
+
+    this.emitEvent({ type: 'pause' });
   }
 
   seek(time: number): void {
     const clampedTime = Math.max(0, time);
+
     console.log('%c[PlaybackEngine] ⏱️  Seek', 'color: #4ECDC4;', {
       from: this.playbackTime,
       to: clampedTime,
       sceneCount: this.scenes.size,
     });
+
     this.playbackTime = clampedTime;
     this.lastFrameTime = 0;
-    this.notifyListeners();
+
+    for (const video of this.videoElements.values()) {
+      video.currentTime = clampedTime / 1000;
+    }
+
+    this.emitEvent({ type: 'timeSet'; time: clampedTime });
   }
 
   setSpeed(speed: number): void {
     const clampedSpeed = Math.max(0, speed);
+
+    if (this.playbackSpeed === clampedSpeed) return;
+
     console.log('%c[PlaybackEngine] 🎚️  Speed changed:', 'color: #4ECDC4;', {
       from: this.playbackSpeed,
       to: clampedSpeed,
     });
+
     this.playbackSpeed = clampedSpeed;
-    this.notifyListeners();
-  }
 
-  getPlaybackTime(): number {
-    return this.playbackTime;
-  }
+    for (const video of this.videoElements.values()) {
+      video.playbackRate = clampedSpeed;
+    }
 
-  getState(): PlaybackState {
-    return {
-      playbackTime: this.playbackTime,
-      isPlaying: this.isPlaying,
-      playbackSpeed: this.playbackSpeed,
-    };
+    this.emitEvent({ type: 'speedChanged'; speed: clampedSpeed });
   }
 
   getSceneLocalTime(sceneId: string): number {
     const scene = this.scenes.get(sceneId);
     if (!scene) return 0;
-
-    const localTime = this.playbackTime - scene.offset;
-    return Math.max(
-      scene.windowStart,
-      Math.min(localTime, scene.windowStart + scene.windowDuration)
-    );
+    return this.playbackTime - scene.offset;
   }
 
   getSceneConfig(sceneId: string): SceneConfig | undefined {
@@ -152,18 +161,33 @@ export class PlaybackEngine {
     this.scenes.delete(sceneId);
   }
 
-  subscribe(listener: PlaybackListener): () => void {
-    console.log('%c[PlaybackEngine] 👂 Listener subscribed', 'color: #4ECDC4;', {
-      totalListeners: this.listeners.size + 1,
+  registerVideoElement(cellId: string, videoElement: HTMLVideoElement): void {
+    console.log('%c[PlaybackEngine] 📹 Video element registered:', 'color: #4ECDC4;', {
+      cellId,
+      totalVideos: this.videoElements.size + 1,
     });
-    this.listeners.add(listener);
-    listener(this.getState());
+    this.videoElements.set(cellId, videoElement);
+  }
+
+  unregisterVideoElement(cellId: string): void {
+    console.log('%c[PlaybackEngine] 🗑️  Video element unregistered:', 'color: #FF6B6B;', {
+      cellId,
+      remainingVideos: this.videoElements.size - 1,
+    });
+    this.videoElements.delete(cellId);
+  }
+
+  addEventListener(listener: PlaybackEventListener): () => void {
+    console.log('%c[PlaybackEngine] 👂 Event listener added', 'color: #4ECDC4;', {
+      totalListeners: this.eventListeners.size + 1,
+    });
+    this.eventListeners.add(listener);
 
     return () => {
-      console.log('%c[PlaybackEngine] 👂 Listener unsubscribed', 'color: #FF6B6B;', {
-        remainingListeners: this.listeners.size - 1,
+      console.log('%c[PlaybackEngine] 👂 Event listener removed', 'color: #FF6B6B;', {
+        remainingListeners: this.eventListeners.size - 1,
       });
-      this.listeners.delete(listener);
+      this.eventListeners.delete(listener);
     };
   }
 
@@ -171,8 +195,9 @@ export class PlaybackEngine {
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
     }
-    this.listeners.clear();
+    this.eventListeners.clear();
     this.scenes.clear();
+    this.videoElements.clear();
   }
 }
 
