@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { useGridStore } from '../stores/gridStore';
 import { getGlobalPlaybackEngine, SceneConfig } from '../engine/PlaybackEngine';
 import { WindowedControls } from './WindowedControls';
-import { FrameScrubber } from './FrameScrubber';
 import { VideoToggleDisplay } from './VideoToggleDisplay';
 import { MeshViewer } from './MeshViewer';
+import { NativeScrubber } from './NativeScrubber';
 import { ContentLoadModal } from './ContentLoadModal';
 
 interface GridCellProps {
@@ -29,6 +29,8 @@ export function GridCell({ cellId }: GridCellProps) {
 
   useEffect(() => {
     if (!cell || totalFrames <= 0) return;
+
+    engine.reinitialize(fps, totalFrames);
 
     const sceneConfig: SceneConfig = {
       sceneId: cellId,
@@ -125,13 +127,7 @@ export function GridCell({ cellId }: GridCellProps) {
                 </div>
               )}
             </div>
-            {totalFrames > 0 && (
-              <FrameScrubber
-                cellId={cellId}
-                totalFrames={totalFrames}
-                fps={fps}
-              />
-            )}
+            <NativeScrubber />
           </>
         ) : (
           <>
@@ -153,13 +149,7 @@ export function GridCell({ cellId }: GridCellProps) {
                 }}
               />
             </div>
-            {totalFrames > 0 && (
-              <FrameScrubber
-                cellId={cellId}
-                totalFrames={totalFrames}
-                fps={fps}
-              />
-            )}
+            <NativeScrubber />
           </>
         )}
       </div>

@@ -3,6 +3,9 @@ export type PlaybackEvent =
   | { type: 'pause' }
   | { type: 'timeSet'; time: number }
   | { type: 'speedChanged'; speed: number }
+  | { type: 'reverseToggled'; isReversing: boolean }
+  | { type: 'loopToggled'; isLooping: boolean }
+  | { type: 'frameUpdate' }
   | { type: 'windowChange'; sceneId: string };
 
 export interface SceneConfig {
@@ -16,18 +19,58 @@ export interface SceneConfig {
 export type PlaybackEventListener = (event: PlaybackEvent) => void;
 
 export class PlaybackEngine {
-  playbackTime: number = 0;
-  isPlaying: boolean = false;
-  playbackSpeed: number = 1;
+  private _playbackTime: number = 0;
+  private _isPlaying: boolean = false;
+  private _playbackSpeed: number = 1;
+  private _isReversing: boolean = false;
+  private _isLooping: boolean = true;
 
   private rafId: number | null = null;
   private lastFrameTime: number = 0;
   private eventListeners: Set<PlaybackEventListener> = new Set();
   private scenes: Map<string, SceneConfig> = new Map();
   private videoElements: Map<string, HTMLVideoElement> = new Map();
+  private frameIntervalMs: number;
+  private totalFrames: number;
+  private _duration: number;
 
-  constructor() {
+  get playbackTime(): number {
+    return this._playbackTime;
+  }
+
+  get isPlaying(): boolean {
+    return this._isPlaying;
+  }
+
+  get playbackSpeed(): number {
+    return this._playbackSpeed;
+  }
+
+  get isReversing(): boolean {
+    return this._isReversing;
+  }
+
+  get isLooping(): boolean {
+    return this._isLooping;
+  }
+
+  get duration(): number {
+    return this._duration;
+  }
+
+  constructor(fps: number = 30, totalFrames: number = 300) {
+    this.frameIntervalMs = 1000 / fps;
+    this.totalFrames = totalFrames;
+    this._duration = (totalFrames / fps) * 1000;
     this.startRafLoop();
+  }
+
+  reinitialize(fps: number, totalFrames: number): void {
+    this.frameIntervalMs = 1000 / fps;
+    this.totalFrames = totalFrames;
+    this._duration = (totalFrames / fps) * 1000;
+    this._playbackTime = 0;
+    this.lastFrameTime = 0;
   }
 
   private startRafLoop(): void {
@@ -39,21 +82,29 @@ export class PlaybackEngine {
       const deltaTime = currentTime - this.lastFrameTime;
       this.lastFrameTime = currentTime;
 
-      if (this.isPlaying) {
-        this.playbackTime += deltaTime * this.playbackSpeed;
+      if (this._isPlaying) {
+        this._playbackTime += deltaTime * this._playbackSpeed;
+        this.handleLooping();
       }
 
-      for (const scene of this.scenes.values()) {
-        if (scene.videoElement && !scene.videoElement.paused) {
-          this.playbackTime = scene.videoElement.currentTime * 1000;
-        }
-      }
-
+      this.emitEvent({ type: 'frameUpdate' });
       this.rafId = requestAnimationFrame(loop);
     };
 
     this.rafId = requestAnimationFrame(loop);
-    console.log('%c[PlaybackEngine] 🎬 RAF loop started', 'color: #4ECDC4; font-weight: bold;');
+  }
+
+  private handleLooping(): void {
+    if (this._isLooping) {
+      if (this._playbackTime >= this.duration) {
+        this._playbackTime = this._playbackTime % this.duration;
+      } else if (this._playbackTime < 0) {
+        this._playbackTime = this.duration + (this._playbackTime % this.duration);
+      }
+    } else {
+      if (this._playbackTime < 0) this._playbackTime = 0;
+      if (this._playbackTime > this.duration) this._playbackTime = this.duration;
+    }
   }
 
   private emitEvent(event: PlaybackEvent): void {
@@ -61,14 +112,8 @@ export class PlaybackEngine {
   }
 
   play(): void {
-    if (this.isPlaying) return;
-
-    console.log('%c[PlaybackEngine] ▶️  Play', 'color: #00FF00; font-weight: bold;', {
-      playbackTime: this.playbackTime,
-      sceneCount: this.scenes.size,
-    });
-
-    this.isPlaying = true;
+    if (this._isPlaying) return;
+    this._isPlaying = true;
     this.lastFrameTime = 0;
 
     for (const video of this.videoElements.values()) {
@@ -79,13 +124,8 @@ export class PlaybackEngine {
   }
 
   pause(): void {
-    if (!this.isPlaying) return;
-
-    console.log('%c[PlaybackEngine] ⏸️  Pause', 'color: #FF6B6B; font-weight: bold;', {
-      playbackTime: this.playbackTime,
-    });
-
-    this.isPlaying = false;
+    if (!this._isPlaying) return;
+    this._isPlaying = false;
 
     for (const video of this.videoElements.values()) {
       video.pause();
@@ -95,47 +135,55 @@ export class PlaybackEngine {
   }
 
   seek(time: number): void {
-    const clampedTime = Math.max(0, time);
-
-    console.log('%c[PlaybackEngine] ⏱️  Seek', 'color: #4ECDC4;', {
-      from: this.playbackTime,
-      to: clampedTime,
-      sceneCount: this.scenes.size,
-    });
-
-    this.playbackTime = clampedTime;
+    const clampedTime = Math.max(0, Math.min(time, this.duration));
+    this._playbackTime = clampedTime;
     this.lastFrameTime = 0;
 
     for (const video of this.videoElements.values()) {
       video.currentTime = clampedTime / 1000;
     }
 
-    this.emitEvent({ type: 'timeSet'; time: clampedTime });
+    this.emitEvent({ type: 'timeSet', time: clampedTime });
   }
 
   setSpeed(speed: number): void {
-    const clampedSpeed = Math.max(0, speed);
-
-    if (this.playbackSpeed === clampedSpeed) return;
-
-    console.log('%c[PlaybackEngine] 🎚️  Speed changed:', 'color: #4ECDC4;', {
-      from: this.playbackSpeed,
-      to: clampedSpeed,
-    });
-
-    this.playbackSpeed = clampedSpeed;
+    if (this._playbackSpeed === speed) return;
+    this._playbackSpeed = speed;
+    this._isReversing = speed < 0;
 
     for (const video of this.videoElements.values()) {
-      video.playbackRate = clampedSpeed;
+      video.playbackRate = Math.abs(speed);
     }
 
-    this.emitEvent({ type: 'speedChanged'; speed: clampedSpeed });
+    this.emitEvent({ type: 'speedChanged', speed });
+  }
+
+  toggleReverse(): void {
+    this._isReversing = !this._isReversing;
+    this._playbackSpeed = Math.abs(this._playbackSpeed) * (this._isReversing ? -1 : 1);
+    this.emitEvent({ type: 'reverseToggled', isReversing: this._isReversing });
+  }
+
+  toggleLoop(): void {
+    this._isLooping = !this._isLooping;
+    this.emitEvent({ type: 'loopToggled', isLooping: this._isLooping });
+  }
+
+  getFrameIndex(time: number): number {
+    return Math.floor(time / this.frameIntervalMs) % this.totalFrames;
+  }
+
+  advanceFrame(direction: 1 | -1 = 1): void {
+    const currentFrameIndex = this.getFrameIndex(this._playbackTime);
+    const nextFrameIndex = (currentFrameIndex + direction + this.totalFrames) % this.totalFrames;
+    const nextTime = nextFrameIndex * this.frameIntervalMs;
+    this.seek(nextTime);
   }
 
   getSceneLocalTime(sceneId: string): number {
     const scene = this.scenes.get(sceneId);
     if (!scene) return 0;
-    return this.playbackTime - scene.offset;
+    return this._playbackTime - scene.offset;
   }
 
   getSceneConfig(sceneId: string): SceneConfig | undefined {
@@ -143,50 +191,24 @@ export class PlaybackEngine {
   }
 
   registerScene(config: SceneConfig): void {
-    console.log('%c[PlaybackEngine] 📋 Scene registered:', 'color: #4ECDC4;', {
-      sceneId: config.sceneId,
-      offset: config.offset,
-      windowStart: config.windowStart,
-      windowDuration: config.windowDuration,
-      totalScenes: this.scenes.size + 1,
-    });
     this.scenes.set(config.sceneId, config);
   }
 
   unregisterScene(sceneId: string): void {
-    console.log('%c[PlaybackEngine] 🗑️  Scene unregistered:', 'color: #FF6B6B;', {
-      sceneId,
-      remainingScenes: this.scenes.size - 1,
-    });
     this.scenes.delete(sceneId);
   }
 
   registerVideoElement(cellId: string, videoElement: HTMLVideoElement): void {
-    console.log('%c[PlaybackEngine] 📹 Video element registered:', 'color: #4ECDC4;', {
-      cellId,
-      totalVideos: this.videoElements.size + 1,
-    });
     this.videoElements.set(cellId, videoElement);
   }
 
   unregisterVideoElement(cellId: string): void {
-    console.log('%c[PlaybackEngine] 🗑️  Video element unregistered:', 'color: #FF6B6B;', {
-      cellId,
-      remainingVideos: this.videoElements.size - 1,
-    });
     this.videoElements.delete(cellId);
   }
 
   addEventListener(listener: PlaybackEventListener): () => void {
-    console.log('%c[PlaybackEngine] 👂 Event listener added', 'color: #4ECDC4;', {
-      totalListeners: this.eventListeners.size + 1,
-    });
     this.eventListeners.add(listener);
-
     return () => {
-      console.log('%c[PlaybackEngine] 👂 Event listener removed', 'color: #FF6B6B;', {
-        remainingListeners: this.eventListeners.size - 1,
-      });
       this.eventListeners.delete(listener);
     };
   }
