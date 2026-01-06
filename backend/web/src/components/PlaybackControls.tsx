@@ -1,130 +1,253 @@
-import React, { useEffect } from 'react';
-import '../styles/PlaybackControls.css';
+import React, { useState } from 'react';
 
 interface PlaybackControlsProps {
   isPlaying: boolean;
-  currentFrame: number;
-  totalFrames: number;
-  speed: number;
   onPlayPause: () => void;
-  onScrub: (frame: number) => void;
-  onSpeedChange: (speed: number) => void;
+  onStepBack: () => void;
+  onStepForward: () => void;
 }
 
-/**
- * PlaybackControls Component
- * Manages playback state and timeline scrubbing
- * Requirements: 3.1, 3.2, 3.3, 3.4
- */
-export const PlaybackControls: React.FC<PlaybackControlsProps> = ({
-  isPlaying,
-  currentFrame,
-  totalFrames,
-  speed,
-  onPlayPause,
-  onScrub,
-  onSpeedChange
-}) => {
-  const speedOptions = [0.25, 0.5, 1, 2, 4];
-  const timelineRef = React.useRef<HTMLDivElement>(null);
-
-  const formatTime = (frameIndex: number): string => {
-    if (totalFrames === 0) return '0:00';
-    const fps = 30; // Default FPS
-    const seconds = frameIndex / fps;
-    const minutes = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${minutes}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // Handle mouse wheel scrubbing
-  useEffect(() => {
-    const handleWheel = (e: WheelEvent) => {
-      if (!timelineRef.current?.contains(e.target as Node)) return;
-      
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -1 : 1; // Invert: scroll down = backward
-      const newFrame = Math.max(0, Math.min(totalFrames - 1, currentFrame + delta));
-      onScrub(newFrame);
-    };
-
-    window.addEventListener('wheel', handleWheel, { passive: false });
-    return () => window.removeEventListener('wheel', handleWheel);
-  }, [currentFrame, totalFrames, onScrub]);
+export function PlayPauseButton({ isPlaying, onPlayPause }: { isPlaying: boolean; onPlayPause: () => void }) {
+  const [isHovered, setIsHovered] = useState(false);
 
   return (
-    <div className="playback-controls">
-      {/* Playback Buttons */}
-      <div className="playback-buttons">
-        <button
-          className="control-button previous-frame"
-          onClick={() => onScrub(Math.max(0, currentFrame - 1))}
-          title="Previous Frame"
-          aria-label="Previous Frame"
-        >
-          ⏮
-        </button>
-
-        <button
-          className={`control-button play-pause ${isPlaying ? 'playing' : 'paused'}`}
-          onClick={onPlayPause}
-          title={isPlaying ? 'Pause' : 'Play'}
-          aria-label={isPlaying ? 'Pause' : 'Play'}
-        >
-          {isPlaying ? '⏸' : '▶'}
-        </button>
-
-        <button
-          className="control-button next-frame"
-          onClick={() => onScrub(Math.min(currentFrame + 1, totalFrames - 1))}
-          title="Next Frame"
-          aria-label="Next Frame"
-        >
-          ⏭
-        </button>
-      </div>
-
-      {/* Timeline Slider */}
-      <div className="timeline-container" ref={timelineRef}>
-        <input
-          type="range"
-          className="timeline-slider"
-          min="0"
-          max={Math.max(0, totalFrames - 1)}
-          value={currentFrame}
-          onChange={(e) => onScrub(parseInt(e.target.value, 10))}
-          title="Timeline Scrubber (scroll to scrub)"
-          aria-label="Timeline"
-        />
-      </div>
-
-      {/* Frame Counter */}
-      <div className="frame-counter">
-        <span className="current-time">{formatTime(currentFrame)}</span>
-        <span className="separator">/</span>
-        <span className="total-time">{formatTime(totalFrames - 1)}</span>
-        <span className="frame-info">
-          ({currentFrame} / {totalFrames - 1})
-        </span>
-      </div>
-
-      {/* Speed Buttons */}
-      <div className="speed-buttons">
-        {speedOptions.map((s) => (
-          <button
-            key={s}
-            className={`speed-button ${speed === s ? 'active' : ''}`}
-            onClick={() => onSpeedChange(s)}
-            title={`${s}x Speed`}
-            aria-label={`${s}x Speed`}
-            aria-pressed={speed === s}
-          >
-            {s}x
-          </button>
-        ))}
-      </div>
-    </div>
+    <button
+      onClick={onPlayPause}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '6px 8px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'all 0.2s ease',
+      }}
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={isHovered ? '#fff' : 'rgba(255, 255, 255, 0.6)'}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{
+          transition: 'stroke 0.2s ease',
+        }}
+      >
+        {isPlaying ? (
+          <>
+            <rect x="6" y="4" width="4" height="16" />
+            <rect x="14" y="4" width="4" height="16" />
+          </>
+        ) : (
+          <polygon points="5 3 19 12 5 21 5 3" />
+        )}
+      </svg>
+    </button>
   );
-};
+}
 
-export default PlaybackControls;
+export function StepBackButton({ onStepBack }: { onStepBack: () => void }) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <button
+      onClick={onStepBack}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '6px 8px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'all 0.2s ease',
+      }}
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={isHovered ? '#fff' : 'rgba(255, 255, 255, 0.5)'}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{
+          transition: 'stroke 0.2s ease',
+        }}
+      >
+        <polygon points="19 3 5 12 19 21 19 3" />
+        <line x1="3" y1="3" x2="3" y2="21" />
+      </svg>
+    </button>
+  );
+}
+
+export function StepForwardButton({ onStepForward }: { onStepForward: () => void }) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <button
+      onClick={onStepForward}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '6px 8px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'all 0.2s ease',
+      }}
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={isHovered ? '#fff' : 'rgba(255, 255, 255, 0.5)'}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{
+          transition: 'stroke 0.2s ease',
+        }}
+      >
+        <polygon points="5 3 19 12 5 21 5 3" />
+        <line x1="21" y1="3" x2="21" y2="21" />
+      </svg>
+    </button>
+  );
+}
+
+export function FullscreenButton({ onFullscreen }: { onFullscreen: () => void }) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <button
+      onClick={onFullscreen}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '6px 8px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'all 0.2s ease',
+      }}
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={isHovered ? '#fff' : 'rgba(255, 255, 255, 0.5)'}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{
+          transition: 'stroke 0.2s ease',
+        }}
+      >
+        <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+      </svg>
+    </button>
+  );
+}
+
+export function PictureInPictureButton({ onPip }: { onPip: () => void }) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <button
+      onClick={onPip}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '6px 8px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'all 0.2s ease',
+      }}
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={isHovered ? '#fff' : 'rgba(255, 255, 255, 0.5)'}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{
+          transition: 'stroke 0.2s ease',
+        }}
+      >
+        <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" />
+        <line x1="7" y1="2" x2="7" y2="22" />
+        <line x1="17" y1="2" x2="17" y2="22" />
+        <line x1="2" y1="12" x2="22" y2="12" />
+        <line x1="2" y1="7" x2="7" y2="7" />
+        <line x1="2" y1="17" x2="7" y2="17" />
+        <rect x="14" y="14" width="8" height="8" />
+      </svg>
+    </button>
+  );
+}
+
+export function DownloadButton({ onDownload }: { onDownload: () => void }) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <button
+      onClick={onDownload}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      style={{
+        background: 'none',
+        border: 'none',
+        cursor: 'pointer',
+        padding: '6px 8px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        transition: 'all 0.2s ease',
+      }}
+    >
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke={isHovered ? '#fff' : 'rgba(255, 255, 255, 0.5)'}
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        style={{
+          transition: 'stroke 0.2s ease',
+        }}
+      >
+        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+        <polyline points="7 10 12 15 17 10" />
+        <line x1="12" y1="15" x2="12" y2="3" />
+      </svg>
+    </button>
+  );
+}
