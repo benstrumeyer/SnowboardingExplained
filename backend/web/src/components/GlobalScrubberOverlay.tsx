@@ -319,16 +319,27 @@ export function GlobalScrubberOverlay({ onSpeedChange }: GlobalScrubberOverlayPr
           </button>
 
           <StepBackButton onStepBack={() => {
-            engine.pause();
-            engine.advanceFrame(-1);
+            for (const cellId of engine.getAllCellIds()) {
+              engine.cellFramePrev(cellId);
+            }
           }} />
           <PlayPauseButton isPlaying={isPlaying} onPlayPause={() => {
-            if (isPlaying) engine.pause();
-            else engine.play();
+            if (isPlaying) {
+              for (const cellId of engine.getAllCellIds()) {
+                engine.pauseCellVideo(cellId);
+              }
+              setIsPlaying(false);
+            } else {
+              for (const cellId of engine.getAllCellIds()) {
+                engine.playCellVideo(cellId);
+              }
+              setIsPlaying(true);
+            }
           }} />
           <StepForwardButton onStepForward={() => {
-            engine.pause();
-            engine.advanceFrame(1);
+            for (const cellId of engine.getAllCellIds()) {
+              engine.cellFrameNext(cellId);
+            }
           }} />
         </div>
       </div>

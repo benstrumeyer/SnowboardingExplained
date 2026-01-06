@@ -6,49 +6,73 @@ interface CellNativeScrubberProps {
   cellId: string;
   videoRef?: React.RefObject<HTMLVideoElement>;
   cellContainerRef?: React.RefObject<HTMLDivElement>;
-  onHoverChange?: (isHovered: boolean) => void;
 }
 
-export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHoverChange }: CellNativeScrubberProps) {
+export function CellNativeScrubber({ cellId, videoRef, cellContainerRef }: CellNativeScrubberProps) {
   const rulerRef = useRef<HTMLDivElement>(null);
   const thumbRef = useRef<HTMLDivElement | null>(null);
   const isDraggingRef = useRef(false);
   const rulerSectionRef = useRef<HTMLDivElement | null>(null);
   const durationDisplayRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const persistentProgressRef = useRef<HTMLDivElement | null>(null);
+  const bottomProgressRef = useRef<HTMLDivElement | null>(null);
   const trackerPlaybackTimeRef = useRef(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSpeedIndex, setCurrentSpeedIndex] = useState(0);
-  const [isHovered, setIsHovered] = useState(false);
-  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const speeds = [1, 1.5, 2, 0.125, 0.25, 0.5, 0.75];
   const engine = getGlobalPlaybackEngine();
+
+  const updateTrackerColors = (expanded: boolean) => {
+    const thumbElement = rulerRef.current?.querySelector('[data-thumb]') as HTMLDivElement;
+    const thumbDot = rulerRef.current?.querySelector('[data-thumb-dot]') as HTMLDivElement;
+    const progressLine = rulerRef.current?.querySelector('[data-progress-line]') as HTMLDivElement;
+
+    const color = expanded ? '#FF6B6B' : '#FFD700';
+    const shadowColor = expanded ? 'rgba(255, 107, 107, 0.6)' : 'rgba(255, 215, 0, 0.6)';
+    const progressShadow = expanded ? '0 0 4px rgba(255, 107, 107, 0.4)' : '0 0 6px rgba(255, 215, 0, 0.6)';
+
+    if (thumbElement) {
+      thumbElement.style.backgroundColor = color;
+      thumbElement.style.boxShadow = `0 0 8px ${shadowColor}`;
+    }
+    if (thumbDot) {
+      thumbDot.style.backgroundColor = color;
+      thumbDot.style.boxShadow = `0 0 8px ${shadowColor}`;
+    }
+    if (progressLine) {
+      progressLine.style.backgroundColor = color;
+      progressLine.style.boxShadow = progressShadow;
+    }
+  };
+
+  const updateBottomProgressColor = (expanded: boolean) => {
+    if (bottomProgressRef.current) {
+      const color = expanded ? '#FF6B6B' : '#FFD700';
+      const shadowColor = expanded ? '0 0 4px rgba(255, 107, 107, 0.4)' : '0 0 4px rgba(255, 215, 0, 0.6)';
+      bottomProgressRef.current.style.backgroundColor = color;
+      bottomProgressRef.current.style.boxShadow = shadowColor;
+    }
+  };
 
   const updateTrackerUI = (playbackTime: number, videoDuration: number) => {
     if (videoDuration > 0) {
       const progress = playbackTime / videoDuration;
       const progressPercent = Math.max(0, Math.min(100, progress * 100));
 
-      if (persistentProgressRef.current) {
-        persistentProgressRef.current.style.width = `${progressPercent}%`;
+      if (thumbRef.current) {
+        thumbRef.current.style.left = `${progressPercent}%`;
       }
 
-      if (isHovered || isScrubbing) {
-        if (thumbRef.current) {
-          thumbRef.current.style.left = `${progressPercent}%`;
-        }
+      const thumbDot = rulerRef.current?.querySelector('[data-thumb-dot]') as HTMLDivElement;
+      if (thumbDot) {
+        thumbDot.style.left = `${progressPercent}%`;
+      }
 
-        const thumbDot = rulerRef.current?.querySelector('[data-thumb-dot]') as HTMLDivElement;
-        if (thumbDot) {
-          thumbDot.style.left = `${progressPercent}%`;
-        }
-
-        const progressLine = rulerRef.current?.querySelector('[data-progress-line]') as HTMLDivElement;
-        if (progressLine) {
-          progressLine.style.width = `${progressPercent}%`;
-        }
+      const progressLine = rulerRef.current?.querySelector('[data-progress-line]') as HTMLDivElement;
+      if (progressLine) {
+        progressLine.style.width = `${progressPercent}%`;
       }
     }
   };
@@ -74,11 +98,6 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
         progressLine.style.transition = 'width 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
         progressLine.style.width = `${progressPercent}%`;
       }
-
-      if (persistentProgressRef.current) {
-        persistentProgressRef.current.style.transition = 'width 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
-        persistentProgressRef.current.style.width = `${progressPercent}%`;
-      }
     }
   };
 
@@ -88,15 +107,11 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
     const engine = getGlobalPlaybackEngine();
 
     const handleMouseEnter = () => {
-      setIsHovered(true);
-      onHoverChange?.(true);
+      setIsExpanded(true);
     };
 
     const handleMouseLeave = () => {
-      if (!isDraggingRef.current) {
-        setIsHovered(false);
-        onHoverChange?.(false);
-      }
+      setIsExpanded(false);
     };
 
     const container = containerRef.current;
@@ -129,11 +144,11 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       thumbElement.style.position = 'absolute';
       thumbElement.style.width = '2px';
       thumbElement.style.height = '100%';
-      thumbElement.style.backgroundColor = '#FF6B6B';
+      thumbElement.style.backgroundColor = '#FFD700';
       thumbElement.style.top = '0';
       thumbElement.style.left = '0';
       thumbElement.style.transform = 'translateX(-50%)';
-      thumbElement.style.boxShadow = '0 0 8px rgba(255, 107, 107, 0.6)';
+      thumbElement.style.boxShadow = '0 0 8px rgba(255, 215, 0, 0.6)';
       thumbElement.style.pointerEvents = 'none';
       thumbElement.style.zIndex = '2';
       thumbElement.style.opacity = '1';
@@ -144,14 +159,14 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       const thumbDot = document.createElement('div');
       thumbDot.setAttribute('data-thumb-dot', '1');
       thumbDot.style.position = 'absolute';
-      thumbDot.style.width = '10px';
-      thumbDot.style.height = '10px';
-      thumbDot.style.backgroundColor = '#FF6B6B';
+      thumbDot.style.width = '12px';
+      thumbDot.style.height = '12px';
+      thumbDot.style.backgroundColor = '#FFD700';
       thumbDot.style.borderRadius = '50%';
-      thumbDot.style.top = '-5px';
+      thumbDot.style.top = '-6px';
       thumbDot.style.left = '0';
       thumbDot.style.transform = 'translateX(-50%)';
-      thumbDot.style.boxShadow = '0 0 8px rgba(255, 107, 107, 0.6)';
+      thumbDot.style.boxShadow = '0 0 8px rgba(255, 215, 0, 0.8)';
       thumbDot.style.pointerEvents = 'none';
       thumbDot.style.zIndex = '2';
       thumbDot.style.transition = 'left 0.05s linear';
@@ -160,14 +175,14 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       const progressLine = document.createElement('div');
       progressLine.setAttribute('data-progress-line', '1');
       progressLine.style.position = 'absolute';
-      progressLine.style.height = '2px';
-      progressLine.style.backgroundColor = '#FF6B6B';
+      progressLine.style.height = '3px';
+      progressLine.style.backgroundColor = '#FFD700';
       progressLine.style.top = '0';
       progressLine.style.left = '0';
       progressLine.style.width = '0%';
       progressLine.style.pointerEvents = 'none';
       progressLine.style.zIndex = '1';
-      progressLine.style.boxShadow = '0 0 4px rgba(255, 107, 107, 0.4)';
+      progressLine.style.boxShadow = '0 0 6px rgba(255, 215, 0, 0.6)';
       progressLine.style.transition = 'width 0.05s linear';
       rulerRef.current.appendChild(progressLine);
 
@@ -229,7 +244,6 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
     const handleMouseDown = (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest('button')) return;
       isDraggingRef.current = true;
-      setIsScrubbing(true);
       engine.setIndependentPlayback(cellId, true);
       const rect = rulerSectionRef.current!.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -263,16 +277,6 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
 
     const handleMouseUp = () => {
       isDraggingRef.current = false;
-      setIsScrubbing(false);
-      if (!containerRef.current?.matches(':hover')) {
-        if (rulerSectionRef.current) {
-          rulerSectionRef.current.style.opacity = '0';
-          rulerSectionRef.current.style.transform = 'translateY(100%)';
-        }
-        if (thumbRef.current) {
-          thumbRef.current.style.opacity = '0';
-        }
-      }
     };
 
     rulerSectionRef.current.addEventListener('mousedown', handleMouseDown);
@@ -303,10 +307,21 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
     setTimeout(renderRuler, 100);
 
     let trackerPlaybackTime = 0;
-    let lastProgressUpdateTime = 0;
+
+    const handleRenderRulerIfNeeded = () => {
+      const video = videoRef?.current;
+      if (video && video.duration > 0) {
+        const marks = rulerRef.current?.querySelectorAll('[data-mark]');
+        if (!marks || marks.length === 0) {
+          renderRuler();
+        }
+      }
+    };
 
     const unsubscribe = engine.addEventListener((event) => {
       if (event.type === 'frameUpdate') {
+        handleRenderRulerIfNeeded();
+        
         const video = videoRef?.current;
         if (!video) return;
 
@@ -336,22 +351,21 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
           if (progressLine) {
             progressLine.style.width = `${progressPercent}%`;
           }
-
-          if (persistentProgressRef.current) {
-            persistentProgressRef.current.style.width = `${progressPercent}%`;
-          }
         } else {
           if (!video.paused) {
             trackerPlaybackTime = video.currentTime * 1000;
             updateTrackerUI(trackerPlaybackTime, videoDuration);
           }
         }
+
+        if (!isExpanded && bottomProgressRef.current) {
+          const videoDuration = video.duration * 1000;
+          const progress = video.currentTime * 1000 / videoDuration;
+          const progressPercent = Math.max(0, Math.min(100, progress * 100));
+          bottomProgressRef.current.style.width = `${progressPercent}%`;
+        }
       } else if (event.type === 'play') {
         setIsPlaying(true);
-        const video = videoRef?.current;
-        if (video && !video.paused) {
-          video.pause();
-        }
         engine.setIndependentPlayback(cellId, false);
       } else if (event.type === 'pause') {
         setIsPlaying(false);
@@ -363,6 +377,30 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       } else if (event.type === 'timeSet') {
         trackerPlaybackTimeRef.current = event.time;
         engine.setIndependentPlayback(cellId, false);
+      } else if (event.type === 'cellFrameNext' && event.cellId === cellId) {
+        const video = videoRef?.current;
+        if (video) {
+          if (!video.paused) video.pause();
+          const frameIntervalMs = 1000 / 30;
+          const nextTime = Math.min(video.duration, video.currentTime + frameIntervalMs / 1000);
+          video.currentTime = nextTime;
+          trackerPlaybackTimeRef.current = nextTime * 1000;
+          const videoDuration = video.duration * 1000;
+          updateTrackerUI(trackerPlaybackTimeRef.current, videoDuration);
+        }
+        setIsPlaying(false);
+      } else if (event.type === 'cellFramePrev' && event.cellId === cellId) {
+        const video = videoRef?.current;
+        if (video) {
+          if (!video.paused) video.pause();
+          const frameIntervalMs = 1000 / 30;
+          const nextTime = Math.max(0, video.currentTime - frameIntervalMs / 1000);
+          video.currentTime = nextTime;
+          trackerPlaybackTimeRef.current = nextTime * 1000;
+          const videoDuration = video.duration * 1000;
+          updateTrackerUI(trackerPlaybackTimeRef.current, videoDuration);
+        }
+        setIsPlaying(false);
       }
     });
 
@@ -371,6 +409,10 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       rulerSectionRef.current?.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
+      if (container) {
+        container.removeEventListener('mouseenter', handleMouseEnter);
+        container.removeEventListener('mouseleave', handleMouseLeave);
+      }
       if (videoElement) {
         videoElement.removeEventListener('loadedmetadata', handleVideoMetadata);
         videoElement.removeEventListener('durationchange', handleVideoMetadata);
@@ -379,6 +421,11 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       }
     };
   }, [cellId, videoRef, engine]);
+
+  useEffect(() => {
+    updateTrackerColors(isExpanded);
+    updateBottomProgressColor(isExpanded);
+  }, [isExpanded]);
 
   const handleSpeedClick = () => {
     const newIndex = (currentSpeedIndex + 1) % speeds.length;
@@ -409,8 +456,6 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
         position: 'relative',
         border: 'none',
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <div
         style={{
@@ -421,11 +466,10 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
           bottom: 0,
           display: 'flex',
           flexDirection: 'column',
-          backgroundColor: isHovered || isScrubbing ? 'rgba(0, 0, 0, 0.25)' : 'transparent',
-          backdropFilter: isHovered || isScrubbing ? 'blur(2px)' : 'none',
-          opacity: isHovered || isScrubbing ? 1 : 0,
-          transform: isHovered || isScrubbing ? 'translateY(0)' : 'translateY(100%)',
-          transition: 'opacity 0.3s ease, transform 0.3s ease, background-color 0.3s ease',
+          backgroundColor: 'rgba(0, 0, 0, 0.25)',
+          backdropFilter: 'blur(2px)',
+          opacity: 1,
+          transform: 'translateY(0)',
           pointerEvents: 'auto',
           zIndex: 5,
         }}
@@ -555,21 +599,21 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
           height: '2px',
           zIndex: 3,
           pointerEvents: 'none',
-          display: isHovered || isScrubbing ? 'none' : 'block',
+          display: !isExpanded ? 'block' : 'none',
         }}
       >
         <div
-          ref={persistentProgressRef}
+          ref={bottomProgressRef}
           style={{
             position: 'absolute',
             height: '2px',
-            backgroundColor: '#FF6B6B',
+            backgroundColor: '#FFD700',
             top: '0',
             left: '0',
             width: '0%',
             pointerEvents: 'none',
             zIndex: 1,
-            boxShadow: '0 0 4px rgba(255, 107, 107, 0.4)',
+            boxShadow: '0 0 4px rgba(255, 215, 0, 0.6)',
           }}
         />
       </div>

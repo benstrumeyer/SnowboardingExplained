@@ -4,6 +4,7 @@ import { useMeshSampler, MeshFrameData } from '../hooks/useMeshSampler';
 import { useVideoMeshSync } from '../hooks/useVideoMeshSync';
 import { useVideoPlaybackSync } from '../hooks/useVideoPlaybackSync';
 import { MeshNametag } from './MeshNametag';
+import { CellNativeScrubber } from './CellNativeScrubber';
 import { globalCameraManager } from '../services/globalCameraManager';
 
 interface MeshViewerProps {
@@ -276,6 +277,9 @@ export function MeshViewer({
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }} />
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '60px', zIndex: 10 }}>
+        <CellNativeScrubber cellId={cellId} />
+      </div>
       {sceneRef.current && cameraRef.current && nametag && (
         <MeshNametag
           scene={sceneRef.current}
