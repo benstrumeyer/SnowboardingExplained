@@ -6,7 +6,7 @@ Transform the sidebar-based layout into a full-width grid with transparent overl
 
 ## Tasks
 
-- [ ] 1. Update App.tsx layout structure
+- [x] 1. Update App.tsx layout structure
   - Remove sidebar div completely
   - Update app-content to remove flex layout with sidebar
   - Make grid container full width
@@ -14,7 +14,7 @@ Transform the sidebar-based layout into a full-width grid with transparent overl
   - Update CSS classes for full-width layout
   - _Requirements: 1.1, 1.2, 1.3, 1.4_
 
-- [ ] 2. Create GlobalScrubberOverlay component
+- [x] 2. Create GlobalScrubberOverlay component
   - Create `backend/web/src/components/GlobalScrubberOverlay.tsx`
   - Render scrubber at bottom of grid (60px height)
   - Implement semi-transparent background styling
@@ -23,14 +23,14 @@ Transform the sidebar-based layout into a full-width grid with transparent overl
   - Connect to PlaybackEngine for state updates
   - _Requirements: 2.1, 2.2, 2.3, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 4.1, 4.2, 4.3, 4.4, 4.5_
 
-- [ ] 3. Implement meter marks for scrubber
+- [x] 3. Implement meter marks for scrubber
   - Calculate meter mark positions based on duration
   - Generate marks for seconds and microseconds
   - Render major and minor tick marks
   - Label marks with time values
   - _Requirements: 2.4_
 
-- [ ] 4. Create CellOverlayControls component
+- [x] 4. Create CellOverlayControls component
   - Create `backend/web/src/components/CellOverlayControls.tsx`
   - Position camera preset buttons in top-left corner
   - Implement small, compact button styling
@@ -39,7 +39,7 @@ Transform the sidebar-based layout into a full-width grid with transparent overl
   - Connect to globalCameraManager
   - _Requirements: 6.1, 6.2, 6.3, 6.4, 6.5, 6.6_
 
-- [ ] 5. Create GridConfigurationModal component
+- [x] 5. Create GridConfigurationModal component
   - Create `backend/web/src/components/GridConfigurationModal.tsx`
   - Implement modal dialog with overlay
   - Add rows input (1-4)
@@ -48,14 +48,14 @@ Transform the sidebar-based layout into a full-width grid with transparent overl
   - Implement confirm/cancel buttons
   - _Requirements: 5.1, 5.2, 5.3, 5.4, 5.5_
 
-- [ ] 6. Create ProcessVideosButton component
+- [x] 6. Create ProcessVideosButton component
   - Create `backend/web/src/components/ProcessVideosButton.tsx`
   - Position in top-right corner
   - Implement video processing logic
   - Show success/error messages
   - _Requirements: 7.1, 7.2, 7.3, 7.4_
 
-- [ ] 7. Update GridCell to use overlay controls
+- [-] 7. Update GridCell to use overlay controls
   - Add CellOverlayControls component to GridCell
   - Position controls in top-left corner
   - Keep empty state and content load modal

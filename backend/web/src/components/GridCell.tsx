@@ -4,7 +4,7 @@ import { getGlobalPlaybackEngine, SceneConfig } from '../engine/PlaybackEngine';
 import { WindowedControls } from './WindowedControls';
 import { VideoToggleDisplay } from './VideoToggleDisplay';
 import { MeshViewer } from './MeshViewer';
-import { NativeScrubber } from './NativeScrubber';
+import { CellOverlayControls } from './CellOverlayControls';
 import { ContentLoadModal } from './ContentLoadModal';
 
 interface GridCellProps {
@@ -44,7 +44,7 @@ export function GridCell({ cellId }: GridCellProps) {
     return () => {
       engine.unregisterScene(cellId);
     };
-  }, [cellId, totalFrames, fps]);
+  }, [cellId, totalFrames, fps, engine]);
 
   if (!cell) return null;
 
@@ -83,12 +83,6 @@ export function GridCell({ cellId }: GridCellProps) {
           </div>
         ) : cell.contentType === 'video' ? (
           <>
-            <WindowedControls
-              cellId={cellId}
-              onLoadVideo={() => setShowModal(true)}
-              onLoadModel={() => { }}
-              isVideoCell={true}
-            />
             <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
               {cell.videoId ? (
                 <>
@@ -101,6 +95,7 @@ export function GridCell({ cellId }: GridCellProps) {
                       setTotalFrames(tf);
                     }}
                   />
+                  <CellOverlayControls cellId={cellId} />
                   <div style={{
                     position: 'absolute',
                     bottom: '10px',
@@ -127,16 +122,9 @@ export function GridCell({ cellId }: GridCellProps) {
                 </div>
               )}
             </div>
-            <NativeScrubber />
           </>
         ) : (
           <>
-            <WindowedControls
-              cellId={cellId}
-              onLoadVideo={() => setShowModal(true)}
-              onLoadModel={() => { }}
-              isVideoCell={false}
-            />
             <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
               <MeshViewer
                 cellId={cellId}
@@ -148,8 +136,8 @@ export function GridCell({ cellId }: GridCellProps) {
                   setTotalFrames(tf);
                 }}
               />
+              <CellOverlayControls cellId={cellId} />
             </div>
-            <NativeScrubber />
           </>
         )}
       </div>
