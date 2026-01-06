@@ -90,26 +90,12 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
     const handleMouseEnter = () => {
       setIsHovered(true);
       onHoverChange?.(true);
-      if (rulerSectionRef.current) {
-        rulerSectionRef.current.style.opacity = '1';
-        rulerSectionRef.current.style.transform = 'translateY(0)';
-      }
-      if (thumbRef.current) {
-        thumbRef.current.style.opacity = '1';
-      }
     };
 
     const handleMouseLeave = () => {
       if (!isDraggingRef.current) {
         setIsHovered(false);
         onHoverChange?.(false);
-        if (rulerSectionRef.current) {
-          rulerSectionRef.current.style.opacity = '0';
-          rulerSectionRef.current.style.transform = 'translateY(100%)';
-        }
-        if (thumbRef.current) {
-          thumbRef.current.style.opacity = '0';
-        }
       }
     };
 
@@ -150,7 +136,7 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       thumbElement.style.boxShadow = '0 0 8px rgba(255, 107, 107, 0.6)';
       thumbElement.style.pointerEvents = 'none';
       thumbElement.style.zIndex = '2';
-      thumbElement.style.opacity = '0';
+      thumbElement.style.opacity = '1';
       thumbElement.style.transition = 'opacity 0.3s ease, left 0.05s linear';
       rulerRef.current.appendChild(thumbElement);
       thumbRef.current = thumbElement;
@@ -317,7 +303,6 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
     setTimeout(renderRuler, 100);
 
     let trackerPlaybackTime = 0;
-    let frameCounter = 0;
     let lastProgressUpdateTime = 0;
 
     const unsubscribe = engine.addEventListener((event) => {
@@ -358,11 +343,7 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
         } else {
           if (!video.paused) {
             trackerPlaybackTime = video.currentTime * 1000;
-            const now = performance.now();
-            if (now - lastProgressUpdateTime >= 250) {
-              updateTrackerUI(trackerPlaybackTime, videoDuration);
-              lastProgressUpdateTime = now;
-            }
+            updateTrackerUI(trackerPlaybackTime, videoDuration);
           }
         }
       } else if (event.type === 'play') {
@@ -440,12 +421,12 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
           bottom: 0,
           display: 'flex',
           flexDirection: 'column',
-          backgroundColor: 'rgba(0, 0, 0, 0.25)',
-          backdropFilter: 'blur(2px)',
+          backgroundColor: isHovered || isScrubbing ? 'rgba(0, 0, 0, 0.25)' : 'transparent',
+          backdropFilter: isHovered || isScrubbing ? 'blur(2px)' : 'none',
           opacity: isHovered || isScrubbing ? 1 : 0,
           transform: isHovered || isScrubbing ? 'translateY(0)' : 'translateY(100%)',
-          transition: 'opacity 0.3s ease, transform 0.3s ease',
-          pointerEvents: isHovered || isScrubbing ? 'auto' : 'none',
+          transition: 'opacity 0.3s ease, transform 0.3s ease, background-color 0.3s ease',
+          pointerEvents: 'auto',
           zIndex: 5,
         }}
       >
