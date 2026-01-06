@@ -3,6 +3,7 @@ import { getGlobalPlaybackEngine } from '../engine/PlaybackEngine';
 import { useGridStore } from '../stores/gridStore';
 import { MeshViewer } from './MeshViewer';
 import { CellOverlayControls } from './CellOverlayControls';
+import { CellNativeScrubber } from './CellNativeScrubber';
 import '../styles/VideoDisplay.css';
 
 interface VideoToggleDisplayProps {
@@ -24,6 +25,7 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
 }) => {
   const originalVideoRef = useRef<HTMLVideoElement>(null);
   const overlayVideoRef = useRef<HTMLVideoElement>(null);
+  const videoCellRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [actualFps, setActualFps] = useState(fps);
 
@@ -59,14 +61,12 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
         if (onMetadataLoaded) {
           onMetadataLoaded(fetchedFps, frameCount);
         }
-        setLoading(false);
       } catch (err) {
         console.error('Failed to fetch mesh data', err);
-        setLoading(false);
       }
     };
     fetchMeshData();
-  }, [videoId]);
+  }, [videoId, fps, onMetadataLoaded]);
 
   useEffect(() => {
     const engine = getGlobalPlaybackEngine();
@@ -74,11 +74,24 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
 
     if (video && displayMode !== '3d') {
       engine.registerVideoElement(cellId, video);
+      
+      const handleLoadedMetadata = () => {
+        const duration = video.duration;
+        const fps = actualFps || 30;
+        const frameCount = Math.round(duration * fps);
+        if (onMetadataLoaded) {
+          onMetadataLoaded(fps, frameCount);
+        }
+      };
+
+      video.addEventListener('loadedmetadata', handleLoadedMetadata);
+      
       return () => {
         engine.unregisterVideoElement(cellId);
+        video.removeEventListener('loadedmetadata', handleLoadedMetadata);
       };
     }
-  }, [cellId, displayMode]);
+  }, [cellId, displayMode, actualFps, onMetadataLoaded]);
 
   if (displayMode === '3d') {
     if (loading) {
@@ -147,8 +160,23 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
 
   return (
     <div
+      ref={videoCellRef}
       className="video-display-container"
-      style={{ position: 'relative', width: '100%', height: '100%' }}
+      style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}
+      onMouseEnter={() => {
+        const scrubber = videoCellRef.current?.querySelector('[data-scrubber]') as HTMLElement;
+        if (scrubber) {
+          const event = new MouseEvent('mouseenter', { bubbles: true });
+          scrubber.dispatchEvent(event);
+        }
+      }}
+      onMouseLeave={() => {
+        const scrubber = videoCellRef.current?.querySelector('[data-scrubber]') as HTMLElement;
+        if (scrubber) {
+          const event = new MouseEvent('mouseleave', { bubbles: true });
+          scrubber.dispatchEvent(event);
+        }
+      }}
     >
       {loading && (
         <div
@@ -167,39 +195,49 @@ export const VideoToggleDisplay: React.FC<VideoToggleDisplayProps> = ({
         </div>
       )}
 
-      <video
-        ref={originalVideoRef}
-        src={`${API_URL}/api/video/${videoId}/original`}
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'contain',
-          backgroundColor: '#000',
-          position: 'absolute',
-          opacity: displayMode === 'original' ? 1 : 0,
-          pointerEvents: displayMode === 'original' ? 'auto' : 'none',
-        }}
-        loop
-        muted
-        controls
-      />
+      <div style={{ flex: 1, overflow: 'hidden', position: 'relative', minHeight: 0 }}>
+        <video
+          ref={originalVideoRef}
+          src={`${API_URL}/api/video/${videoId}/original`}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            backgroundColor: '#000',
+            display: displayMode === 'original' ? 'block' : 'none',
+          }}
+          loop
+          muted
+          onLoadedMetadata={() => setLoading(false)}
+        />
 
-      <video
-        ref={overlayVideoRef}
-        src={`${API_URL}/api/video/${videoId}/overlay`}
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'contain',
-          backgroundColor: '#000',
+        <video
+          ref={overlayVideoRef}
+          src={`${API_URL}/api/video/${videoId}/overlay`}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'contain',
+            backgroundColor: '#000',
+            display: displayMode === 'overlay' ? 'block' : 'none',
+          }}
+          loop
+          muted
+          onLoadedMetadata={() => setLoading(false)}
+        />
+
+        <div style={{
           position: 'absolute',
-          opacity: displayMode === 'overlay' ? 1 : 0,
-          pointerEvents: displayMode === 'overlay' ? 'auto' : 'none',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          height: '90px',
+          zIndex: 20,
         }}
-        loop
-        muted
-        controls
-      />
+        data-scrubber="true">
+          <CellNativeScrubber cellId={cellId} videoRef={displayMode === 'original' ? originalVideoRef : overlayVideoRef} cellContainerRef={videoCellRef} />
+        </div>
+      </div>
 
       <button
         onClick={() => updateCell(cellId, { videoMode: nextMode })}
