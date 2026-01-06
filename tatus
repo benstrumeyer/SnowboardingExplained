@@ -1,0 +1,10 @@
+[33mbf5f4d9[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m feat: implement smooth tracker updates via engine RAF loop for cell native scrubber
+[33ma70e3f4[m feat: integrate cell scrubber with fullscreen support and cell-wide hover detection
+[33maa9c343[m feat: redesign global scrubber with ruler marks, tracker elements, and playback controls
+[33m9408998[m feat: implement cell scrubber with hover-triggered ruler animation and tracker visualization
+[33m169c335[m feat: add fullscreen, pip, and download button components
+[33mcc4c899[m feat: add 3D toggle mode to video cells with VideoToggleDisplay
+[33m713afb4[m[33m ([m[1;31morigin/master[m[33m)[m feat(ui): implement overlay ui refactor with global scrubber and transparent controls
+[33m147e169[m spec(ui): add overlay ui refactor spec with full-width grid and transparent controls
+[33m3841f22[m spec(webgl): add shared renderer architecture spec with requirements, design, and tasks
+[33mc04735d[m fix(ui): improve native scrubber styling with red dot and time display

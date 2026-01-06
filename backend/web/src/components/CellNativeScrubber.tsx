@@ -21,6 +21,7 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSpeedIndex, setCurrentSpeedIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
+  const [isScrubbing, setIsScrubbing] = useState(false);
 
   const speeds = [1, 1.5, 2, 0.125, 0.25, 0.5, 0.75];
   const engine = getGlobalPlaybackEngine();
@@ -30,21 +31,52 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       const progress = playbackTime / videoDuration;
       const progressPercent = Math.max(0, Math.min(100, progress * 100));
 
+      if (persistentProgressRef.current) {
+        persistentProgressRef.current.style.width = `${progressPercent}%`;
+      }
+
+      if (isHovered || isScrubbing) {
+        if (thumbRef.current) {
+          thumbRef.current.style.left = `${progressPercent}%`;
+        }
+
+        const thumbDot = rulerRef.current?.querySelector('[data-thumb-dot]') as HTMLDivElement;
+        if (thumbDot) {
+          thumbDot.style.left = `${progressPercent}%`;
+        }
+
+        const progressLine = rulerRef.current?.querySelector('[data-progress-line]') as HTMLDivElement;
+        if (progressLine) {
+          progressLine.style.width = `${progressPercent}%`;
+        }
+      }
+    }
+  };
+
+  const updateTrackerDirect = (playbackTime: number, videoDuration: number) => {
+    if (videoDuration > 0) {
+      const progress = playbackTime / videoDuration;
+      const progressPercent = Math.max(0, Math.min(100, progress * 100));
+
       if (thumbRef.current) {
+        thumbRef.current.style.transition = 'left 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
         thumbRef.current.style.left = `${progressPercent}%`;
       }
 
       const thumbDot = rulerRef.current?.querySelector('[data-thumb-dot]') as HTMLDivElement;
       if (thumbDot) {
+        thumbDot.style.transition = 'left 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
         thumbDot.style.left = `${progressPercent}%`;
       }
 
       const progressLine = rulerRef.current?.querySelector('[data-progress-line]') as HTMLDivElement;
       if (progressLine) {
+        progressLine.style.transition = 'width 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
         progressLine.style.width = `${progressPercent}%`;
       }
 
       if (persistentProgressRef.current) {
+        persistentProgressRef.current.style.transition = 'width 0.1s cubic-bezier(0.25, 0.46, 0.45, 0.94)';
         persistentProgressRef.current.style.width = `${progressPercent}%`;
       }
     }
@@ -68,14 +100,16 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
     };
 
     const handleMouseLeave = () => {
-      setIsHovered(false);
-      onHoverChange?.(false);
-      if (rulerSectionRef.current) {
-        rulerSectionRef.current.style.opacity = '0';
-        rulerSectionRef.current.style.transform = 'translateY(100%)';
-      }
-      if (thumbRef.current) {
-        thumbRef.current.style.opacity = '0';
+      if (!isDraggingRef.current) {
+        setIsHovered(false);
+        onHoverChange?.(false);
+        if (rulerSectionRef.current) {
+          rulerSectionRef.current.style.opacity = '0';
+          rulerSectionRef.current.style.transform = 'translateY(100%)';
+        }
+        if (thumbRef.current) {
+          thumbRef.current.style.opacity = '0';
+        }
       }
     };
 
@@ -209,6 +243,7 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
     const handleMouseDown = (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest('button')) return;
       isDraggingRef.current = true;
+      setIsScrubbing(true);
       engine.setIndependentPlayback(cellId, true);
       const rect = rulerSectionRef.current!.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -218,7 +253,10 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
         const time = progress * (video.duration * 1000);
         engine.setCellPlaybackTime(cellId, time);
         trackerPlaybackTimeRef.current = time;
+        const videoDuration = video.duration * 1000;
+        updateTrackerDirect(time, videoDuration);
       }
+      e.preventDefault();
     };
 
     const handleMouseMove = (e: MouseEvent) => {
@@ -231,11 +269,24 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
         const time = progress * (video.duration * 1000);
         engine.setCellPlaybackTime(cellId, time);
         trackerPlaybackTimeRef.current = time;
+        const videoDuration = video.duration * 1000;
+        updateTrackerDirect(time, videoDuration);
       }
+      e.preventDefault();
     };
 
     const handleMouseUp = () => {
       isDraggingRef.current = false;
+      setIsScrubbing(false);
+      if (!containerRef.current?.matches(':hover')) {
+        if (rulerSectionRef.current) {
+          rulerSectionRef.current.style.opacity = '0';
+          rulerSectionRef.current.style.transform = 'translateY(100%)';
+        }
+        if (thumbRef.current) {
+          thumbRef.current.style.opacity = '0';
+        }
+      }
     };
 
     rulerSectionRef.current.addEventListener('mousedown', handleMouseDown);
@@ -248,6 +299,7 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
 
     const handleVideoPlay = () => {
       setIsPlaying(true);
+      engine.setIndependentPlayback(cellId, true);
     };
 
     const handleVideoPause = () => {
@@ -265,6 +317,8 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
     setTimeout(renderRuler, 100);
 
     let trackerPlaybackTime = 0;
+    let frameCounter = 0;
+    let lastProgressUpdateTime = 0;
 
     const unsubscribe = engine.addEventListener((event) => {
       if (event.type === 'frameUpdate') {
@@ -280,12 +334,35 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
         }
 
         if (isIndependent) {
-          trackerPlaybackTime = engine.getCellPlaybackTime(cellId);
-          updateTrackerUI(trackerPlaybackTime, videoDuration);
+          trackerPlaybackTime = video.currentTime * 1000;
+          const progress = trackerPlaybackTime / videoDuration;
+          const progressPercent = Math.max(0, Math.min(100, progress * 100));
+
+          if (thumbRef.current) {
+            thumbRef.current.style.left = `${progressPercent}%`;
+          }
+
+          const thumbDot = rulerRef.current?.querySelector('[data-thumb-dot]') as HTMLDivElement;
+          if (thumbDot) {
+            thumbDot.style.left = `${progressPercent}%`;
+          }
+
+          const progressLine = rulerRef.current?.querySelector('[data-progress-line]') as HTMLDivElement;
+          if (progressLine) {
+            progressLine.style.width = `${progressPercent}%`;
+          }
+
+          if (persistentProgressRef.current) {
+            persistentProgressRef.current.style.width = `${progressPercent}%`;
+          }
         } else {
           if (!video.paused) {
             trackerPlaybackTime = video.currentTime * 1000;
-            updateTrackerUI(trackerPlaybackTime, videoDuration);
+            const now = performance.now();
+            if (now - lastProgressUpdateTime >= 250) {
+              updateTrackerUI(trackerPlaybackTime, videoDuration);
+              lastProgressUpdateTime = now;
+            }
           }
         }
       } else if (event.type === 'play') {
@@ -365,10 +442,10 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
           flexDirection: 'column',
           backgroundColor: 'rgba(0, 0, 0, 0.25)',
           backdropFilter: 'blur(2px)',
-          opacity: isHovered ? 1 : 0,
-          transform: isHovered ? 'translateY(0)' : 'translateY(100%)',
+          opacity: isHovered || isScrubbing ? 1 : 0,
+          transform: isHovered || isScrubbing ? 'translateY(0)' : 'translateY(100%)',
           transition: 'opacity 0.3s ease, transform 0.3s ease',
-          pointerEvents: isHovered ? 'auto' : 'none',
+          pointerEvents: isHovered || isScrubbing ? 'auto' : 'none',
           zIndex: 5,
         }}
       >
@@ -382,6 +459,7 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
             overflow: 'visible',
             pointerEvents: 'auto',
             border: 'none',
+            userSelect: 'none',
           }}
         >
           <div
@@ -496,7 +574,7 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
           height: '2px',
           zIndex: 3,
           pointerEvents: 'none',
-          display: isHovered ? 'none' : 'block',
+          display: isHovered || isScrubbing ? 'none' : 'block',
         }}
       >
         <div
