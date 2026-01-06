@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getGlobalPlaybackEngine } from '../engine/PlaybackEngine';
+import { useGridStore } from '../stores/gridStore';
 
 interface GlobalScrubberOverlayProps {
   onSpeedChange?: (speed: number) => void;
@@ -11,27 +12,56 @@ export function GlobalScrubberOverlay({ onSpeedChange }: GlobalScrubberOverlayPr
   const timeDisplayRef = useRef<HTMLDivElement | null>(null);
   const thumbRef = useRef<HTMLDivElement | null>(null);
   const isDraggingRef = useRef(false);
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const trackRef = useRef<HTMLDivElement | null>(null);
   const meterMarksRef = useRef<HTMLDivElement | null>(null);
   const [currentSpeed, setCurrentSpeed] = useState(1);
+  const speedButtonsRef = useRef<Map<number, HTMLButtonElement>>(new Map());
+  const playBtnRef = useRef<HTMLButtonElement | null>(null);
+  const isContentLoaded = useGridStore((state) => state.isContentLoaded);
+  const [shouldRender, setShouldRender] = useState(false);
 
   useEffect(() => {
-    if (!containerRef.current) return;
+    setShouldRender(isContentLoaded);
+  }, [isContentLoaded]);
+
+  useEffect(() => {
+    if (!shouldRender || !containerRef.current) return;
 
     const engine = getGlobalPlaybackEngine();
 
-    // Create track container
+    const wrapper = document.createElement('div');
+    wrapper.style.width = '100%';
+    wrapper.style.height = '100%';
+    wrapper.style.display = 'flex';
+    wrapper.style.flexDirection = 'column';
+    wrapper.style.gap = '8px';
+    wrapper.style.boxSizing = 'border-box';
+
+    const timelineSection = document.createElement('div');
+    timelineSection.style.flex = '1';
+    timelineSection.style.display = 'flex';
+    timelineSection.style.flexDirection = 'column';
+    timelineSection.style.gap = '4px';
+    timelineSection.style.minHeight = '0';
+
+    const timeDisplay = document.createElement('div');
+    timeDisplay.style.color = '#999';
+    timeDisplay.style.fontSize = '11px';
+    timeDisplay.style.fontFamily = 'monospace';
+    timeDisplay.style.textAlign = 'left';
+    timeDisplay.textContent = '0.00s / 0.00s';
+    timelineSection.appendChild(timeDisplay);
+
     const track = document.createElement('div');
     track.style.position = 'relative';
-    track.style.width = '100%';
-    track.style.height = '24px';
+    track.style.flex = '1';
     track.style.backgroundColor = '#333';
     track.style.borderRadius = '4px';
     track.style.cursor = 'pointer';
     track.style.border = '1px solid #444';
     track.style.overflow = 'hidden';
+    track.style.minHeight = '24px';
 
-    // Meter marks container
     const meterMarks = document.createElement('div');
     meterMarks.style.position = 'absolute';
     meterMarks.style.width = '100%';
@@ -41,16 +71,13 @@ export function GlobalScrubberOverlay({ onSpeedChange }: GlobalScrubberOverlayPr
     track.appendChild(meterMarks);
     meterMarksRef.current = meterMarks;
 
-    // Function to render meter marks
     const renderMeterMarks = () => {
       meterMarks.innerHTML = '';
       const duration = engine.duration;
       if (duration <= 0) return;
 
       const secondsTotal = duration / 1000;
-
-      // Determine interval based on duration
-      let interval = 1; // 1 second
+      let interval = 1;
       if (secondsTotal > 60) interval = 10;
       if (secondsTotal > 300) interval = 30;
 
@@ -68,10 +95,8 @@ export function GlobalScrubberOverlay({ onSpeedChange }: GlobalScrubberOverlayPr
       }
     };
 
-    // Render marks after a short delay to ensure track width is set
     setTimeout(renderMeterMarks, 100);
 
-    // Progress bar
     const progressBar = document.createElement('div');
     progressBar.style.position = 'absolute';
     progressBar.style.height = '100%';
@@ -84,7 +109,6 @@ export function GlobalScrubberOverlay({ onSpeedChange }: GlobalScrubberOverlayPr
     progressBar.style.zIndex = '1';
     track.appendChild(progressBar);
 
-    // Thumb
     const thumb = document.createElement('div');
     thumb.style.position = 'absolute';
     thumb.style.width = '14px';
@@ -100,81 +124,22 @@ export function GlobalScrubberOverlay({ onSpeedChange }: GlobalScrubberOverlayPr
     thumb.style.border = '2px solid #fff';
     track.appendChild(thumb);
 
-    // Time display
-    const timeDisplay = document.createElement('div');
-    timeDisplay.style.marginTop = '4px';
-    timeDisplay.style.color = '#999';
-    timeDisplay.style.fontSize = '11px';
-    timeDisplay.style.fontFamily = 'monospace';
-    timeDisplay.style.textAlign = 'left';
-    timeDisplay.textContent = '0.00s / 0.00s';
+    timelineSection.appendChild(track);
+    wrapper.appendChild(timelineSection);
 
-    // Playback controls container
-    const controlsContainer = document.createElement('div');
-    controlsContainer.style.display = 'flex';
-    controlsContainer.style.gap = '8px';
-    controlsContainer.style.marginTop = '6px';
-    controlsContainer.style.alignItems = 'center';
+    const controlsSection = document.createElement('div');
+    controlsSection.style.display = 'flex';
+    controlsSection.style.gap = '12px';
+    controlsSection.style.alignItems = 'center';
+    controlsSection.style.justifyContent = 'center';
+    controlsSection.style.flexShrink = '0';
+    controlsSection.style.height = '32px';
 
-    // Play/Pause button
-    const playBtn = document.createElement('button');
-    playBtn.textContent = '▶';
-    playBtn.style.padding = '6px 10px';
-    playBtn.style.backgroundColor = '#333';
-    playBtn.style.color = '#fff';
-    playBtn.style.border = '1px solid #444';
-    playBtn.style.borderRadius = '3px';
-    playBtn.style.cursor = 'pointer';
-    playBtn.style.fontSize = '12px';
-    playBtn.style.minWidth = '32px';
-    playBtn.onclick = () => {
-      if (engine.isPlaying) {
-        engine.pause();
-        playBtn.textContent = '▶';
-      } else {
-        engine.play();
-        playBtn.textContent = '⏸';
-      }
-    };
-    controlsContainer.appendChild(playBtn);
-
-    // Forward button
-    const forwardBtn = document.createElement('button');
-    forwardBtn.textContent = '⏭';
-    forwardBtn.style.padding = '6px 10px';
-    forwardBtn.style.backgroundColor = '#333';
-    forwardBtn.style.color = '#fff';
-    forwardBtn.style.border = '1px solid #444';
-    forwardBtn.style.borderRadius = '3px';
-    forwardBtn.style.cursor = 'pointer';
-    forwardBtn.style.fontSize = '12px';
-    forwardBtn.style.minWidth = '32px';
-    forwardBtn.onclick = () => engine.advanceFrame(1);
-    controlsContainer.appendChild(forwardBtn);
-
-    // Loop button
-    const loopBtn = document.createElement('button');
-    loopBtn.textContent = '🔁';
-    loopBtn.style.padding = '6px 10px';
-    loopBtn.style.backgroundColor = engine.isLooping ? '#4ECDC4' : '#333';
-    loopBtn.style.color = engine.isLooping ? '#000' : '#fff';
-    loopBtn.style.border = '1px solid #444';
-    loopBtn.style.borderRadius = '3px';
-    loopBtn.style.cursor = 'pointer';
-    loopBtn.style.fontSize = '12px';
-    loopBtn.style.minWidth = '32px';
-    loopBtn.onclick = () => {
-      engine.toggleLoop();
-      loopBtn.style.backgroundColor = engine.isLooping ? '#4ECDC4' : '#333';
-      loopBtn.style.color = engine.isLooping ? '#000' : '#fff';
-    };
-    controlsContainer.appendChild(loopBtn);
-
-    // Speed presets
-    const speedContainer = document.createElement('div');
-    speedContainer.style.display = 'flex';
-    speedContainer.style.gap = '4px';
-    speedContainer.style.marginLeft = '12px';
+    const speedDisplay = document.createElement('div');
+    speedDisplay.style.display = 'flex';
+    speedDisplay.style.gap = '4px';
+    speedDisplay.style.alignItems = 'center';
+    speedDisplay.style.marginRight = '12px';
 
     const speeds = [0.5, 1, 1.5, 2];
     speeds.forEach((speed) => {
@@ -188,45 +153,89 @@ export function GlobalScrubberOverlay({ onSpeedChange }: GlobalScrubberOverlayPr
       speedBtn.style.cursor = 'pointer';
       speedBtn.style.fontSize = '11px';
       speedBtn.style.minWidth = '32px';
+      speedBtn.style.fontWeight = speed === 1 ? '600' : '500';
       speedBtn.onclick = () => {
         engine.setSpeed(speed);
         setCurrentSpeed(speed);
         onSpeedChange?.(speed);
 
-        // Update button styles
         speeds.forEach((s) => {
-          const btn = speedContainer.querySelector(`button:nth-child(${speeds.indexOf(s) + 1})`) as HTMLButtonElement;
+          const btn = speedButtonsRef.current.get(s);
           if (btn) {
             btn.style.backgroundColor = s === speed ? '#4ECDC4' : '#333';
             btn.style.color = s === speed ? '#000' : '#fff';
+            btn.style.fontWeight = s === speed ? '600' : '500';
           }
         });
       };
-      speedContainer.appendChild(speedBtn);
+      speedButtonsRef.current.set(speed, speedBtn);
+      speedDisplay.appendChild(speedBtn);
     });
-    controlsContainer.appendChild(speedContainer);
+    controlsSection.appendChild(speedDisplay);
 
-    // Wrapper
-    const wrapper = document.createElement('div');
-    wrapper.style.width = '100%';
-    wrapper.style.padding = '8px';
-    wrapper.style.display = 'flex';
-    wrapper.style.flexDirection = 'column';
-    wrapper.style.gap = '6px';
-    wrapper.style.backgroundColor = 'rgba(26, 26, 26, 0.8)';
-    wrapper.style.borderRadius = '4px';
-    wrapper.style.boxSizing = 'border-box';
-    wrapper.appendChild(track);
-    wrapper.appendChild(timeDisplay);
-    wrapper.appendChild(controlsContainer);
+    const playbackControls = document.createElement('div');
+    playbackControls.style.display = 'flex';
+    playbackControls.style.gap = '8px';
+    playbackControls.style.alignItems = 'center';
+
+    const stepPrevBtn = document.createElement('button');
+    stepPrevBtn.textContent = '⏮';
+    stepPrevBtn.style.padding = '6px 10px';
+    stepPrevBtn.style.backgroundColor = '#333';
+    stepPrevBtn.style.color = '#fff';
+    stepPrevBtn.style.border = '1px solid #444';
+    stepPrevBtn.style.borderRadius = '3px';
+    stepPrevBtn.style.cursor = 'pointer';
+    stepPrevBtn.style.fontSize = '14px';
+    stepPrevBtn.style.minWidth = '32px';
+    stepPrevBtn.onclick = () => engine.advanceFrame(-1);
+    playbackControls.appendChild(stepPrevBtn);
+
+    const playBtn = document.createElement('button');
+    playBtn.textContent = '▶';
+    playBtn.style.padding = '6px 12px';
+    playBtn.style.backgroundColor = '#FF6B6B';
+    playBtn.style.color = '#fff';
+    playBtn.style.border = 'none';
+    playBtn.style.borderRadius = '3px';
+    playBtn.style.cursor = 'pointer';
+    playBtn.style.fontSize = '14px';
+    playBtn.style.minWidth = '40px';
+    playBtn.style.fontWeight = '600';
+    playBtn.onclick = () => {
+      if (engine.isPlaying) {
+        engine.pause();
+        playBtn.textContent = '▶';
+      } else {
+        engine.play();
+        playBtn.textContent = '⏸';
+      }
+    };
+    playbackControls.appendChild(playBtn);
+    playBtnRef.current = playBtn;
+
+    const stepNextBtn = document.createElement('button');
+    stepNextBtn.textContent = '⏭';
+    stepNextBtn.style.padding = '6px 10px';
+    stepNextBtn.style.backgroundColor = '#333';
+    stepNextBtn.style.color = '#fff';
+    stepNextBtn.style.border = '1px solid #444';
+    stepNextBtn.style.borderRadius = '3px';
+    stepNextBtn.style.cursor = 'pointer';
+    stepNextBtn.style.fontSize = '14px';
+    stepNextBtn.style.minWidth = '32px';
+    stepNextBtn.onclick = () => engine.advanceFrame(1);
+    playbackControls.appendChild(stepNextBtn);
+
+    controlsSection.appendChild(playbackControls);
+    wrapper.appendChild(controlsSection);
 
     containerRef.current.appendChild(wrapper);
     progressBarRef.current = progressBar;
     timeDisplayRef.current = timeDisplay;
     thumbRef.current = thumb;
-    wrapperRef.current = wrapper;
+    trackRef.current = track;
 
-    // Mouse handlers
     const handleMouseDown = (e: MouseEvent) => {
       isDraggingRef.current = true;
       const rect = track.getBoundingClientRect();
@@ -253,7 +262,6 @@ export function GlobalScrubberOverlay({ onSpeedChange }: GlobalScrubberOverlayPr
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
 
-    // Engine listener
     const unsubscribe = engine.addEventListener((event) => {
       if (event.type === 'frameUpdate') {
         const duration = engine.duration;
@@ -278,9 +286,9 @@ export function GlobalScrubberOverlay({ onSpeedChange }: GlobalScrubberOverlayPr
           }
         }
       } else if (event.type === 'play') {
-        playBtn.textContent = '⏸';
+        if (playBtnRef.current) playBtnRef.current.textContent = '⏸';
       } else if (event.type === 'pause') {
-        playBtn.textContent = '▶';
+        if (playBtnRef.current) playBtnRef.current.textContent = '▶';
       }
     });
 
@@ -289,23 +297,23 @@ export function GlobalScrubberOverlay({ onSpeedChange }: GlobalScrubberOverlayPr
       track.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
-      if (containerRef.current && wrapperRef.current?.parentNode === containerRef.current) {
-        containerRef.current.removeChild(wrapperRef.current);
+      if (containerRef.current?.firstChild) {
+        containerRef.current.removeChild(containerRef.current.firstChild);
       }
     };
-  }, [onSpeedChange]);
+  }, [shouldRender, onSpeedChange]);
 
   return (
     <div
       ref={containerRef}
       style={{
         width: '100%',
-        position: 'absolute',
-        bottom: '0',
-        left: '0',
-        right: '0',
-        zIndex: 50,
-        height: '60px',
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        padding: '8px',
+        boxSizing: 'border-box',
+        backgroundColor: '#1a1a1a',
       }}
     />
   );

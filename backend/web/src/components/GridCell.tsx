@@ -95,7 +95,6 @@ export function GridCell({ cellId }: GridCellProps) {
                       setTotalFrames(tf);
                     }}
                   />
-                  <CellOverlayControls cellId={cellId} />
                   <div style={{
                     position: 'absolute',
                     bottom: '10px',
@@ -137,6 +136,44 @@ export function GridCell({ cellId }: GridCellProps) {
                 }}
               />
               <CellOverlayControls cellId={cellId} />
+              <button
+                onClick={() => {
+                  const updateCell = useGridStore.getState().updateCell;
+                  updateCell(cellId, {
+                    contentType: 'video',
+                    videoMode: 'original',
+                  });
+                }}
+                style={{
+                  position: 'absolute',
+                  top: '10px',
+                  right: '10px',
+                  zIndex: 10,
+                  padding: '8px 12px',
+                  backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                  color: '#fff',
+                  border: '2px solid #4ECDC4',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease-in-out',
+                  minWidth: '100px',
+                  textAlign: 'center',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.9)';
+                  e.currentTarget.style.borderColor = '#FF6B6B';
+                  e.currentTarget.textContent = '📹 Original';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                  e.currentTarget.style.borderColor = '#4ECDC4';
+                  e.currentTarget.textContent = '🎭 3D';
+                }}
+              >
+                🎭 3D
+              </button>
             </div>
           </>
         )}

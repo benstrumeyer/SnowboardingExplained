@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 
-export type CameraPreset = 'top' | 'front' | 'back' | 'left' | 'right';
+export type CameraPreset = 'left' | 'top' | 'front' | 'back' | 'right';
 
 interface RegisteredCamera {
   camera: THREE.PerspectiveCamera;
@@ -10,7 +10,7 @@ interface RegisteredCamera {
 
 class GlobalCameraManager {
   private cameras: Map<string, RegisteredCamera> = new Map();
-  private currentPreset: CameraPreset = 'front';
+  private currentPreset: CameraPreset = 'left';
   private animationDuration: number = 500;
 
   registerCamera(id: string, camera: THREE.PerspectiveCamera, targetPosition: THREE.Vector3 = new THREE.Vector3(0, 0, 0)) {
@@ -29,18 +29,18 @@ class GlobalCameraManager {
   private getPresetPosition(preset: CameraPreset, targetPosition: THREE.Vector3): THREE.Vector3 {
     const distance = 3;
     switch (preset) {
-      case 'top':
-        return new THREE.Vector3(targetPosition.x, targetPosition.y + distance * 2, targetPosition.z);
-      case 'front':
-        return new THREE.Vector3(targetPosition.x, targetPosition.y, targetPosition.z - distance);
-      case 'back':
-        return new THREE.Vector3(targetPosition.x, targetPosition.y, targetPosition.z + distance);
       case 'left':
         return new THREE.Vector3(targetPosition.x - distance, targetPosition.y, targetPosition.z);
       case 'right':
         return new THREE.Vector3(targetPosition.x + distance, targetPosition.y, targetPosition.z);
-      default:
+      case 'front':
         return new THREE.Vector3(targetPosition.x, targetPosition.y, targetPosition.z - distance);
+      case 'back':
+        return new THREE.Vector3(targetPosition.x, targetPosition.y, targetPosition.z + distance);
+      case 'top':
+        return new THREE.Vector3(targetPosition.x, targetPosition.y + distance * 2, targetPosition.z);
+      default:
+        return new THREE.Vector3(targetPosition.x - distance, targetPosition.y, targetPosition.z);
     }
   }
 
@@ -65,15 +65,23 @@ class GlobalCameraManager {
     requestAnimationFrame(animate);
   }
 
-  setPreset(preset: CameraPreset) {
+  setPreset(preset: CameraPreset, cellId?: string) {
     this.currentPreset = preset;
-    console.log(`[GlobalCameraManager] Setting preset to: ${preset} for ${this.cameras.size} cameras`);
-
-    this.cameras.forEach((registered, id) => {
-      const targetPos = this.getPresetPosition(preset, registered.targetPosition);
-      this.animateCameraToPosition(registered.camera, targetPos, registered.targetPosition);
-      registered.onPresetChange?.(preset);
-    });
+    
+    if (cellId) {
+      const registered = this.cameras.get(cellId);
+      if (registered) {
+        const targetPos = this.getPresetPosition(preset, registered.targetPosition);
+        this.animateCameraToPosition(registered.camera, targetPos, registered.targetPosition);
+        registered.onPresetChange?.(preset);
+      }
+    } else {
+      this.cameras.forEach((registered, id) => {
+        const targetPos = this.getPresetPosition(preset, registered.targetPosition);
+        this.animateCameraToPosition(registered.camera, targetPos, registered.targetPosition);
+        registered.onPresetChange?.(preset);
+      });
+    }
   }
 
   getCurrentPreset(): CameraPreset {

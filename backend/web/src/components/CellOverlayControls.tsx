@@ -8,13 +8,15 @@ interface CellOverlayControlsProps {
 
 export function CellOverlayControls({ cellId, onCameraPresetChange }: CellOverlayControlsProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const currentPresetRef = useRef<CameraPreset>('front');
+  const currentPresetRef = useRef<CameraPreset>('left');
 
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const presets: CameraPreset[] = ['top', 'front', 'back', 'left', 'right'];
+    const presets: CameraPreset[] = ['left', 'right', 'front', 'back', 'top'];
     const buttonRefs: Map<CameraPreset, HTMLButtonElement> = new Map();
+
+    globalCameraManager.setPreset('left', cellId);
 
     // Create container
     const container = document.createElement('div');
@@ -29,18 +31,19 @@ export function CellOverlayControls({ cellId, onCameraPresetChange }: CellOverla
     container.style.padding = '6px';
     container.style.borderRadius = '4px';
     container.style.border = '1px solid rgba(68, 68, 68, 0.6)';
+    container.style.pointerEvents = 'auto';
 
     presets.forEach((preset) => {
       const btn = document.createElement('button');
       btn.textContent = preset.charAt(0).toUpperCase() + preset.slice(1);
       btn.style.padding = '6px 10px';
       btn.style.fontSize = '11px';
-      btn.style.backgroundColor = preset === 'front' ? '#4ECDC4' : '#333';
-      btn.style.color = preset === 'front' ? '#000' : '#fff';
+      btn.style.backgroundColor = preset === 'left' ? '#4ECDC4' : '#333';
+      btn.style.color = preset === 'left' ? '#000' : '#fff';
       btn.style.border = '1px solid #444';
       btn.style.borderRadius = '3px';
       btn.style.cursor = 'pointer';
-      btn.style.fontWeight = preset === 'front' ? '600' : '400';
+      btn.style.fontWeight = preset === 'left' ? '600' : '400';
       btn.style.transition = 'all 0.2s';
       btn.style.minWidth = '50px';
 
@@ -68,7 +71,7 @@ export function CellOverlayControls({ cellId, onCameraPresetChange }: CellOverla
         });
 
         currentPresetRef.current = preset;
-        globalCameraManager.setPreset(preset);
+        globalCameraManager.setPreset(preset, cellId);
         onCameraPresetChange?.(preset);
       };
 
@@ -94,7 +97,7 @@ export function CellOverlayControls({ cellId, onCameraPresetChange }: CellOverla
         left: 0,
         width: '100%',
         height: '100%',
-        pointerEvents: 'none',
+        pointerEvents: 'auto',
       }}
     />
   );

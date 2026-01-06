@@ -4,7 +4,6 @@ import { useMeshSampler, MeshFrameData } from '../hooks/useMeshSampler';
 import { useVideoMeshSync } from '../hooks/useVideoMeshSync';
 import { useVideoPlaybackSync } from '../hooks/useVideoPlaybackSync';
 import { MeshNametag } from './MeshNametag';
-import { MeshScrubber } from './MeshScrubber';
 import { globalCameraManager } from '../services/globalCameraManager';
 
 interface MeshViewerProps {
@@ -35,6 +34,7 @@ export function MeshViewer({
   const isDraggingRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const meshDataRef = useRef<MeshFrameData[]>([]);
+  const activeCellIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -73,12 +73,15 @@ export function MeshViewer({
     scene.add(gridHelper);
 
     const onMouseDown = (e: MouseEvent) => {
+      activeCellIdRef.current = cellId;
       isDraggingRef.current = true;
       lastMouseRef.current = { x: e.clientX, y: e.clientY };
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', onMouseUp);
     };
 
     const onMouseMove = (e: MouseEvent) => {
-      if (!isDraggingRef.current || !cameraRef.current) return;
+      if (!isDraggingRef.current || activeCellIdRef.current !== cellId || !cameraRef.current) return;
 
       const deltaX = e.clientX - lastMouseRef.current.x;
       const deltaY = e.clientY - lastMouseRef.current.y;
@@ -98,6 +101,9 @@ export function MeshViewer({
 
     const onMouseUp = () => {
       isDraggingRef.current = false;
+      activeCellIdRef.current = null;
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
     };
 
     const onMouseWheel = (e: WheelEvent) => {
@@ -115,8 +121,6 @@ export function MeshViewer({
     };
 
     renderer.domElement.addEventListener('mousedown', onMouseDown);
-    window.addEventListener('mousemove', onMouseMove);
-    window.addEventListener('mouseup', onMouseUp);
     renderer.domElement.addEventListener('wheel', onMouseWheel, { passive: false });
 
     const handleResize = () => {
@@ -130,6 +134,11 @@ export function MeshViewer({
 
     window.addEventListener('resize', handleResize);
 
+    const resizeObserver = new ResizeObserver(() => {
+      handleResize();
+    });
+    resizeObserver.observe(containerRef.current);
+
     const animate = () => {
       requestAnimationFrame(animate);
       renderer.render(scene, camera);
@@ -138,11 +147,12 @@ export function MeshViewer({
 
     return () => {
       globalCameraManager.unregisterCamera(cellId);
+      resizeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
       renderer.domElement.removeEventListener('mousedown', onMouseDown);
+      renderer.domElement.removeEventListener('wheel', onMouseWheel);
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
-      renderer.domElement.removeEventListener('wheel', onMouseWheel);
       if (containerRef.current && renderer.domElement.parentNode === containerRef.current) {
         containerRef.current.removeChild(renderer.domElement);
       }
@@ -265,7 +275,7 @@ export function MeshViewer({
 
   return (
     <>
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }} />
       {sceneRef.current && cameraRef.current && nametag && (
         <MeshNametag
           scene={sceneRef.current}

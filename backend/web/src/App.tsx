@@ -3,66 +3,88 @@ import { getGlobalPlaybackEngine } from './engine/PlaybackEngine';
 import { useGridStore } from './stores/gridStore';
 import { GridLayout } from './components/GridLayout';
 import { GlobalScrubberOverlay } from './components/GlobalScrubberOverlay';
-import { GridConfigurationModal } from './components/GridConfigurationModal';
 import { ProcessVideosButton } from './components/ProcessVideosButton';
-import { PlaybackTester } from './components/PlaybackTester';
-import { PerformanceMonitor } from './components/PerformanceMonitor';
+import { NavBarStatus } from './components/NavBarStatus';
 import './styles/App.css';
 
 function App() {
-  const [showGridConfig, setShowGridConfig] = useState(false);
   const gridRows = useGridStore((state) => state.gridRows);
   const gridColumns = useGridStore((state) => state.gridColumns);
   const setGridDimensions = useGridStore((state) => state.setGridDimensions);
+  const isContentLoaded = useGridStore((state) => state.isContentLoaded);
 
   useEffect(() => {
     getGlobalPlaybackEngine();
   }, []);
 
+  const handleRowsChange = (delta: number) => {
+    const newRows = Math.max(1, Math.min(4, gridRows + delta));
+    setGridDimensions(newRows, gridColumns);
+  };
+
+  const handleColumnsChange = (delta: number) => {
+    const newColumns = Math.max(1, Math.min(4, gridColumns + delta));
+    setGridDimensions(gridRows, newColumns);
+  };
+
   return (
     <div className="app-container">
       <div className="app-header">
         <h1>SnowboardingExplained</h1>
+        <NavBarStatus />
         <div className="header-controls">
-          <button
-            onClick={() => setShowGridConfig(true)}
-            style={{
-              padding: '8px 12px',
-              fontSize: '12px',
-              backgroundColor: '#333',
-              color: '#fff',
-              border: '1px solid #444',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: '600',
-            }}
-          >
-            ⚙️ Grid ({gridRows}x{gridColumns})
-          </button>
+          <div className="grid-config-inline">
+            <div className="grid-config-item">
+              <label>Rows</label>
+              <button
+                onClick={() => handleRowsChange(-1)}
+                className="grid-btn"
+                disabled={gridRows <= 1}
+              >
+                −
+              </button>
+              <span className="grid-value">{gridRows}</span>
+              <button
+                onClick={() => handleRowsChange(1)}
+                className="grid-btn"
+                disabled={gridRows >= 4}
+              >
+                +
+              </button>
+            </div>
+            <div className="grid-config-item">
+              <label>Cols</label>
+              <button
+                onClick={() => handleColumnsChange(-1)}
+                className="grid-btn"
+                disabled={gridColumns <= 1}
+              >
+                −
+              </button>
+              <span className="grid-value">{gridColumns}</span>
+              <button
+                onClick={() => handleColumnsChange(1)}
+                className="grid-btn"
+                disabled={gridColumns >= 4}
+              >
+                +
+              </button>
+            </div>
+          </div>
           <ProcessVideosButton />
         </div>
       </div>
 
       <div className="app-content">
         <div className="viewer-container">
-          <GridLayout />
-          <GlobalScrubberOverlay />
+          <div className="grid-wrapper">
+            <GridLayout />
+          </div>
+          <div className={`scrubber-wrapper ${!isContentLoaded ? 'hidden' : ''}`}>
+            <GlobalScrubberOverlay />
+          </div>
         </div>
       </div>
-
-      <GridConfigurationModal
-        isOpen={showGridConfig}
-        rows={gridRows}
-        columns={gridColumns}
-        onConfirm={(rows, cols) => {
-          setGridDimensions(rows, cols);
-          setShowGridConfig(false);
-        }}
-        onCancel={() => setShowGridConfig(false)}
-      />
-
-      <PlaybackTester />
-      <PerformanceMonitor />
     </div>
   );
 }

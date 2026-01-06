@@ -11,7 +11,7 @@ export interface CellUIState {
   windowedControlsPosition: { x: number; y: number };
   isWindowedControlsCollapsed: boolean;
   nametag?: string;
-  videoMode?: 'original' | 'overlay';
+  videoMode?: 'original' | 'overlay' | '3d';
 }
 
 export interface SharedControlState {
@@ -22,6 +22,8 @@ interface GridStore {
   playbackTime: number;
   isPlaying: boolean;
   playbackSpeed: number;
+  scrubberVisible: boolean;
+  isContentLoaded: boolean;
 
   gridRows: number;
   gridColumns: number;
@@ -30,6 +32,8 @@ interface GridStore {
 
   setGridDimensions: (rows: number, columns: number) => void;
   updateCell: (cellId: string, updates: Partial<CellUIState>) => void;
+  setScrubberVisible: (visible: boolean) => void;
+  setIsContentLoaded: (loaded: boolean) => void;
   setCellSynced: (cellId: string, synced: boolean) => void;
   setCellNametag: (cellId: string, nametag: string) => void;
   setCellWindowPosition: (cellId: string, x: number, y: number) => void;
@@ -85,10 +89,12 @@ export const useGridStore = create<GridStore>()(
       playbackTime: 0,
       isPlaying: false,
       playbackSpeed: 1,
+      scrubberVisible: false,
+      isContentLoaded: false,
 
       gridRows: 1,
-      gridColumns: 1,
-      cells: createInitialCells(1),
+      gridColumns: 2,
+      cells: createInitialCells(2),
       sharedControls: {
         cameraPreset: 'back',
       },
@@ -109,11 +115,24 @@ export const useGridStore = create<GridStore>()(
           cellId,
           updates,
         });
-        set((state) => ({
-          cells: state.cells.map((cell) =>
+        set((state) => {
+          const updatedCells = state.cells.map((cell) =>
             cell.id === cellId ? { ...cell, ...updates } : cell
-          ),
-        }));
+          );
+          const hasContent = updatedCells.some((cell) => cell.contentType !== 'empty');
+          return {
+            cells: updatedCells,
+            isContentLoaded: hasContent,
+          };
+        });
+      },
+
+      setScrubberVisible: (visible) => {
+        set({ scrubberVisible: visible });
+      },
+
+      setIsContentLoaded: (loaded) => {
+        set({ isContentLoaded: loaded });
       },
 
       setCellSynced: (cellId, synced) => {
