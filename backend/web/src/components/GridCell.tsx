@@ -56,7 +56,6 @@ export function GridCell({ cellId }: GridCellProps) {
           width: '100%',
           height: '100%',
           backgroundColor: '#1a1a1a',
-          border: '1px solid #333',
           borderRadius: '4px',
           overflow: 'hidden',
           display: 'flex',
@@ -85,29 +84,15 @@ export function GridCell({ cellId }: GridCellProps) {
           <>
             <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
               {cell.videoId ? (
-                <>
-                  <VideoToggleDisplay
-                    videoId={cell.videoId}
-                    cellId={cellId}
-                    fps={fps}
-                    onMetadataLoaded={(f, tf) => {
-                      setFps(f);
-                      setTotalFrames(tf);
-                    }}
-                  />
-                  <div style={{
-                    position: 'absolute',
-                    bottom: '10px',
-                    left: '10px',
-                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                    color: '#4ECDC4',
-                    padding: '4px 8px',
-                    borderRadius: '4px',
-                    fontSize: '10px',
-                  }}>
-                    {cell.videoId} | FPS: {fps} | Frames: {totalFrames}
-                  </div>
-                </>
+                <VideoToggleDisplay
+                  videoId={cell.videoId}
+                  cellId={cellId}
+                  fps={fps}
+                  onMetadataLoaded={(f, tf) => {
+                    setFps(f);
+                    setTotalFrames(tf);
+                  }}
+                />
               ) : (
                 <div style={{
                   width: '100%',

@@ -17,12 +17,38 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
   const durationDisplayRef = useRef<HTMLDivElement | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const persistentProgressRef = useRef<HTMLDivElement | null>(null);
+  const trackerPlaybackTimeRef = useRef(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSpeedIndex, setCurrentSpeedIndex] = useState(0);
   const [isHovered, setIsHovered] = useState(false);
 
   const speeds = [1, 1.5, 2, 0.125, 0.25, 0.5, 0.75];
   const engine = getGlobalPlaybackEngine();
+
+  const updateTrackerUI = (playbackTime: number, videoDuration: number) => {
+    if (videoDuration > 0) {
+      const progress = playbackTime / videoDuration;
+      const progressPercent = Math.max(0, Math.min(100, progress * 100));
+
+      if (thumbRef.current) {
+        thumbRef.current.style.left = `${progressPercent}%`;
+      }
+
+      const thumbDot = rulerRef.current?.querySelector('[data-thumb-dot]') as HTMLDivElement;
+      if (thumbDot) {
+        thumbDot.style.left = `${progressPercent}%`;
+      }
+
+      const progressLine = rulerRef.current?.querySelector('[data-progress-line]') as HTMLDivElement;
+      if (progressLine) {
+        progressLine.style.width = `${progressPercent}%`;
+      }
+
+      if (persistentProgressRef.current) {
+        persistentProgressRef.current.style.width = `${progressPercent}%`;
+      }
+    }
+  };
 
   useEffect(() => {
     if (!rulerSectionRef.current || !rulerRef.current) return;
@@ -73,8 +99,10 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       const existingProgressLines = rulerRef.current.querySelectorAll('[data-progress-line]');
       existingProgressLines.forEach(p => p.remove());
 
-      const duration = engine.duration;
-      if (duration <= 0) return;
+      const video = videoRef?.current;
+      if (!video || video.duration <= 0) return;
+
+      const duration = video.duration * 1000;
 
       const thumbElement = document.createElement('div');
       thumbElement.setAttribute('data-thumb', '1');
@@ -89,7 +117,7 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       thumbElement.style.pointerEvents = 'none';
       thumbElement.style.zIndex = '2';
       thumbElement.style.opacity = '0';
-      thumbElement.style.transition = 'opacity 0.3s ease';
+      thumbElement.style.transition = 'opacity 0.3s ease, left 0.05s linear';
       rulerRef.current.appendChild(thumbElement);
       thumbRef.current = thumbElement;
 
@@ -106,6 +134,7 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       thumbDot.style.boxShadow = '0 0 8px rgba(255, 107, 107, 0.6)';
       thumbDot.style.pointerEvents = 'none';
       thumbDot.style.zIndex = '2';
+      thumbDot.style.transition = 'left 0.05s linear';
       rulerRef.current.appendChild(thumbDot);
 
       const progressLine = document.createElement('div');
@@ -119,6 +148,7 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       progressLine.style.pointerEvents = 'none';
       progressLine.style.zIndex = '1';
       progressLine.style.boxShadow = '0 0 4px rgba(255, 107, 107, 0.4)';
+      progressLine.style.transition = 'width 0.05s linear';
       rulerRef.current.appendChild(progressLine);
 
       const secondsTotal = duration / 1000;
@@ -179,11 +209,16 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
     const handleMouseDown = (e: MouseEvent) => {
       if ((e.target as HTMLElement).closest('button')) return;
       isDraggingRef.current = true;
+      engine.setIndependentPlayback(cellId, true);
       const rect = rulerSectionRef.current!.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const progress = Math.max(0, Math.min(1, x / rect.width));
-      const time = progress * engine.duration;
-      engine.seek(time);
+      const video = videoRef?.current;
+      if (video) {
+        const time = progress * (video.duration * 1000);
+        engine.setCellPlaybackTime(cellId, time);
+        trackerPlaybackTimeRef.current = time;
+      }
     };
 
     const handleMouseMove = (e: MouseEvent) => {
@@ -191,8 +226,12 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       const rect = rulerSectionRef.current!.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const progress = Math.max(0, Math.min(1, x / rect.width));
-      const time = progress * engine.duration;
-      engine.seek(time);
+      const video = videoRef?.current;
+      if (video) {
+        const time = progress * (video.duration * 1000);
+        engine.setCellPlaybackTime(cellId, time);
+        trackerPlaybackTimeRef.current = time;
+      }
     };
 
     const handleMouseUp = () => {
@@ -207,56 +246,65 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       renderRuler();
     };
 
+    const handleVideoPlay = () => {
+      setIsPlaying(true);
+    };
+
+    const handleVideoPause = () => {
+      setIsPlaying(false);
+    };
+
     const videoElement = videoRef?.current;
     if (videoElement) {
       videoElement.addEventListener('loadedmetadata', handleVideoMetadata);
       videoElement.addEventListener('durationchange', handleVideoMetadata);
+      videoElement.addEventListener('play', handleVideoPlay);
+      videoElement.addEventListener('pause', handleVideoPause);
     }
 
     setTimeout(renderRuler, 100);
 
-    let lastKnownDuration = 0;
+    let trackerPlaybackTime = 0;
 
     const unsubscribe = engine.addEventListener((event) => {
       if (event.type === 'frameUpdate') {
-        const duration = engine.duration;
-        const playbackTime = engine.playbackTime;
+        const video = videoRef?.current;
+        if (!video) return;
 
-        if (duration !== lastKnownDuration && duration > 0) {
-          lastKnownDuration = duration;
-          renderRuler();
-          if (durationDisplayRef.current) {
-            const totalSeconds = Math.floor(duration / 1000);
-            durationDisplayRef.current.textContent = `${totalSeconds}s`;
-          }
+        const videoDuration = video.duration * 1000;
+        const isIndependent = engine.isIndependent(cellId);
+
+        if (durationDisplayRef.current) {
+          const totalSeconds = Math.floor(videoDuration / 1000);
+          durationDisplayRef.current.textContent = `${totalSeconds}s`;
         }
 
-        if (duration > 0) {
-          const progress = playbackTime / duration;
-          const progressPercent = Math.max(0, Math.min(100, progress * 100));
-
-          if (thumbRef.current) {
-            thumbRef.current.style.left = `${progressPercent}%`;
-          }
-
-          const thumbDot = rulerRef.current?.querySelector('[data-thumb-dot]') as HTMLDivElement;
-          if (thumbDot) {
-            thumbDot.style.left = `${progressPercent}%`;
-          }
-
-          const progressLine = rulerRef.current?.querySelector('[data-progress-line]') as HTMLDivElement;
-          if (progressLine) {
-            progressLine.style.width = `${progressPercent}%`;
-          }
-
-          if (persistentProgressRef.current) {
-            persistentProgressRef.current.style.width = `${progressPercent}%`;
+        if (isIndependent) {
+          trackerPlaybackTime = engine.getCellPlaybackTime(cellId);
+          updateTrackerUI(trackerPlaybackTime, videoDuration);
+        } else {
+          if (!video.paused) {
+            trackerPlaybackTime = video.currentTime * 1000;
+            updateTrackerUI(trackerPlaybackTime, videoDuration);
           }
         }
       } else if (event.type === 'play') {
         setIsPlaying(true);
+        const video = videoRef?.current;
+        if (video && !video.paused) {
+          video.pause();
+        }
+        engine.setIndependentPlayback(cellId, false);
       } else if (event.type === 'pause') {
         setIsPlaying(false);
+        const video = videoRef?.current;
+        if (video && !video.paused) {
+          video.pause();
+        }
+        engine.setIndependentPlayback(cellId, false);
+      } else if (event.type === 'timeSet') {
+        trackerPlaybackTimeRef.current = event.time;
+        engine.setIndependentPlayback(cellId, false);
       }
     });
 
@@ -268,6 +316,8 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
       if (videoElement) {
         videoElement.removeEventListener('loadedmetadata', handleVideoMetadata);
         videoElement.removeEventListener('durationchange', handleVideoMetadata);
+        videoElement.removeEventListener('play', handleVideoPlay);
+        videoElement.removeEventListener('pause', handleVideoPause);
       }
     };
   }, [cellId, videoRef, engine]);
@@ -397,12 +447,40 @@ export function CellNativeScrubber({ cellId, videoRef, cellContainerRef, onHover
               {speeds[currentSpeedIndex]}x
             </button>
 
-            <StepBackButton onStepBack={() => engine.advanceFrame(-1)} />
-            <PlayPauseButton isPlaying={isPlaying} onPlayPause={() => {
-              if (isPlaying) engine.pause();
-              else engine.play();
+            <StepBackButton onStepBack={() => {
+              const video = videoRef?.current;
+              if (video) {
+                if (!video.paused) video.pause();
+                const frameIntervalMs = 1000 / 30;
+                const nextTime = Math.max(0, video.currentTime - frameIntervalMs / 1000);
+                video.currentTime = nextTime;
+                trackerPlaybackTimeRef.current = nextTime * 1000;
+                const videoDuration = video.duration * 1000;
+                updateTrackerUI(trackerPlaybackTimeRef.current, videoDuration);
+              }
             }} />
-            <StepForwardButton onStepForward={() => engine.advanceFrame(1)} />
+            <PlayPauseButton isPlaying={isPlaying} onPlayPause={() => {
+              const video = videoRef?.current;
+              if (video) {
+                if (video.paused) {
+                  video.play().catch(() => { });
+                } else {
+                  video.pause();
+                }
+              }
+            }} />
+            <StepForwardButton onStepForward={() => {
+              const video = videoRef?.current;
+              if (video) {
+                if (!video.paused) video.pause();
+                const frameIntervalMs = 1000 / 30;
+                const nextTime = Math.min(video.duration, video.currentTime + frameIntervalMs / 1000);
+                video.currentTime = nextTime;
+                trackerPlaybackTimeRef.current = nextTime * 1000;
+                const videoDuration = video.duration * 1000;
+                updateTrackerUI(trackerPlaybackTimeRef.current, videoDuration);
+              }
+            }} />
           </div>
 
           <FullscreenButton onFullscreen={handleFullscreen} />

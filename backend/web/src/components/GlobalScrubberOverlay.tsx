@@ -318,12 +318,18 @@ export function GlobalScrubberOverlay({ onSpeedChange }: GlobalScrubberOverlayPr
             {speeds[currentSpeedIndex]}x
           </button>
 
-          <StepBackButton onStepBack={() => engine.advanceFrame(-1)} />
+          <StepBackButton onStepBack={() => {
+            engine.pause();
+            engine.advanceFrame(-1);
+          }} />
           <PlayPauseButton isPlaying={isPlaying} onPlayPause={() => {
             if (isPlaying) engine.pause();
             else engine.play();
           }} />
-          <StepForwardButton onStepForward={() => engine.advanceFrame(1)} />
+          <StepForwardButton onStepForward={() => {
+            engine.pause();
+            engine.advanceFrame(1);
+          }} />
         </div>
       </div>
     </div>

@@ -6,7 +6,8 @@ export type PlaybackEvent =
   | { type: 'reverseToggled'; isReversing: boolean }
   | { type: 'loopToggled'; isLooping: boolean }
   | { type: 'frameUpdate' }
-  | { type: 'windowChange'; sceneId: string };
+  | { type: 'windowChange'; sceneId: string }
+  | { type: 'cellIndependentPlayback'; cellId: string; isIndependent: boolean };
 
 export interface SceneConfig {
   sceneId: string;
@@ -33,6 +34,9 @@ export class PlaybackEngine {
   private frameIntervalMs: number;
   private totalFrames: number;
   private _duration: number;
+  private independentCells: Set<string> = new Set();
+  private cellPlaybackTimes: Map<string, number> = new Map();
+  private cellPlaybackSpeeds: Map<string, number> = new Map();
 
   get playbackTime(): number {
     return this._playbackTime;
@@ -85,6 +89,23 @@ export class PlaybackEngine {
       if (this._isPlaying) {
         this._playbackTime += deltaTime * this._playbackSpeed;
         this.handleLooping();
+
+        for (const cellId of this.independentCells) {
+          const video = this.videoElements.get(cellId);
+          if (!video) continue;
+
+          const videoDuration = video.duration * 1000;
+          let cellTime = this.cellPlaybackTimes.get(cellId) || 0;
+          cellTime += deltaTime * this._playbackSpeed;
+
+          if (cellTime >= videoDuration) {
+            cellTime = this._isLooping ? cellTime % videoDuration : videoDuration;
+          } else if (cellTime < 0) {
+            cellTime = this._isLooping ? videoDuration + (cellTime % videoDuration) : 0;
+          }
+
+          this.cellPlaybackTimes.set(cellId, cellTime);
+        }
       }
 
       this.emitEvent({ type: 'frameUpdate' });
@@ -115,10 +136,6 @@ export class PlaybackEngine {
     if (this._isPlaying) return;
     this._isPlaying = true;
     this.lastFrameTime = 0;
-
-    for (const video of this.videoElements.values()) {
-      video.play().catch(() => { });
-    }
 
     this.emitEvent({ type: 'play' });
   }
@@ -178,6 +195,35 @@ export class PlaybackEngine {
     const nextFrameIndex = (currentFrameIndex + direction + this.totalFrames) % this.totalFrames;
     const nextTime = nextFrameIndex * this.frameIntervalMs;
     this.seek(nextTime);
+
+    for (const cellId of this.independentCells) {
+      const video = this.videoElements.get(cellId);
+      if (!video) continue;
+
+      const videoDuration = video.duration * 1000;
+      const cellTime = video.currentTime * 1000;
+
+      const cellFrameIndex = Math.floor(cellTime / this.frameIntervalMs);
+      const nextCellFrameIndex = (cellFrameIndex + direction + this.totalFrames) % this.totalFrames;
+      const nextCellTime = nextCellFrameIndex * this.frameIntervalMs;
+      
+      const clampedTime = Math.max(0, Math.min(nextCellTime, videoDuration));
+      this.setCellPlaybackTime(cellId, clampedTime);
+    }
+  }
+
+  advanceIndependentCellFrame(cellId: string, direction: 1 | -1 = 1): void {
+    const video = this.videoElements.get(cellId);
+    if (!video) return;
+
+    const videoDuration = video.duration * 1000;
+    const cellTime = video.currentTime * 1000;
+    const cellFrameIndex = Math.floor(cellTime / this.frameIntervalMs);
+    const nextCellFrameIndex = (cellFrameIndex + direction + this.totalFrames) % this.totalFrames;
+    const nextCellTime = nextCellFrameIndex * this.frameIntervalMs;
+    
+    const clampedTime = Math.max(0, Math.min(nextCellTime, videoDuration));
+    this.setCellPlaybackTime(cellId, clampedTime);
   }
 
   getSceneLocalTime(sceneId: string): number {
@@ -211,6 +257,50 @@ export class PlaybackEngine {
     return () => {
       this.eventListeners.delete(listener);
     };
+  }
+
+  setIndependentPlayback(cellId: string, isIndependent: boolean): void {
+    if (isIndependent) {
+      this.independentCells.add(cellId);
+      const video = this.videoElements.get(cellId);
+      if (video) {
+        this.cellPlaybackTimes.set(cellId, video.currentTime * 1000);
+        this.cellPlaybackSpeeds.set(cellId, video.playbackRate);
+      }
+    } else {
+      this.independentCells.delete(cellId);
+      this.cellPlaybackTimes.delete(cellId);
+      this.cellPlaybackSpeeds.delete(cellId);
+      const video = this.videoElements.get(cellId);
+      if (video) {
+        video.currentTime = this._playbackTime / 1000;
+      }
+    }
+    this.emitEvent({ type: 'cellIndependentPlayback', cellId, isIndependent });
+  }
+
+  isIndependent(cellId: string): boolean {
+    return this.independentCells.has(cellId);
+  }
+
+  getCellPlaybackTime(cellId: string): number {
+    return this.cellPlaybackTimes.get(cellId) || 0;
+  }
+
+  setCellPlaybackTime(cellId: string, time: number): void {
+    this.cellPlaybackTimes.set(cellId, time);
+    const video = this.videoElements.get(cellId);
+    if (video) {
+      video.currentTime = time / 1000;
+    }
+  }
+
+  setCellPlaybackSpeed(cellId: string, speed: number): void {
+    this.cellPlaybackSpeeds.set(cellId, speed);
+    const video = this.videoElements.get(cellId);
+    if (video) {
+      video.playbackRate = Math.abs(speed);
+    }
   }
 
   destroy(): void {
