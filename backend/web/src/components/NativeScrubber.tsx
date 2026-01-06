@@ -14,51 +14,63 @@ export function NativeScrubber() {
 
     const engine = getGlobalPlaybackEngine();
 
+    // Create track container (the clickable area)
+    const track = document.createElement('div');
+    track.style.position = 'relative';
+    track.style.width = '100%';
+    track.style.height = '24px';
+    track.style.backgroundColor = '#333';
+    track.style.borderRadius = '4px';
+    track.style.cursor = 'pointer';
+    track.style.border = '1px solid #444';
+    track.style.overflow = 'hidden';
+
+    // Progress bar (filled portion)
     const progressBar = document.createElement('div');
     progressBar.style.position = 'absolute';
     progressBar.style.height = '100%';
-    progressBar.style.backgroundColor = 'rgba(78, 205, 196, 0.2)';
-    progressBar.style.borderRadius = '4px';
+    progressBar.style.backgroundColor = 'rgba(78, 205, 196, 0.3)';
     progressBar.style.top = '0';
     progressBar.style.left = '0';
     progressBar.style.width = '0%';
     progressBar.style.transition = 'none';
     progressBar.style.pointerEvents = 'none';
     progressBar.style.zIndex = '1';
+    track.appendChild(progressBar);
 
+    // Thumb (red dot)
     const thumb = document.createElement('div');
     thumb.style.position = 'absolute';
-    thumb.style.width = '12px';
-    thumb.style.height = '12px';
-    thumb.style.backgroundColor = '#4ECDC4';
+    thumb.style.width = '14px';
+    thumb.style.height = '14px';
+    thumb.style.backgroundColor = '#FF6B6B';
     thumb.style.borderRadius = '50%';
     thumb.style.top = '50%';
     thumb.style.left = '0';
     thumb.style.transform = 'translate(-50%, -50%)';
-    thumb.style.boxShadow = '0 0 8px rgba(78, 205, 196, 0.6)';
+    thumb.style.boxShadow = '0 0 8px rgba(255, 107, 107, 0.8)';
     thumb.style.pointerEvents = 'none';
     thumb.style.zIndex = '2';
+    thumb.style.border = '2px solid #fff';
+    track.appendChild(thumb);
 
+    // Time display (below track)
     const timeDisplay = document.createElement('div');
-    timeDisplay.style.position = 'absolute';
+    timeDisplay.style.marginTop = '6px';
     timeDisplay.style.color = '#999';
-    timeDisplay.style.fontSize = '12px';
-    timeDisplay.style.top = '32px';
-    timeDisplay.style.left = '8px';
+    timeDisplay.style.fontSize = '11px';
     timeDisplay.style.fontFamily = 'monospace';
-    timeDisplay.style.zIndex = '3';
-    timeDisplay.textContent = '0.00s';
+    timeDisplay.style.textAlign = 'left';
+    timeDisplay.textContent = '0.00s / 0.00s';
 
+    // Wrapper container
     const wrapper = document.createElement('div');
-    wrapper.style.position = 'relative';
     wrapper.style.width = '100%';
-    wrapper.style.height = '60px';
-    wrapper.style.backgroundColor = '#222';
-    wrapper.style.borderRadius = '4px';
-    wrapper.style.border = '1px solid #444';
-    wrapper.style.cursor = 'pointer';
-    wrapper.appendChild(progressBar);
-    wrapper.appendChild(thumb);
+    wrapper.style.padding = '0';
+    wrapper.style.display = 'flex';
+    wrapper.style.flexDirection = 'column';
+    wrapper.style.gap = '4px';
+    wrapper.appendChild(track);
     wrapper.appendChild(timeDisplay);
 
     containerRef.current.appendChild(wrapper);
@@ -69,7 +81,7 @@ export function NativeScrubber() {
 
     const handleMouseDown = (e: MouseEvent) => {
       isDraggingRef.current = true;
-      const rect = wrapper.getBoundingClientRect();
+      const rect = track.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const progress = Math.max(0, Math.min(1, x / rect.width));
       const time = progress * engine.duration;
@@ -78,7 +90,7 @@ export function NativeScrubber() {
 
     const handleMouseMove = (e: MouseEvent) => {
       if (!isDraggingRef.current) return;
-      const rect = wrapper.getBoundingClientRect();
+      const rect = track.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const progress = Math.max(0, Math.min(1, x / rect.width));
       const time = progress * engine.duration;
@@ -89,7 +101,7 @@ export function NativeScrubber() {
       isDraggingRef.current = false;
     };
 
-    wrapper.addEventListener('mousedown', handleMouseDown);
+    track.addEventListener('mousedown', handleMouseDown);
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
 
@@ -97,23 +109,24 @@ export function NativeScrubber() {
     const unsubscribe = engine.addEventListener((event) => {
       if (event.type === 'frameUpdate') {
         const duration = engine.duration;
+        const playbackTime = engine.playbackTime;
 
-        // Always update time display, even if duration is 0
+        // Always update time display
         if (timeDisplayRef.current) {
-          const seconds = engine.playbackTime / 1000;
-          timeDisplayRef.current.textContent = `${seconds.toFixed(2)}s`;
+          const seconds = playbackTime / 1000;
+          const totalSeconds = duration / 1000;
+          timeDisplayRef.current.textContent = `${seconds.toFixed(2)}s / ${totalSeconds.toFixed(2)}s`;
         }
 
-        // Only update progress bar and thumb if duration is valid
+        // Update progress bar and thumb if duration is valid
         if (duration > 0) {
-          const progress = engine.playbackTime / duration;
+          const progress = playbackTime / duration;
           const progressPercent = Math.max(0, Math.min(100, progress * 100));
 
           if (progressBarRef.current) {
             progressBarRef.current.style.width = `${progressPercent}%`;
           }
 
-          // Move thumb to current position as percentage
           if (thumbRef.current) {
             thumbRef.current.style.left = `${progressPercent}%`;
           }
@@ -123,7 +136,7 @@ export function NativeScrubber() {
 
     return () => {
       unsubscribe();
-      wrapper.removeEventListener('mousedown', handleMouseDown);
+      track.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
       if (containerRef.current && wrapperRef.current && wrapperRef.current.parentNode === containerRef.current) {
@@ -140,6 +153,7 @@ export function NativeScrubber() {
         padding: '8px',
         backgroundColor: '#1a1a1a',
         borderRadius: '4px',
+        boxSizing: 'border-box',
       }}
     />
   );
