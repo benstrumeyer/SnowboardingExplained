@@ -11,7 +11,9 @@ export type PlaybackEvent =
   | { type: 'cellPlay'; cellId: string }
   | { type: 'cellPause'; cellId: string }
   | { type: 'cellFrameNext'; cellId: string }
-  | { type: 'cellFramePrev'; cellId: string };
+  | { type: 'cellFramePrev'; cellId: string }
+  | { type: 'meshPlay'; cellId: string }
+  | { type: 'meshPause'; cellId: string };
 
 export interface SceneConfig {
   sceneId: string;
@@ -131,6 +133,10 @@ export class PlaybackEngine {
     }
 
     this.emitEvent({ type: 'play' });
+
+    for (const cellId of this.videoElements.keys()) {
+      this.emitEvent({ type: 'meshPlay', cellId });
+    }
   }
 
   pause(): void {
@@ -142,6 +148,10 @@ export class PlaybackEngine {
     }
 
     this.emitEvent({ type: 'pause' });
+
+    for (const cellId of this.videoElements.keys()) {
+      this.emitEvent({ type: 'meshPause', cellId });
+    }
   }
 
   seek(time: number): void {

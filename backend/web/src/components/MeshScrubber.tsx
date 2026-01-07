@@ -35,6 +35,18 @@ export function MeshScrubber({ cellId, cellContainerRef, meshDataRef, fps = 30, 
     onFrameChangeRef.current = onFrameChange;
   }, [onFrameChange]);
 
+  useEffect(() => {
+    const unsubscribe = engine.addEventListener((event) => {
+      if (event.type === 'meshPlay' && event.cellId === cellId) {
+        setIsPlaying(true);
+      } else if (event.type === 'meshPause' && event.cellId === cellId) {
+        setIsPlaying(false);
+      }
+    });
+
+    return unsubscribe;
+  }, [cellId]);
+
   const updateTrackerColors = (expanded: boolean) => {
     const thumbElement = rulerRef.current?.querySelector('[data-thumb]') as HTMLDivElement;
     const thumbDot = rulerRef.current?.querySelector('[data-thumb-dot]') as HTMLDivElement;
