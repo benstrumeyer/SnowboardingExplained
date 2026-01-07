@@ -41,6 +41,8 @@ export class PlaybackEngine {
   private independentCells: Set<string> = new Set();
   private cellPlaybackTimes: Map<string, number> = new Map();
   private cellPlaybackSpeeds: Map<string, number> = new Map();
+  private meshPlaybackTimes: Map<string, number> = new Map();
+  private meshPlaybackSpeeds: Map<string, number> = new Map();
 
   get playbackTime(): number {
     return this._playbackTime;
@@ -115,7 +117,7 @@ export class PlaybackEngine {
     }
   }
 
-  private emitEvent(event: PlaybackEvent): void {
+  emitEvent(event: PlaybackEvent): void {
     this.eventListeners.forEach((listener) => listener(event));
   }
 
@@ -125,7 +127,7 @@ export class PlaybackEngine {
     this.lastFrameTime = 0;
 
     for (const video of this.videoElements.values()) {
-      video.play().catch(() => {});
+      video.play().catch(() => { });
     }
 
     this.emitEvent({ type: 'play' });
@@ -197,7 +199,7 @@ export class PlaybackEngine {
       const cellFrameIndex = Math.floor(cellTime / this.frameIntervalMs);
       const nextCellFrameIndex = (cellFrameIndex + direction + this.totalFrames) % this.totalFrames;
       const nextCellTime = nextCellFrameIndex * this.frameIntervalMs;
-      
+
       const clampedTime = Math.max(0, Math.min(nextCellTime, videoDuration));
       this.setCellPlaybackTime(cellId, clampedTime);
     }
@@ -211,13 +213,13 @@ export class PlaybackEngine {
     const cellTime = video.currentTime * 1000;
     const cellFrameIndex = Math.floor(cellTime / this.frameIntervalMs);
     let nextCellFrameIndex = cellFrameIndex + direction;
-    
+
     if (nextCellFrameIndex < 0) {
       nextCellFrameIndex = this.totalFrames - 1;
     } else if (nextCellFrameIndex >= this.totalFrames) {
       nextCellFrameIndex = 0;
     }
-    
+
     const nextCellTime = nextCellFrameIndex * this.frameIntervalMs;
     const clampedTime = Math.max(0, Math.min(nextCellTime, videoDuration));
     this.setCellPlaybackTime(cellId, clampedTime);
@@ -300,10 +302,26 @@ export class PlaybackEngine {
     }
   }
 
+  getMeshPlaybackTime(cellId: string): number {
+    return this.meshPlaybackTimes.get(cellId) || 0;
+  }
+
+  setMeshPlaybackTime(cellId: string, time: number): void {
+    this.meshPlaybackTimes.set(cellId, time);
+  }
+
+  setMeshPlaybackSpeed(cellId: string, speed: number): void {
+    this.meshPlaybackSpeeds.set(cellId, speed);
+  }
+
+  getMeshPlaybackSpeed(cellId: string): number {
+    return this.meshPlaybackSpeeds.get(cellId) || 1;
+  }
+
   playCellVideo(cellId: string): void {
     const video = this.videoElements.get(cellId);
     if (video) {
-      video.play().catch(() => {});
+      video.play().catch(() => { });
     }
     this.emitEvent({ type: 'cellPlay', cellId });
   }

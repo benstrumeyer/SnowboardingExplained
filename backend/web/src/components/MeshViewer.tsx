@@ -1,11 +1,12 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { useMeshSampler, MeshFrameData } from '../hooks/useMeshSampler';
 import { useVideoMeshSync } from '../hooks/useVideoMeshSync';
 import { useVideoPlaybackSync } from '../hooks/useVideoPlaybackSync';
 import { MeshNametag } from './MeshNametag';
-import { CellNativeScrubber } from './CellNativeScrubber';
+import { MeshScrubber } from './MeshScrubber';
 import { globalCameraManager } from '../services/globalCameraManager';
+import { getGlobalPlaybackEngine } from '../engine/PlaybackEngine';
 
 interface MeshViewerProps {
   cellId: string;
@@ -36,6 +37,9 @@ export function MeshViewer({
   const lastMouseRef = useRef({ x: 0, y: 0 });
   const meshDataRef = useRef<MeshFrameData[]>([]);
   const activeCellIdRef = useRef<string | null>(null);
+  const [meshFrameIndex, setMeshFrameIndex] = useState(0);
+  const [actualFps, setActualFps] = useState(fps);
+  const [videoDuration, setVideoDuration] = useState(0);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -252,6 +256,9 @@ export function MeshViewer({
           meshDataRef.current = frames;
 
           if (data.data.fps && data.data.totalFrames) {
+            setActualFps(data.data.fps);
+            const durationMs = (data.data.totalFrames / data.data.fps) * 1000;
+            setVideoDuration(durationMs);
             onMetadataLoaded?.(data.data.fps, data.data.totalFrames);
           }
         }
@@ -267,18 +274,58 @@ export function MeshViewer({
     updateMeshGeometry(frame);
   });
 
+  useEffect(() => {
+    if (meshDataRef.current && meshDataRef.current.length > 0) {
+      const frame = meshDataRef.current[meshFrameIndex];
+      if (frame) {
+        updateMeshGeometry(frame);
+      }
+    }
+  }, [meshFrameIndex]);
+
   useVideoMeshSync(videoRef, meshDataRef, !!videoRef, (frame) => {
     updateMeshGeometry(frame);
   });
 
-
   useVideoPlaybackSync(videoRef, !!videoRef);
+
+  useEffect(() => {
+    if (!videoRef?.current) return;
+
+    const engine = getGlobalPlaybackEngine();
+    const video = videoRef.current;
+
+    const unsubscribe = engine.addEventListener((event) => {
+      if (event.type === 'play') {
+        video.play().catch(() => { });
+      } else if (event.type === 'pause') {
+        video.pause();
+      } else if (event.type === 'speedChanged') {
+        video.playbackRate = Math.abs(event.speed);
+      } else if (event.type === 'cellFrameNext') {
+        engine.advanceIndependentCellFrame(cellId, 1);
+      } else if (event.type === 'cellFramePrev') {
+        engine.advanceIndependentCellFrame(cellId, -1);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [cellId, videoRef]);
 
   return (
     <>
       <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }} />
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '60px', zIndex: 10 }}>
-        <CellNativeScrubber cellId={cellId} />
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '90px', zIndex: 10 }}>
+        <MeshScrubber
+          cellId={cellId}
+          cellContainerRef={containerRef}
+          meshDataRef={meshDataRef}
+          fps={actualFps}
+          duration={videoDuration}
+          onFrameChange={setMeshFrameIndex}
+        />
       </div>
       {sceneRef.current && cameraRef.current && nametag && (
         <MeshNametag
