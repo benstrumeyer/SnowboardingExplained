@@ -40,6 +40,7 @@ export function MeshViewer({
   const [meshFrameIndex, setMeshFrameIndex] = useState(0);
   const [actualFps, setActualFps] = useState(fps);
   const [videoDuration, setVideoDuration] = useState(0);
+  const [controlMode, setControlMode] = useState<'orbit' | 'arcball'>('orbit');
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -91,15 +92,36 @@ export function MeshViewer({
       const deltaX = e.clientX - lastMouseRef.current.x;
       const deltaY = e.clientY - lastMouseRef.current.y;
 
-      controlsRef.current.theta -= deltaX * 0.01;
-      controlsRef.current.phi += deltaY * 0.01;
-      controlsRef.current.phi = Math.max(0.1, Math.min(Math.PI - 0.1, controlsRef.current.phi));
+      if (controlMode === 'orbit') {
+        controlsRef.current.theta -= deltaX * 0.01;
+        controlsRef.current.phi += deltaY * 0.01;
+        controlsRef.current.phi = Math.max(0.1, Math.min(Math.PI - 0.1, controlsRef.current.phi));
 
-      const { theta, phi, radius } = controlsRef.current;
-      cameraRef.current.position.x = radius * Math.sin(phi) * Math.sin(theta);
-      cameraRef.current.position.y = radius * Math.cos(phi);
-      cameraRef.current.position.z = radius * Math.sin(phi) * Math.cos(theta);
-      cameraRef.current.lookAt(0, 0, 0);
+        const { theta, phi, radius } = controlsRef.current;
+        cameraRef.current.position.x = radius * Math.sin(phi) * Math.sin(theta);
+        cameraRef.current.position.y = radius * Math.cos(phi);
+        cameraRef.current.position.z = radius * Math.sin(phi) * Math.cos(theta);
+        cameraRef.current.lookAt(0, 0, 0);
+      } else {
+        const rotationSpeed = 0.005;
+        const axis1 = new THREE.Vector3(0, 1, 0);
+        const axis2 = new THREE.Vector3(1, 0, 0);
+        
+        const quat1 = new THREE.Quaternion();
+        quat1.setFromAxisAngle(axis1, -deltaX * rotationSpeed);
+        
+        const quat2 = new THREE.Quaternion();
+        quat2.setFromAxisAngle(axis2, -deltaY * rotationSpeed);
+        
+        const cameraDir = new THREE.Vector3().subVectors(cameraRef.current.position, new THREE.Vector3(0, 0, 0)).normalize();
+        const distance = cameraRef.current.position.length();
+        
+        cameraDir.applyQuaternion(quat1);
+        cameraDir.applyQuaternion(quat2);
+        
+        cameraRef.current.position.copy(cameraDir.multiplyScalar(distance));
+        cameraRef.current.lookAt(0, 0, 0);
+      }
 
       lastMouseRef.current = { x: e.clientX, y: e.clientY };
     };
@@ -163,20 +185,17 @@ export function MeshViewer({
       }
       renderer.dispose();
     };
-  }, []);
+  }, [cellId, controlMode]);
 
   const updateMeshGeometry = (frame: MeshFrameData) => {
     if (!sceneRef.current || !frame) return;
 
-    // First frame: create geometry and mesh once
     if (!meshRef.current) {
       const geometry = new THREE.BufferGeometry();
 
-      // Set position attribute with first frame's vertices
       const posAttr = new THREE.BufferAttribute(frame.vertices, 3);
       geometry.setAttribute('position', posAttr);
 
-      // Set index once (faces are static across all frames)
       if (frame.faces && frame.faces.length > 0) {
         geometry.setIndex(new THREE.BufferAttribute(frame.faces, 1));
       }
@@ -203,16 +222,13 @@ export function MeshViewer({
       return;
     }
 
-    // Subsequent frames: only update position attribute (no dispose, no new mesh)
     const geometry = meshRef.current.geometry as THREE.BufferGeometry;
     const posAttr = geometry.getAttribute('position') as THREE.BufferAttribute | null;
 
     if (posAttr && posAttr.count === frame.vertices.length / 3) {
-      // Fast path: just copy vertex data
       posAttr.copyArray(frame.vertices);
       posAttr.needsUpdate = true;
     } else {
-      // Fallback: recreate position attribute if count mismatch
       const newPosAttr = new THREE.BufferAttribute(frame.vertices, 3);
       geometry.setAttribute('position', newPosAttr);
     }
@@ -325,6 +341,8 @@ export function MeshViewer({
           fps={actualFps}
           duration={videoDuration}
           onFrameChange={setMeshFrameIndex}
+          controlMode={controlMode}
+          onControlModeChange={setControlMode}
         />
       </div>
       {sceneRef.current && cameraRef.current && nametag && (

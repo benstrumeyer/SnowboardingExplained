@@ -9,9 +9,11 @@ interface MeshScrubberProps {
   fps?: number;
   duration?: number;
   onFrameChange?: (frameIndex: number) => void;
+  controlMode?: 'orbit' | 'arcball';
+  onControlModeChange?: (mode: 'orbit' | 'arcball') => void;
 }
 
-export function MeshScrubber({ cellId, cellContainerRef, meshDataRef, fps = 30, duration = 0, onFrameChange }: MeshScrubberProps) {
+export function MeshScrubber({ cellId, cellContainerRef, meshDataRef, fps = 30, duration = 0, onFrameChange, controlMode = 'orbit', onControlModeChange }: MeshScrubberProps) {
   const rulerRef = useRef<HTMLDivElement>(null);
   const thumbRef = useRef<HTMLDivElement | null>(null);
   const isDraggingRef = useRef(false);
@@ -27,6 +29,7 @@ export function MeshScrubber({ cellId, cellContainerRef, meshDataRef, fps = 30, 
   const [isExpanded, setIsExpanded] = useState(false);
   const meshPlaybackTimeRef = useRef(0);
   let lastMeshTimestamp = useRef(0);
+  const handlePlayPauseRef = useRef<() => void>(() => {});
 
   const speeds = [1, 1.5, 2, 0.125, 0.25, 0.5, 0.75];
   const engine = getGlobalPlaybackEngine();
@@ -36,15 +39,10 @@ export function MeshScrubber({ cellId, cellContainerRef, meshDataRef, fps = 30, 
   }, [onFrameChange]);
 
   useEffect(() => {
-    const unsubscribe = engine.addEventListener((event) => {
-      if (event.type === 'meshPlay' && event.cellId === cellId) {
-        setIsPlaying(true);
-      } else if (event.type === 'meshPause' && event.cellId === cellId) {
-        setIsPlaying(false);
-      }
-    });
-
-    return unsubscribe;
+    engine.registerMeshCell(cellId);
+    return () => {
+      engine.unregisterMeshCell(cellId);
+    };
   }, [cellId]);
 
   const updateTrackerColors = (expanded: boolean) => {
@@ -52,9 +50,9 @@ export function MeshScrubber({ cellId, cellContainerRef, meshDataRef, fps = 30, 
     const thumbDot = rulerRef.current?.querySelector('[data-thumb-dot]') as HTMLDivElement;
     const progressLine = rulerRef.current?.querySelector('[data-progress-line]') as HTMLDivElement;
 
-    const color = expanded ? '#FF6B6B' : '#FFD700';
-    const shadowColor = expanded ? 'rgba(255, 107, 107, 0.6)' : 'rgba(255, 215, 0, 0.6)';
-    const progressShadow = expanded ? '0 0 4px rgba(255, 107, 107, 0.4)' : '0 0 6px rgba(255, 215, 0, 0.6)';
+    const color = '#FFD700';
+    const shadowColor = 'rgba(255, 215, 0, 0.6)';
+    const progressShadow = '0 0 6px rgba(255, 215, 0, 0.6)';
 
     if (thumbElement) {
       thumbElement.style.backgroundColor = color;
@@ -72,8 +70,8 @@ export function MeshScrubber({ cellId, cellContainerRef, meshDataRef, fps = 30, 
 
   const updateBottomProgressColor = (expanded: boolean) => {
     if (bottomProgressRef.current) {
-      const color = expanded ? '#FF6B6B' : '#FFD700';
-      const shadowColor = expanded ? '0 0 4px rgba(255, 107, 107, 0.4)' : '0 0 4px rgba(255, 215, 0, 0.6)';
+      const color = '#FFD700';
+      const shadowColor = '0 0 4px rgba(255, 215, 0, 0.6)';
       bottomProgressRef.current.style.backgroundColor = color;
       bottomProgressRef.current.style.boxShadow = shadowColor;
     }
@@ -365,6 +363,7 @@ export function MeshScrubber({ cellId, cellContainerRef, meshDataRef, fps = 30, 
           meshPlaybackTimeRef.current = storedTime;
           const frameIndex = Math.min(frameCount - 1, Math.floor(storedTime / (maxTime / frameCount)));
           onFrameChangeRef.current?.(frameIndex);
+          updateTrackerUI(storedTime, maxTime);
         }
       }
     });
@@ -409,14 +408,50 @@ export function MeshScrubber({ cellId, cellContainerRef, meshDataRef, fps = 30, 
     };
   }, [isPlaying, currentSpeedIndex, fps, meshDataRef, cellId, duration]);
 
-  const handleSpeedClick = () => {
-    const newIndex = (currentSpeedIndex + 1) % speeds.length;
-    setCurrentSpeedIndex(newIndex);
-  };
-
   const handlePlayPause = () => {
     setIsPlaying(!isPlaying);
   };
+
+  useEffect(() => {
+    handlePlayPauseRef.current = handlePlayPause;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    const unsubscribe = engine.addEventListener((event) => {
+      if (event.type === 'meshPlay' && event.cellId === cellId) {
+        setIsPlaying(true);
+        lastMeshTimestamp.current = performance.now();
+      } else if (event.type === 'meshPause' && event.cellId === cellId) {
+        setIsPlaying(false);
+      } else if (event.type === 'meshFrameNext' && event.cellId === cellId) {
+        setIsPlaying(false);
+        const maxTime = duration > 0 ? duration : (meshDataRef?.current?.length || 1) * (1000 / fps);
+        const frameCount = meshDataRef?.current?.length || 1;
+        const frameIntervalMs = maxTime / frameCount;
+        const newTime = Math.min(maxTime, meshPlaybackTimeRef.current + frameIntervalMs);
+        meshPlaybackTimeRef.current = newTime;
+        engine.setMeshPlaybackTime(cellId, newTime);
+        const frameIndex = Math.min(frameCount - 1, Math.floor(newTime / (maxTime / frameCount)));
+        onFrameChangeRef.current?.(frameIndex);
+        updateTrackerDirect(newTime, maxTime);
+      } else if (event.type === 'meshFramePrev' && event.cellId === cellId) {
+        setIsPlaying(false);
+        const maxTime = duration > 0 ? duration : (meshDataRef?.current?.length || 1) * (1000 / fps);
+        const frameCount = meshDataRef?.current?.length || 1;
+        const frameIntervalMs = maxTime / frameCount;
+        const newTime = Math.max(0, meshPlaybackTimeRef.current - frameIntervalMs);
+        meshPlaybackTimeRef.current = newTime;
+        engine.setMeshPlaybackTime(cellId, newTime);
+        const frameIndex = Math.min(frameCount - 1, Math.floor(newTime / (maxTime / frameCount)));
+        onFrameChangeRef.current?.(frameIndex);
+        updateTrackerDirect(newTime, maxTime);
+      } else if (event.type === 'meshSpeedChanged' && event.cellId === cellId) {
+        setCurrentSpeedIndex(speeds.indexOf(event.speed));
+      }
+    });
+
+    return unsubscribe;
+  }, [cellId, fps, meshDataRef, duration]);
 
   const handleStepBack = () => {
     setIsPlaying(false);
@@ -455,6 +490,11 @@ export function MeshScrubber({ cellId, cellContainerRef, meshDataRef, fps = 30, 
     }
   };
 
+  const handleSpeedClick = () => {
+    const newIndex = (currentSpeedIndex + 1) % speeds.length;
+    setCurrentSpeedIndex(newIndex);
+  };
+
   return (
     <div
       ref={containerRef}
@@ -471,16 +511,14 @@ export function MeshScrubber({ cellId, cellContainerRef, meshDataRef, fps = 30, 
       <div
         style={{
           position: 'absolute',
-          top: 0,
+          bottom: 0,
           left: 0,
           right: 0,
-          bottom: 0,
+          height: '90px',
           display: 'flex',
           flexDirection: 'column',
           backgroundColor: 'rgba(0, 0, 0, 0.25)',
           backdropFilter: 'blur(2px)',
-          opacity: 1,
-          transform: 'translateY(0)',
           pointerEvents: 'auto',
           zIndex: 5,
         }}
@@ -539,6 +577,34 @@ export function MeshScrubber({ cellId, cellContainerRef, meshDataRef, fps = 30, 
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <button
+              onClick={() => {
+                const newMode = controlMode === 'orbit' ? 'arcball' : 'orbit';
+                onControlModeChange?.(newMode);
+              }}
+              style={{
+                padding: '4px 8px',
+                backgroundColor: 'transparent',
+                color: 'rgba(255, 255, 255, 0.5)',
+                border: '1px solid rgba(255, 255, 255, 0.3)',
+                cursor: 'pointer',
+                fontSize: '11px',
+                transition: 'all 0.2s',
+                fontFamily: 'monospace',
+                minWidth: '60px',
+                borderRadius: '3px',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.8)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.6)';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = 'rgba(255, 255, 255, 0.5)';
+                e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+              }}
+            >
+              {controlMode === 'orbit' ? 'Orbit' : 'Arcball'}
+            </button>
+            <button
               onClick={handleSpeedClick}
               style={{
                 padding: '4px 8px',
@@ -568,34 +634,6 @@ export function MeshScrubber({ cellId, cellContainerRef, meshDataRef, fps = 30, 
 
           <FullscreenButton onFullscreen={handleFullscreen} />
         </div>
-      </div>
-
-      <div
-        style={{
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          height: '2px',
-          zIndex: 3,
-          pointerEvents: 'none',
-          display: !isExpanded ? 'block' : 'none',
-        }}
-      >
-        <div
-          ref={bottomProgressRef}
-          style={{
-            position: 'absolute',
-            height: '2px',
-            backgroundColor: '#FFD700',
-            top: '0',
-            left: '0',
-            width: '0%',
-            pointerEvents: 'none',
-            zIndex: 1,
-            boxShadow: '0 0 4px rgba(255, 215, 0, 0.6)',
-          }}
-        />
       </div>
     </div>
   );
