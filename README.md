@@ -209,14 +209,18 @@ Display Correct Mesh
 
 ## Three.js Web Visualization
 
-### Real-Time 3D Mesh Rendering
+### Real-Time 3D Mesh Rendering with Independent Playback
 
-The web interface provides interactive 3D visualization of rider pose and mesh data using Three.js:
+The web interface provides interactive 3D visualization of rider pose and mesh data using Three.js with independent mesh playback controls:
 
 **Features:**
 - **3D Skeleton Visualization** - Render 24 SMPL joints as interactive 3D skeleton
 - **Mesh Overlay** - Display mesh vertices and faces on top of skeleton
-- **Frame-by-Frame Playback** - Scrub through video frames with synchronized mesh updates
+- **Independent Mesh Playback** - Mesh has own play/pause/frame controls separate from video
+- **Dual Control Modes** - Toggle between Orbit (spherical) and Arcball (quaternion) rotation
+- **Speed Multipliers** - Independent speed control (1x, 1.5x, 2x, 0.125x, 0.25x, 0.5x, 0.75x)
+- **Frame-by-Frame Navigation** - Step forward/backward through frames
+- **Loop Boundary Sync** - Both video and mesh pause at end, seek to frame 0, resume together
 - **Interactive Controls** - Rotate, zoom, and pan the 3D scene
 - **Multiple Mesh Modes** - Toggle between skeleton-only, mesh-only, and combined views
 - **Floating Control Panel** - Adjustable UI for playback and visualization settings
@@ -224,27 +228,51 @@ The web interface provides interactive 3D visualization of rider pose and mesh d
 ### Architecture
 
 **Frontend Components:**
-- `PoseOverlayViewer.tsx` - Main 3D viewer component using Three.js
-- `SyncedSceneViewer.tsx` - Synchronized video and mesh playback
-- `VideoFrameRenderer.tsx` - Frame extraction and rendering
-- `FloatingControlPanel.tsx` - Playback controls and settings
+- `MeshViewer.tsx` - Main 3D viewer component using Three.js
+- `MeshScrubber.tsx` - Independent mesh playback controls with control mode toggle
+- `CellNativeScrubber.tsx` - Video playback scrubber synced to global engine
+- `GlobalScrubberOverlay.tsx` - Global play/pause/speed controls
+- `PlaybackEngine.ts` - Single source of truth for timing (global and mesh playback)
 
 **Services:**
 - `meshDataService.ts` - Fetch mesh data from backend
-- `playbackSyncService.ts` - Synchronize video and mesh playback
-- `frameDataService.ts` - Manage frame data and caching
-- `overlayToggleService.ts` - Toggle mesh visualization modes
+- `globalCameraManager.ts` - Manage camera presets and switching
 
 **Hooks:**
-- `usePlaybackSync.ts` - Manage playback state and synchronization
-- `useFrameData.ts` - Load and cache frame data
+- `useMeshSampler.ts` - Listen to engine events and update mesh frames
+- `useVideoPlaybackSync.ts` - Sync video.currentTime to engine.playbackTime
+- `useVideoMeshSync.ts` - Sync mesh to video playback
+
+### PlaybackEngine Architecture
+
+**Single Source of Truth with Dual Playback Modes:**
+
+```
+PlaybackEngine (RAF Loop @ 60fps)
+├── Global Playback (video cells)
+│   ├── play/pause/seek/setSpeed
+│   ├── emits: play, pause, speedChanged, frameUpdate
+│   └── maintains: playbackTime (global)
+│
+└── Independent Mesh Playback (mesh cells)
+    ├── meshPlay/meshPause/meshFrameNext/meshFramePrev
+    ├── emits: meshPlay, meshPause, meshFrameNext, meshFramePrev, meshSpeedChanged
+    ├── maintains: meshPlaybackTime per cellId
+    └── syncs at loop boundaries (both pause, seek to 0, resume together)
+```
+
+**Key Pattern: Geometry Reuse**
+- Create Three.js BufferGeometry once on first frame
+- Every frame: only update position attribute via `BufferAttribute.copyArray()`
+- Set `posAttr.needsUpdate = true`
+- Loop boundaries are instant (no dispose/recreate)
 
 ### Three.js Scene Setup
 
 ```typescript
 // Scene hierarchy
 Scene
-├── Camera (perspective)
+├── Camera (perspective, managed by globalCameraManager)
 ├── Lighting
 │   ├── Ambient light (uniform illumination)
 │   └── Directional light (shadows)
@@ -259,32 +287,55 @@ Scene
 2. **Store in MongoDB** → `mesh_data` and `mesh_frames` collections
 3. **Frontend Fetches** → Request mesh data for specific videoId
 4. **Render in Three.js** → Create BufferGeometry from vertices/faces
-5. **Playback Sync** → Update mesh as video plays frame-by-frame
-6. **Interactive Controls** → User can rotate, zoom, and scrub through frames
+5. **Independent Playback** → Mesh scrubber controls mesh frame independently
+6. **Loop Sync** → Both video and mesh pause at end, seek to frame 0, resume together
+7. **Interactive Controls** → User can rotate, zoom, and scrub through frames
 
 ### Performance Optimizations
 
 - **Frame Caching** - Cache mesh data in memory to avoid repeated API calls
 - **Lazy Loading** - Load mesh data only when needed
-- **Geometry Reuse** - Reuse Three.js geometries across frames
-- **Efficient Updates** - Update only changed vertices between frames
+- **Geometry Reuse** - Reuse Three.js geometries across frames (no dispose/recreate)
+- **Efficient Updates** - Update only position attribute between frames via copyArray()
 - **WebGL Rendering** - Hardware-accelerated 3D rendering
+- **RAF Loop** - 60fps native DOM updates for scrubber (no React state)
 
-### Visualization Modes
+### Control Modes
 
-1. **Skeleton Mode** - Show 24 SMPL joints connected by bones
-2. **Mesh Mode** - Show mesh vertices and faces
-3. **Combined Mode** - Show both skeleton and mesh
-4. **Wireframe Mode** - Show mesh as wireframe for clarity
+**Orbit Mode** - Spherical coordinate system
+- Rotate around mesh center using theta/phi/radius
+- Intuitive for exploring mesh from different angles
+- Maintains consistent up direction
+
+**Arcball Mode** - Quaternion-based rotation
+- Rotate around mesh center using quaternion interpolation
+- More natural feel for free-form rotation
+- No gimbal lock issues
 
 ### Playback Controls
 
-- **Play/Pause** - Control video and mesh playback
-- **Frame Scrubbing** - Jump to specific frame
-- **Speed Control** - Adjust playback speed (0.5x to 2x)
-- **Frame Counter** - Display current frame and total frames
-- **Mesh Toggle** - Show/hide mesh overlay
-- **Camera Reset** - Reset 3D camera to default view
+**Mesh Scrubber (Independent):**
+- Play/Pause - Control mesh playback independently
+- Frame Advance (◄/►) - Step forward/backward one frame
+- Speed Toggle - Cycle through speed multipliers (1x, 1.5x, 2x, 0.125x, 0.25x, 0.5x, 0.75x)
+- Control Mode Toggle - Switch between Orbit and Arcball
+- Fullscreen - Expand mesh viewer to fullscreen
+- Tracker - Visual indicator of current frame position
+
+**Global Controls:**
+- Play/Pause - Control video playback (routes to appropriate cell type)
+- Frame Advance - Advance mesh frames (video cells unaffected)
+- Speed Toggle - Change playback speed (routes to appropriate cell type)
+
+### Synchronization Strategy
+
+- **PlaybackEngine** runs RAF loop at 60fps, maintains separate playback times
+- **MeshScrubber** manages independent mesh playback state with own RAF loop
+- **CellNativeScrubber** syncs video.currentTime to global engine.playbackTime
+- **useMeshSampler** listens to frameUpdate, reads mesh frame, updates geometry
+- **Loop boundaries** - both video and mesh pause at end, seek to frame 0, resume together
+- **Control mode toggle** - switch between orbit and arcball without recreating controls
+- **No React state** for 60fps updates - use refs and direct DOM manipulation
 
 ### Browser Compatibility
 
