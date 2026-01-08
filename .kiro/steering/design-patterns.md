@@ -110,23 +110,30 @@ Video Upload → Extract Frames → 4D-Humans Pose → PHALP Tracking → Mesh R
 // PlaybackEngine owns all timing
 const engine = getGlobalPlaybackEngine();
 
-// Initialize with video metadata
-engine.reinitialize(fps, totalFrames);
+// Global playback (video cells)
+engine.play();           // emits play event
+engine.pause();          // emits pause event
+engine.setSpeed(speed);  // emits speedChanged event
+
+// Independent mesh playback (mesh cells)
+engine.registerMeshCell(cellId);
+engine.meshPlay(cellId);           // emits meshPlay event
+engine.meshPause(cellId);          // emits meshPause event
+engine.meshFrameNext(cellId);      // emits meshFrameNext event
+engine.meshFramePrev(cellId);      // emits meshFramePrev event
+engine.meshSpeedChanged(cellId, speed); // emits meshSpeedChanged event
+engine.setMeshPlaybackTime(cellId, time);
 
 // All components listen to engine events
 engine.addEventListener((event) => {
   if (event.type === 'frameUpdate') {
     // Update at 60fps based on engine.playbackTime
-    const frameIndex = engine.getFrameIndex(engine.playbackTime);
-    // Render mesh, sync video, update scrubber
+  } else if (event.type === 'meshPlay' && event.cellId === cellId) {
+    // Start mesh playback
+  } else if (event.type === 'meshFrameNext' && event.cellId === cellId) {
+    // Advance mesh frame
   }
 });
-
-// Controls dispatch to engine
-engine.play();
-engine.pause();
-engine.seek(time);
-engine.setSpeed(speed);
 ```
 
 ### Mesh Rendering (Geometry Reuse)
@@ -137,6 +144,7 @@ if (!meshRef.current) {
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
   geometry.setIndex(new THREE.BufferAttribute(faces, 1));
+  geometry.computeVertexNormals();
   meshRef.current = new THREE.Mesh(geometry, material);
 }
 
@@ -146,29 +154,87 @@ posAttr.copyArray(frame.vertices);
 posAttr.needsUpdate = true;
 ```
 
+### MeshScrubber Pattern (Independent Playback)
+
+```typescript
+// MeshScrubber manages independent playback state
+const meshPlaybackTimeRef = useRef(0);
+const [isPlaying, setIsPlaying] = useState(false);
+const [currentSpeedIndex, setCurrentSpeedIndex] = useState(0);
+const [controlMode, setControlMode] = useState<'orbit' | 'arcball'>('orbit');
+
+// Listen to engine events for this mesh cell
+engine.addEventListener((event) => {
+  if (event.type === 'meshPlay' && event.cellId === cellId) {
+    setIsPlaying(true);
+  } else if (event.type === 'meshFrameNext' && event.cellId === cellId) {
+    // Advance frame by frameIntervalMs
+    meshPlaybackTimeRef.current = Math.min(maxTime, meshPlaybackTimeRef.current + frameIntervalMs);
+  }
+});
+
+// RAF loop advances mesh time independently
+if (isPlaying) {
+  const deltaMs = now - lastMeshTimestamp.current;
+  meshPlaybackTimeRef.current += deltaMs * speed;
+  if (meshPlaybackTimeRef.current >= maxTime) {
+    meshPlaybackTimeRef.current = meshPlaybackTimeRef.current % maxTime;
+  }
+}
+```
+
+### Control Mode Toggle (Orbit vs Arcball)
+
+```typescript
+// MeshScrubber button toggles control mode
+<button onClick={() => {
+  const newMode = controlMode === 'orbit' ? 'arcball' : 'orbit';
+  onControlModeChange?.(newMode);
+}}>
+  {controlMode === 'orbit' ? 'Orbit' : 'Arcball'}
+</button>
+
+// MeshViewer uses controlMode in mouse handler
+const onMouseMove = (e: MouseEvent) => {
+  if (controlMode === 'orbit') {
+    // Spherical coordinates: theta/phi/radius
+    controlsRef.current.theta -= deltaX * 0.01;
+    controlsRef.current.phi += deltaY * 0.01;
+  } else {
+    // Arcball: quaternion-based rotation
+    const quat1 = new THREE.Quaternion();
+    quat1.setFromAxisAngle(new THREE.Vector3(0, 1, 0), -deltaX * rotationSpeed);
+    cameraDir.applyQuaternion(quat1);
+  }
+};
+```
+
 ### Side-by-Side View Layout
 ```
 ┌─────────────────────────────────────────────────────┐
 │ Left Panel (Video)      │ Right Panel (3D Mesh)     │
 │ ┌───────────────────┐   │ ┌───────────────────────┐ │
 │ │ [Original/Overlay]│   │ │ Three.js Canvas       │ │
-│ │ Toggle Button     │   │ │ (Synced to Engine)    │ │
+│ │ Toggle Button     │   │ │ (Independent Playback)│ │
 │ │                   │   │ │                       │ │
 │ │ Video Player      │   │ │ 3D Mesh Visualization│ │
-│ │ (Synced to Engine)│   │ │ (Synced to Engine)    │ │
-│ └───────────────────┘   │ └───────────────────────┘ │
-│ NativeScrubber (Synced to Engine)                   │
-│ [◄ Prev] [Play/Pause] [Next ►] [Frame: 0/300]      │
+│ │ (Global Playback) │   │ │ (Independent Playback)│ │
+│ └───────────────────┘   │ │ [Orbit/Arcball Toggle]│ │
+│ CellNativeScrubber      │ └───────────────────────┘ │
+│ [◄ Prev] [Play/Pause] [Next ►] [Speed] [Frame: 0/300]
+│ MeshScrubber (Independent)                          │
+│ [◄ Prev] [Play/Pause] [Next ►] [Speed] [Orbit/Arcball]
 └─────────────────────────────────────────────────────┘
 ```
 
 ### Synchronization Strategy
-- **PlaybackEngine** runs RAF loop at 60fps, advances playbackTime
-- **NativeScrubber** listens to frameUpdate, updates thumb position
+- **PlaybackEngine** runs RAF loop at 60fps, maintains global and mesh playback times separately
+- **MeshScrubber** manages independent mesh playback state with own RAF loop
+- **CellNativeScrubber** syncs video.currentTime to global engine.playbackTime
 - **useMeshSampler** listens to frameUpdate, reads mesh frame, updates geometry
-- **useVideoPlaybackSync** listens to frameUpdate, syncs video.currentTime
-- **Loop boundaries** detected via frameIndex wrap-around, ensures smooth animation
-- **No React state** for 60fps updates - use native DOM for scrubber
+- **Loop boundaries** - both video and mesh pause at end, seek to frame 0, resume together
+- **Control modes** - toggle between orbit (spherical) and arcball (quaternion) without recreating controls
+- **No React state** for 60fps updates - use refs and direct DOM manipulation
 
 ## Error Handling
 

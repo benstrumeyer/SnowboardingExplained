@@ -42,24 +42,50 @@ Web Upload → Backend (Node.js) → Pose Service (Python)
 
 ```
 PlaybackEngine (RAF Loop @ 60fps)
-    ↓
-    ├→ emits frameUpdate events
-    ├→ maintains playbackTime (ms)
-    ├→ computes frameIndex deterministically
-    └→ owns play/pause/seek/speed/reverse/loop controls
-         ↓
-         ├→ NativeScrubber (listens to frameUpdate)
-         │   └→ updates thumb position based on playbackTime/duration
+    ├→ Global playback (video cells)
+    │   ├→ emits play/pause/speedChanged events
+    │   ├→ maintains playbackTime (ms)
+    │   └→ owns play/pause/seek/speed controls
+    │
+    └→ Independent mesh playback (mesh cells)
+        ├→ emits meshPlay/meshPause/meshFrameNext/meshFramePrev/meshSpeedChanged
+        ├→ tracks meshPlaybackTime per cell
+        ├→ mesh cells have independent playback state
+        └→ syncs both at loop boundaries (waits for both to reach end)
+             ↓
+         ├→ MeshScrubber (independent playback)
+         │   ├→ manages meshPlaybackTimeRef (independent from global)
+         │   ├→ has own play/pause/frame advance buttons
+         │   ├→ updates tracker via updateTrackerDirect()
+         │   ├→ control mode toggle (Orbit ↔ Arcball)
+         │   └→ speed multiplier (1x, 1.5x, 2x, 0.125x, 0.25x, 0.5x, 0.75x)
          │
-         ├→ useMeshSampler (listens to frameUpdate)
-         │   └→ reads mesh frame from preloaded data
-         │   └→ updates Three.js geometry via BufferAttribute
+         ├→ MeshViewer (Three.js rendering)
+         │   ├→ receives controlMode prop from MeshScrubber
+         │   ├→ onMouseMove uses controlMode to determine rotation:
+         │   │   ├→ Orbit: spherical coordinates (theta/phi/radius)
+         │   │   └→ Arcball: quaternion-based rotation around center
+         │   ├→ useMeshSampler listens to frameUpdate
+         │   ├→ updates Three.js geometry via BufferAttribute.copyArray()
+         │   └→ geometry reuse pattern (create once, update vertices per frame)
          │
-         └→ useVideoPlaybackSync (listens to frameUpdate)
-             └→ syncs video.currentTime to engine.playbackTime
-             └→ video is renderer, not clock
+         ├→ CellNativeScrubber (video playback)
+         │   ├→ syncs video.currentTime to engine.playbackTime
+         │   ├→ video is renderer, not clock
+         │   └→ updates tracker based on video duration
+         │
+         └→ GlobalScrubberOverlay (global controls)
+             ├→ routes play/pause to appropriate cell type
+             ├→ mesh cells get meshPlay/meshPause events
+             ├→ video cells get play/pause events
+             ├→ frame advance routes to meshFrameNext/meshFramePrev
+             └→ speed changes route to meshSpeedChanged
 
-Key: Geometry reuse pattern prevents mesh freeze at loop boundaries
+Key Patterns:
+- Geometry reuse: create BufferGeometry once, update position attribute per frame
+- Loop sync: both video and mesh pause at end, seek to frame 0, resume together
+- Independent mesh playback: mesh cells have own playback state, not tied to global
+- Control mode toggle: switch between orbit and arcball without recreating controls
 ```
 
 ## Data Flow
@@ -92,11 +118,15 @@ Key: Geometry reuse pattern prevents mesh freeze at loop boundaries
 - **Frozen Stack** - All ML dependencies cloned locally, installed in order
 - **PHALP Critical** - Provides temporal consistency across video
 - **PlaybackEngine as Source of Truth** - Single RAF loop drives all rendering
-- **Geometry Reuse** - Pre-create Three.js geometry once, update vertices per frame
+- **Independent Mesh Playback** - Mesh cells have own playback state, not tied to global engine
+- **Geometry Reuse** - Pre-create Three.js geometry once, update vertices per frame via BufferAttribute.copyArray()
 - **Event-Based Sync** - All components listen to engine events, never own clocks
-- **Responsive Scrubber** - Native DOM scrubber updates at 60fps without React
+- **Responsive Scrubber** - Native DOM scrubber updates at 60fps without React state
 - **Three.js Essential** - 3D mesh visualization is the core value proposition
 - **Perfect Frame Sync** - Mesh, video, and scrubber all follow engine time
+- **Loop Boundary Sync** - Both video and mesh pause at end, seek to frame 0, resume together
+- **Dual Control Modes** - Orbit (spherical) and Arcball (quaternion) for 3D mesh manipulation
+- **Speed Multipliers** - Independent speed control for mesh playback (1x, 1.5x, 2x, 0.125x, 0.25x, 0.5x, 0.75x)
 
 ## Deployment
 
