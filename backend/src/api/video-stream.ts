@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { VideoStorageService } from '../services/videoStorageService';
+import { connectToDatabase, getDatabase } from '../db/connection';
 import fs from 'fs';
 import path from 'path';
 
@@ -12,6 +13,38 @@ router.get('/:videoId/:type', async (req: Request, res: Response) => {
 
     if (type !== 'original' && type !== 'overlay') {
       return res.status(400).json({ error: 'Invalid video type' });
+    }
+
+    await connectToDatabase();
+    const db = getDatabase();
+
+    const rawVideo = await db.collection('raw_videos').findOne({ videoId });
+    if (rawVideo && rawVideo.data) {
+      console.log(`[VIDEO-STREAM] ✓ Found raw video in MongoDB`);
+      let buffer = rawVideo.data;
+
+      if (buffer.buffer) {
+        buffer = buffer.buffer;
+      }
+
+      const contentLength = Buffer.isBuffer(buffer) ? buffer.length : buffer.byteLength || buffer.length;
+      res.setHeader('Content-Type', rawVideo.mimeType || 'video/mp4');
+      res.setHeader('Content-Length', contentLength);
+      return res.send(buffer);
+    }
+
+    const videoDoc = await db.collection('mesh_data').findOne({ videoId });
+
+    if (videoDoc) {
+      const urlField = type === 'original' ? 'originalVideoUrl' : 'overlayVideoUrl';
+      let s3Url = videoDoc[urlField];
+
+      if (s3Url) {
+        const cloudFrontDomain = process.env.AWS_CLOUDFRONT_DOMAIN || 'https://d123456.cloudfront.net';
+        const cloudFrontUrl = s3Url.replace(/https:\/\/[^.]+\.s3\./, `${cloudFrontDomain}/`);
+        console.log(`[VIDEO-STREAM] ✓ Found S3 URL in MongoDB, redirecting to CloudFront: ${cloudFrontUrl}`);
+        return res.redirect(cloudFrontUrl);
+      }
     }
 
     const videoPath = VideoStorageService.getVideoPath(videoId, type);

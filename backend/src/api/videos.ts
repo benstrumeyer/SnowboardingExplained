@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import * as fs from 'fs';
 import * as frameQueryService from '../services/frameQueryService';
 import { VideoStorageService } from '../services/videoStorageService';
+import { connectToDatabase, getDatabase } from '../db/connection';
 
 const router = Router();
 
@@ -9,10 +10,43 @@ router.get('/', async (req: Request, res: Response) => {
   try {
     console.log(`[VIDEOS_API] GET /api/videos`);
 
-    await frameQueryService.connectToMongoDB();
-    const videos = await frameQueryService.getAllVideos();
+    await connectToDatabase();
+    const db = getDatabase();
 
-    console.log(`[VIDEOS_API] ✓ Retrieved ${videos.length} videos`);
+    const rawVideos = await db.collection('raw_videos').find({}).toArray();
+    const meshVideos = await db.collection('mesh_data').find({}).toArray();
+
+    const videos = [
+      ...rawVideos.map((v: any) => ({
+        videoId: v.videoId,
+        filename: v.originalName || 'Unknown',
+        fps: v.fps || 30,
+        duration: v.duration || 0,
+        resolution: v.resolution || [1920, 1080],
+        frameCount: v.frameCount || 0,
+        createdAt: v.uploadedAt || new Date(),
+        role: 'raw',
+        hasProcessedMesh: false,
+      })),
+      ...meshVideos.map((v: any) => {
+        const cloudFrontDomain = process.env.AWS_CLOUDFRONT_DOMAIN || 'https://d123456.cloudfront.net';
+        return {
+          videoId: v.videoId,
+          filename: v.filename || 'Mesh Video',
+          fps: v.fps || 30,
+          duration: v.duration || 0,
+          resolution: v.resolution || [1920, 1080],
+          frameCount: v.frameCount || 0,
+          createdAt: v.uploadedAt || new Date(),
+          role: 'mesh',
+          hasProcessedMesh: true,
+          originalVideoUrl: v.originalVideoUrl ? v.originalVideoUrl.replace(/https:\/\/[^.]+\.s3\./, `${cloudFrontDomain}/`) : undefined,
+          overlayVideoUrl: v.overlayVideoUrl ? v.overlayVideoUrl.replace(/https:\/\/[^.]+\.s3\./, `${cloudFrontDomain}/`) : undefined,
+        };
+      }),
+    ];
+
+    console.log(`[VIDEOS_API] ✓ Retrieved ${videos.length} videos from MongoDB`);
 
     res.json({
       success: true,
@@ -61,29 +95,34 @@ router.delete('/:videoId', async (req: Request, res: Response) => {
     const { videoId } = req.params;
     console.log(`[VIDEOS_API] DELETE /api/videos/${videoId}`);
 
-    await frameQueryService.connectToMongoDB();
+    await connectToDatabase();
+    const db = getDatabase();
 
-    const video = await frameQueryService.getVideoMetadata(videoId);
-    if (!video) {
+    const rawVideo = await db.collection('raw_videos').findOne({ videoId });
+    const meshVideo = await db.collection('mesh_data').findOne({ videoId });
+
+    if (!rawVideo && !meshVideo) {
       console.log(`[VIDEOS_API] ⚠ Video not found`);
       return res.status(404).json({
         error: 'Video not found',
       });
     }
 
-    const dbResult = await frameQueryService.deleteVideo(videoId);
-    console.log(`[VIDEOS_API] ✓ Deleted from MongoDB: ${dbResult.framesDeleted} frames, ${dbResult.videosDeleted} video records`);
+    if (rawVideo) {
+      await db.collection('raw_videos').deleteOne({ videoId });
+      console.log(`[VIDEOS_API] ✓ Deleted raw video from MongoDB`);
+    }
 
-    await VideoStorageService.deleteVideo(videoId);
-    console.log(`[VIDEOS_API] ✓ Deleted video files from disk`);
+    if (meshVideo) {
+      await db.collection('mesh_data').deleteOne({ videoId });
+      console.log(`[VIDEOS_API] ✓ Deleted mesh video from MongoDB`);
+    }
 
     res.json({
       success: true,
       message: 'Video deleted successfully',
       data: {
         videoId,
-        framesDeleted: dbResult.framesDeleted,
-        videosDeleted: dbResult.videosDeleted,
       },
     });
   } catch (err: any) {
