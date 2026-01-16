@@ -9,8 +9,12 @@ interface VideoData {
   resolution: [number, number];
   frameCount: number;
   createdAt: string;
-  originalVideoPath: string;
-  overlayVideoPath: string;
+  originalVideoPath?: string;
+  overlayVideoPath?: string;
+  role?: 'raw' | 'mesh';
+  hasProcessedMesh?: boolean;
+  originalVideoUrl?: string;
+  overlayVideoUrl?: string;
 }
 
 interface ContentLoadModalProps {
@@ -56,10 +60,17 @@ export function ContentLoadModal({ cellId, isOpen, onClose }: ContentLoadModalPr
   }, [isOpen]);
 
   const handleLoadOriginalVideo = (video: VideoData) => {
+    let videoUrl = `${API_URL}/api/video/${video.videoId}/original`;
+
+    if (video.role === 'mesh' && video.originalVideoUrl) {
+      videoUrl = video.originalVideoUrl;
+    }
+
     updateCell(cellId, {
       contentType: 'video',
       videoId: video.videoId,
       videoMode: 'original',
+      videoUrl,
     });
     onClose();
   };
@@ -187,7 +198,9 @@ export function ContentLoadModal({ cellId, isOpen, onClose }: ContentLoadModalPr
                   }}
                 >
                   <video
-                    src={`${API_URL}/api/videos/${selectedVideo.videoId}/frame/0`}
+                    src={selectedVideo.role === 'mesh' && selectedVideo.originalVideoUrl
+                      ? selectedVideo.originalVideoUrl
+                      : `${API_URL}/api/video/${selectedVideo.videoId}/original`}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
                 </div>
@@ -329,7 +342,9 @@ export function ContentLoadModal({ cellId, isOpen, onClose }: ContentLoadModalPr
                   }}
                 >
                   <video
-                    src={`${API_URL}/api/videos/${video.videoId}/frame/0`}
+                    src={video.role === 'mesh' && video.originalVideoUrl
+                      ? video.originalVideoUrl
+                      : `${API_URL}/api/video/${video.videoId}/original`}
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />
                 </div>
